@@ -1,0 +1,169 @@
+<!DOCTYPE html><html class="shiny-busy"><head>
+<base href="_w_4823c45eccae4447827fb775e0bdc0f0/">
+    <script type="text/javascript">
+(function() {
+  var workerId = '_w_4823c45eccae4447827fb775e0bdc0f0';
+  // remove base href if worker ID is in url
+  if (window.location.href.indexOf(workerId) > 0) {
+    document.querySelector('base').removeAttribute('href');
+  }
+})();
+</script>
+
+      <script type="text/javascript">
+      var __connect = {
+        shinyPre101: false
+      }
+      </script>
+      
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <script type="application/shiny-singletons"></script>
+  <script type="application/html-dependencies">jquery[3.7.1];shiny-css[1.13.0];shiny-busy-indicators[1.13.0];shiny-javascript[1.13.0];bootstrap[3.4.1]</script>
+<script src="jquery-3.7.1/jquery.min.js"></script>
+<link href="shiny-css-1.13.0/shiny.min.css" rel="stylesheet">
+<link href="shiny-busy-indicators-1.13.0/busy-indicators.css" rel="stylesheet">
+<script src="shiny-javascript-1.13.0/shiny.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="bootstrap-3.4.1/css/bootstrap.min.css" rel="stylesheet">
+<link href="bootstrap-3.4.1/accessibility/css/bootstrap-accessibility.min.css" rel="stylesheet">
+<script src="bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script src="bootstrap-3.4.1/accessibility/js/bootstrap-accessibility.min.js"></script>  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap">
+  <title>Femaco · Descargas CSV</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+      :root { --brand: #7ab943; }
+      html, body { height: 100%; }
+      body, body * {
+        font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif !important;
+      }
+
+      /* Contenedor a pantalla completa y centrado vertical/horizontal */
+      .portal-viewport {
+        min-height: 40vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 0;
+      }
+
+      /* Caja interior */
+      .portal-wrap     { width: 100%; max-width: 1000px; padding: 0 20px; text-align: center; }
+      .portal-header   { display:flex; flex-direction:column; align-items:center; gap:0px; margin-bottom: 0px; }
+      .portal-logo     { max-height: 140px; height:auto; width:auto; }
+
+      .card { border-radius: 14px; border: 1px solid #e5e7eb; padding: 18px; margin-bottom: 14px; }
+      .muted { color:#6b7280; font-size: 13px; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr); /* fuerza 5 por fila */
+        gap: 18px;
+        justify-content: center;    /* centra el conjunto en horizontal */
+        justify-items: center;      /* centra cada tarjeta en su celda */
+        align-items: start;
+        margin: 0 auto;
+        max-width: 1200px;
+      }
+
+      /* En pantallas medianas (hasta 1100px): 2 por fila */
+      @media (max-width: 1100px) {
+        .grid {
+          grid-template-columns: repeat(2, 1fr);
+          justify-content: center;   /* mantiene centrado el conjunto */
+        }
+      }
+      
+      /* En móviles (hasta 700px): 1 por fila */
+      @media (max-width: 700px) {
+        .grid {
+          grid-template-columns: 1fr;
+          justify-content: center;   /* sigue centrado */
+        }
+      }
+
+      .btn-primary, .btn {
+        background-color: var(--brand) !important;
+        border-color: var(--brand) !important;
+        color: #fff !important;
+        border-radius: 999px !important;
+        padding: 9px 16px !important;
+        box-shadow: 0 4px 12px rgba(122,185,67,.25);
+        transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+      }
+      .btn-primary:hover, .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(122,185,67,.35); filter: brightness(0.96); }
+      .btn-primary:focus, .btn:focus { box-shadow: 0 0 0 3px rgba(122,185,67,.35) !important; }
+    </style>
+<script src="__assets__/sockjs.min.js"></script>
+<script src="__assets__/shiny-server-client.min.js"></script>
+<script>preShinyInit({reconnect:true,reconnectTimeout:15000,disableProtocols:["htmlfile","xdr-streaming","xdr-polling","websocket"],token:true,workerId:true,subappTag:true,extendSession:true,fixupInternalLinks:true});</script>
+<link rel="stylesheet" type="text/css" href="__assets__/rstudio-connect.css">
+<link rel="stylesheet" type="text/css" href="/__static__/frontend/css/shinyapps.css"></head>
+<body>
+<script type="text/javascript" src="/__static__/components/iframe-resizer/js/iframeResizer.contentWindow.min.js"></script>
+<script type="text/javascript" src="/__static__/frontend/scripts/shinyapps.frame.content.js"></script>
+<script type="text/javascript" src="/__static__/frontend/scripts/shinyapps.js"></script>
+  <div class="container-fluid">
+    <div class="portal-viewport">
+      <div class="portal-wrap">
+        <div class="portal-header">
+          <img src="logo.jpg" class="portal-logo">
+        </div>
+      </div>
+    </div>
+    <h2 align="center" style="margin-bottom: 40px;">
+      <strong>Selecciona una base para descargar (.csv)</strong>
+    </h2>
+    <div style="text-align:center; font-size:14px; color:#6b7280; margin-top:-20px; margin-bottom:30px;">
+      <div id="estado" class="shiny-text-output shiny-bound-output recalculating" aria-live="polite"></div>
+    </div>
+    <br>
+    <div class="grid">
+      <div class="card">
+        <h4 class="title">Locales</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_locales" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_locales_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Productos</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_productos" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_productos_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Precios</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_precios" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_precios_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Sell Out Histórico</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_sell_out_histórico" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_sell_out_histórico_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Sell In Histórico</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_sell_in_histórico" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_sell_in_histórico_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Stock Histórico</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_stock_histórico" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_stock_histórico_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Sellout Semanal</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_sellout_semanal" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_sellout_semanal_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Reposición</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_reposición" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_reposición_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+      <div class="card">
+        <h4 class="title">Ventas Mensuales</h4>
+        <a aria-disabled="true" class="btn btn-default shiny-download-link disabled btn shiny-bound-output" download="" href="" id="dl_ventas_mensuales" tabindex="-1" target="_blank" aria-live="polite">Descargar</a>
+        <div id="dl_ventas_mensuales_info" class="shiny-html-output shiny-bound-output recalculating" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+
+<div id="ss-connect-dialog" style="display: none;"></div><div id="ss-overlay" class="ss-gray-out" style="display: none;"></div></body></html>

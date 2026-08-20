@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+playwright
+pandas
+python-dotenv
+psycopg2-binary
+SQLAlchemy
+openpyxl
+streamlit
+plotly
+schedule
+xlrd>=2.0.1

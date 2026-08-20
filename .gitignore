@@ -1,0 +1,46 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Data (Ignorar los archivos pesados descargados de Matrix y los subidos manualmente)
+data/raw/
+data/processed/
+data/manual_uploads/
+data/pgdata/
+data/logfile
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Bases de Datos Locales
+pgsql/
+
+# OS/IDEs
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Scratch y logs locales
+scratch/
+*.log
+
+implementation_plan.md
+test_query.py
+data/*.db
+*.dump
+*.zip
+.env.*
+!.env.example

@@ -1,0 +1,58 @@
+services:
+  # 1. API Backend (Web Service)
+  - type: web
+    name: rrff-api
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt && playwright install chromium"
+    startCommand: "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.4"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rrff-db
+          property: connectionString
+      # Variables que el usuario debera rellenar manualmente en el panel de Render
+      - key: MATRIX_USER
+        sync: false
+      - key: MATRIX_PWD
+        sync: false
+      - key: SMTP_SERVER
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: ALERT_DEST_EMAIL
+        sync: false
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASS
+        sync: false
+      # Generador de clave segura automatica para JWT
+      - key: SECRET_KEY
+        generateValue: true
+
+  # 2. Frontend React (Static Site)
+  - type: web
+    name: rrff-frontend
+    env: static
+    rootDir: rrff-app
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: rrff-api
+          type: web
+          property: host
+
+databases:
+  # Base de datos PostgreSQL alojada en Render
+  - name: rrff-db
+    plan: free
