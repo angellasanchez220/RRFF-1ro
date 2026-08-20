@@ -349,9 +349,9 @@ export default function Compras() {
                               <th>Estado</th>
                               <th>Cobertura</th>
                               <th>Tránsito</th>
-                              <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7' }}>Legacy (Oficial)</th>
-                              <th style={{ background: '#e3f2fd' }}>Dinámico (Exp.)</th>
-                              <th style={{ background: '#f5f5f5' }}>Comparativa</th>
+                              <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Legacy (Oficial)</th>
+                              <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Dinámico (Exp.)</th>
+                              <th style={{ background: '#f5f5f5', color: '#333' }}>Comparativa</th>
                               <th>Detalle</th>
                             </tr>
                           </thead>
