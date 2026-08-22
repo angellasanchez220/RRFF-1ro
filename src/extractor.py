@@ -31,7 +31,8 @@ RAW_DIR.mkdir(parents=True, exist_ok=True)
 MANUAL_UPLOADS.mkdir(parents=True, exist_ok=True)
 
 # URL principal del portal Matrix
-MATRIX_URL = "https://conexos-femaco-matrix.share.connect.posit.cloud/_w_1edd5bc5df3a4c6f832f3baa8a6ba583/"
+load_dotenv()
+MATRIX_URL = os.getenv("MATRIX_URL", "https://conexos-femaco-matrix.share.connect.posit.cloud/").strip().strip('"')
 
 # ── Selectores del Módulo 3 — Ventas Semanales ────────────────────────────────
 # Radio group "Visualización de valores": name="modo", values=["Ventas","Unidades"]
