@@ -775,10 +775,12 @@ from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException,
 def _run_extract_task():
     """Tarea larga en segundo plano para evitar timeout de 100s de Render."""
     try:
-        subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), timeout=300)
-        subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), timeout=120)
-        subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), timeout=120)
-        subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), timeout=120)
+        subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), check=True, timeout=300)
+        subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), check=True, timeout=120)
+        subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), check=True, timeout=120)
+        subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), check=True, timeout=120)
+    except subprocess.CalledProcessError as e:
+        print(f"Error critico en pipeline (fail-fast) - Etapa fallida: {e.cmd}")
     except Exception as e:
         print(f"Error en tarea de extraccion: {e}")
 

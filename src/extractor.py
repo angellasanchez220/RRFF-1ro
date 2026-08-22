@@ -396,8 +396,39 @@ def run_extraction() -> dict[str, Path]:
             page.click("#auth-go_auth")
 
             log.info("Autenticando... esperando dashboard principal...")
-            page.wait_for_selector("#btn_Modulo_7", state="visible", timeout=TIMEOUT_NAV)
-            log.info("Autenticacion exitosa.")
+            try:
+                page.wait_for_selector("#btn_Modulo_7", state="visible", timeout=TIMEOUT_NAV)
+                log.info("Autenticacion exitosa.")
+            except PlaywrightTimeout as e:
+                log.error("Timeout esperando #btn_Modulo_7. Diagnosticando estado de la pagina...")
+                
+                # Crear dir de debug
+                DEBUG_DIR = BASE_DIR / "data" / "debug"
+                DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+                
+                # Registrar url y titulo
+                log.error("URL actual: %s", page.url)
+                log.error("Titulo: %s", page.title())
+                
+                # Guardar captura y HTML
+                screenshot_path = DEBUG_DIR / "matrix_after_login.png"
+                html_path = DEBUG_DIR / "matrix_after_login.html"
+                
+                page.screenshot(path=str(screenshot_path))
+                with open(html_path, "w", encoding="utf-8") as f:
+                    f.write(page.content())
+                    
+                log.error("Captura guardada en: %s", screenshot_path)
+                log.error("HTML guardado en: %s", html_path)
+                
+                # Detectar mensajes de error visibles si los hay
+                error_msgs = page.locator(".shiny-output-error, .alert-danger, #auth-error").all_inner_texts()
+                if error_msgs:
+                    log.error("Mensajes de error detectados: %s", error_msgs)
+                else:
+                    log.error("No se detectaron contenedores de error estandar.")
+                
+                raise
             # ── PASO 3: Modulo 7 (Maestro, SellOut Hist, SellIn Hist) ──
             try:
                 p_maestro, p_stock, p_sellout, p_sellin = _extraer_maestro_y_stock(context, page)
