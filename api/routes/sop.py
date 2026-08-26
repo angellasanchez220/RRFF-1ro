@@ -216,10 +216,10 @@ def _get_semanas_fact_ventas(conn) -> dict:
         # Las 4 semanas más recientes (completed ya es oldest→newest = [125,128,94,154])
         recent4 = completed[-4:] if len(completed) >= 4 else completed
         
-        sem1 = recent4[-1] if len(recent4) >= 1 else 0
-        sem2 = recent4[-2] if len(recent4) >= 2 else 0
-        sem3 = recent4[-3] if len(recent4) >= 3 else 0
-        sem4 = recent4[-4] if len(recent4) >= 4 else 0
+        sem1 = recent4[0] if len(recent4) >= 1 else 0
+        sem2 = recent4[1] if len(recent4) >= 2 else 0
+        sem3 = recent4[2] if len(recent4) >= 3 else 0
+        sem4 = recent4[3] if len(recent4) >= 4 else 0
         
         total_validas = sum(recent4)
         cantidad_validas = len(recent4) if len(recent4) > 0 else 1
