@@ -22,6 +22,7 @@ import pandas as pd
 
 from api.db import engine
 from api.routes.auth import decode_token, _get_auth_header
+from src.services.maquila_service import build_maquila_families
 
 router = APIRouter()
 
@@ -334,14 +335,8 @@ def get_sop():
     df["objetivo"] = ((df["sellout_mes_anterior_estimado"] + df["total_4_sem_verificado"]) / 2
                       ).round(0).astype(int)
 
-    # Ritmo mensual para cobertura: máximo histórico de sellout
-    sellout_cols = [c for c in df.columns if c.startswith("sellout_") and c != "sellout_mes_anterior_estimado"]
-    if sellout_cols:
-        for c in sellout_cols:
-            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
-        ritmo_mensual = df[sellout_cols].max(axis=1).replace(0, float("nan"))
-    else:
-        ritmo_mensual = (df["total_4_sem_verificado"] / 4 * 4.33).replace(0, float("nan"))
+    # Ritmo mensual para cobertura: suma de las 4 semanas
+    ritmo_mensual = df["total_4_sem_verificado"].replace(0, float("nan"))
 
     # Cálculos de duración
     dur_solo_stock = (df["stock_act"] / ritmo_mensual).fillna(999)
@@ -369,6 +364,21 @@ def get_sop():
 
     # Serializar
     all_cols = df.columns.tolist()
+    
+    lookup_df = {}
+    if not df.empty:
+        df_tmp = df.copy()
+        df_tmp["sku_str"] = df_tmp["sku"].astype(str)
+        lookup_df = df_tmp.set_index("sku_str")[["nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
+        
+        # Mapear 'total_4_sem_verificado' a 'ritmo_mensual' para el servicio
+        for k, v in lookup_df.items():
+            v["ritmo_mensual"] = v.pop("total_4_sem_verificado", 0)
+
+    # Obtenemos las familias de maquila procesadas (DFS + Detección de ciclos)
+    with engine.connect() as conn:
+        familias_map = build_maquila_families(conn, lookup_df)
+
     records = []
     for _, row in df.iterrows():
         d = {}
@@ -401,6 +411,22 @@ def get_sop():
             excs = []
         d["excepciones"] = excs
         d["explicacion_excepcion"] = [EXPLICACIONES.get(code, code) for code in excs]
+        
+        # Familia Maquila (Recursiva)
+        sku_str = str(row["sku"])
+        
+        # Si no tiene receta (no está en el mapa), entonces la familia es él mismo.
+        if sku_str in familias_map:
+            d["familia_maquila"] = familias_map[sku_str]["familia_maquila"]
+            d["stock_total_familia_maquila"] = familias_map[sku_str]["stock_total_familia_maquila"]
+        else:
+            d["familia_maquila"] = [{
+                "sku": sku_str,
+                "nombre_producto": str(row.get("nombre_producto", "Desconocido")),
+                "stock_act": float(row.get("stock_act") or 0),
+                "ritmo_mensual": float(row.get("total_4_sem_verificado") or 0)
+            }]
+            d["stock_total_familia_maquila"] = float(row.get("stock_act") or 0)
         
         records.append(d)
 

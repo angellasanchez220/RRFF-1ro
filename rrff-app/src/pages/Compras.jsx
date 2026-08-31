@@ -141,10 +141,14 @@ export default function Compras() {
       group.items.forEach(s => {
         const stockoutDate = s.fecha_estimada_quiebre ? new Date(s.fecha_estimada_quiebre).toLocaleDateString('es-CL') : '—';
         const etaStr = s.eta_proxima ? new Date(s.eta_proxima).toLocaleDateString('es-CL') : '—';
+        const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
+          ? ' | Familia Maquila: ' + s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
+          : '';
         
         wsSugData.push({
           'Grupo': group.label,
           'SKU': s.sku,
+          'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
           'Categoría': s.categoria || 'Sin Categoría',
           'Alerta': s.nivel_alerta,
@@ -157,7 +161,7 @@ export default function Compras() {
           'Tránsito Vencido': s.transito_vencido || 0,
           'ETA Tránsito': etaStr,
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
-          'Explicación': s.explicacion_compra || '',
+          'Explicación': (s.explicacion_compra || '') + familiaStr,
           'Cobertura Dinámica': s.cobertura_proyectada_meses != null ? Number(s.cobertura_proyectada_meses).toFixed(1) : '—',
           'Estado Dinámico': s.estado_alerta || '—',
           'Sugerido Dinámico (Uds)': s.sugerencia_compra_dinamica != null ? Number(s.sugerencia_compra_dinamica).toFixed(0) : '—',
@@ -172,14 +176,20 @@ export default function Compras() {
     });
     
     // Hoja 2: Observaciones Manuales
-    const wsObsData = obsList.map(s => ({
-      'SKU': s.sku,
-      'Nombre de Producto': s.nombre_producto,
-      'U/E': s.ump || '',
-      'Stock Físico': s.stock_act || 0,
-      'Observación Original': s.observacion,
-      'Extracción (Uds)': s.extraido || '?'
-    }));
+    const wsObsData = obsList.map(s => {
+      const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
+          ? ' | Familia Maquila: ' + s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
+          : '';
+      return {
+        'SKU': s.sku,
+        'Código Femaco': s.codigo_femaco || '',
+        'Nombre de Producto': s.nombre_producto,
+        'U/E': s.ump || '',
+        'Stock Físico': s.stock_act || 0,
+        'Observación Original': (s.observacion || '') + familiaStr,
+        'Extracción (Uds)': s.extraido || '?'
+      };
+    });
 
     // Hoja 3: Resumen
     const wsResumenData = [];
@@ -191,6 +201,7 @@ export default function Compras() {
         const diferencia = dinamico - sugerido;
         wsResumenData.push({
           'SKU': s.sku,
+          'Código Femaco': s.codigo_femaco || '',
           'Grupo': group.label,
           'Stock Físico': s.stock_act || 0,
           'Sugerido (Uds)': sugerido,

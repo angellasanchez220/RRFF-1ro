@@ -56,7 +56,11 @@ export default function SkuDetailModal({ skuData, onClose }) {
     // Comparacion
     diferencia_compra_dinamica_legacy,
     diferencia_porcentual_dinamica_legacy,
-    recomendacion_coincide
+    recomendacion_coincide,
+    
+    // Maquila
+    familia_maquila,
+    stock_total_familia_maquila
   } = skuData;
 
   const isDynamicAvailable = clasificacion_comportamiento != null;
@@ -244,6 +248,43 @@ export default function SkuDetailModal({ skuData, onClose }) {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Familia Maquila (Componentes) */}
+        {familia_maquila && familia_maquila.length > 0 && (
+          <div style={{ padding: '20px', borderTop: '1px solid #eee', background: '#fff' }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#1d6b3e', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📦 Componentes de Maquila (Familia)
+            </h4>
+            <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
+                  <th style={{ padding: '8px' }}>SKU Componente</th>
+                  <th style={{ padding: '8px' }}>Nombre</th>
+                  <th style={{ padding: '8px', textAlign: 'center' }}>Cant. por Unidad</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Stock Físico</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Ritmo Venta (Mes)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {familia_maquila.map((comp, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{comp.sku}</td>
+                    <td style={{ padding: '8px' }}>{comp.nombre_producto}</td>
+                    <td style={{ padding: '8px', textAlign: 'center' }}>{comp.cantidad_por_unidad}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.stock_act).toLocaleString('es-CL')}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.ritmo_mensual).toLocaleString('es-CL')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: '15px', background: '#e8f5e9', padding: '10px 15px', borderRadius: '6px', border: '1px solid #c8e6c9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.95rem', color: '#2e7d32', fontWeight: 'bold' }}>Stock bruto total familia:</span>
+              <span style={{ fontSize: '1.2rem', color: '#1b5e20', fontWeight: '900' }}>
+                {Number(stock_total_familia_maquila || 0).toLocaleString('es-CL')} unidades
+              </span>
             </div>
           </div>
         )}

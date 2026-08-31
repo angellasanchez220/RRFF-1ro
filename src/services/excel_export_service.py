@@ -38,7 +38,7 @@ def _safe_float(v, default=0.0):
 def _safe_int(v, default=0):
     return int(round(_safe_float(v, default)))
 
-def get_sku_export_data(sku: str) -> dict:
+def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
     """Extrae la informaci\u00f3n consolidada de un SKU para exportaci\u00f3n a Excel."""
     with engine.connect() as conn:
         df_sop = pd.read_sql(text("SELECT * FROM planificacion_sop WHERE (sku = :s OR codigo_femaco = :s)"), conn, params={"s": sku})
@@ -65,6 +65,19 @@ def get_sku_export_data(sku: str) -> dict:
 
         obs_row = conn.execute(text("SELECT observacion FROM sku_observaciones WHERE sku=:s"), {"s": real_sku}).fetchone()
         observacion = obs_row.observacion if obs_row and obs_row.observacion else ""
+        
+        # Familia Maquila (Recursiva)
+        if familias_map and real_sku in familias_map and len(familias_map[real_sku]["familia_maquila"]) > 1:
+            fam = familias_map[real_sku]
+            comp_strs = []
+            for c in fam["familia_maquila"]:
+                comp_strs.append(f"{c['sku']} Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])} mes")
+            fam_str = f"Familia maquila: {' | '.join(comp_strs)}. Stock bruto total familia: {int(fam['stock_total_familia_maquila'])} uds."
+            
+            if observacion:
+                observacion = observacion + "\n\n" + fam_str
+            else:
+                observacion = fam_str
 
     ue = _safe_float(row_sop.get("ump"), 1.0)
     if ue == 0:
@@ -260,10 +273,21 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     if not skus:
         raise ValueError("Lista de SKUs vac\u00eda")
 
+    from src.services.maquila_service import build_maquila_families
+    with engine.connect() as conn:
+        df_lookup = pd.read_sql(text("SELECT sku, nombre_producto, stock_act, total_4_sem_verificado FROM planificacion_sop"), conn)
+    df_lookup["sku"] = df_lookup["sku"].astype(str)
+    lookup_dict = df_lookup.set_index("sku")[["nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
+    for k, v in lookup_dict.items():
+        v["ritmo_mensual"] = v.pop("total_4_sem_verificado", 0)
+    
+    with engine.connect() as conn:
+        familias_map = build_maquila_families(conn, lookup_dict)
+
     datos_skus = []
     faltantes = []
     for s in skus:
-        d = get_sku_export_data(s)
+        d = get_sku_export_data(s, familias_map=familias_map)
         if not d:
             faltantes.append(s)
         else:
