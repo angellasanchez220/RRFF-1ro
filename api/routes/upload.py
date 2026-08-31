@@ -364,21 +364,40 @@ async def upload_transito(
         raise HTTPException(400, "El archivo debe tener al menos 2 columnas (Código y Cantidad).")
 
     df = df.iloc[:, [0, 1]].copy()
-    df.columns = ["codigo_femaco", "cantidad"]
+    df.columns = ["uploaded_code", "cantidad"]
 
-    df["codigo_femaco"] = df["codigo_femaco"].astype(str).str.strip()
+    df["uploaded_code"] = df["uploaded_code"].astype(str).str.strip()
     df["cantidad"]      = pd.to_numeric(df["cantidad"], errors="coerce")
-    df = df.dropna(subset=["codigo_femaco", "cantidad"])
+    df = df.dropna(subset=["uploaded_code", "cantidad"])
     df = df[df["cantidad"] > 0]
+
+    # Agrupar repeticiones del mismo producto en la misma OC
+    df = df.groupby("uploaded_code", as_index=False).agg({"cantidad": "sum"})
 
     if df.empty:
         raise HTTPException(400, "No se encontraron filas válidas con cantidad > 0")
 
-    # Cruzar con dim_productos para obtener SKU
+    # Cruzar con dim_productos para obtener SKU y Nombre permitiendo SKU o Código Femaco
     from api.db import engine
     dim = pd.read_sql("SELECT sku, codigo_femaco, nombre_producto FROM dim_productos", engine)
-    dim["codigo_femaco"] = dim["codigo_femaco"].astype(str).str.strip()
-    df = df.merge(dim, on="codigo_femaco", how="left")
+    
+    mapping = {}
+    for _, row in dim.iterrows():
+        s = str(row["sku"]).strip()
+        c = str(row["codigo_femaco"]).strip()
+        data = {"sku": s, "codigo_femaco": c, "nombre_producto": row["nombre_producto"]}
+        if s and s != "None" and s != "nan":
+            mapping[s] = data
+        if c and c != "None" and c != "nan":
+            mapping[c] = data
+
+    def map_row(code):
+        return mapping.get(code, {"sku": None, "codigo_femaco": code, "nombre_producto": None})
+
+    mapped = df["uploaded_code"].apply(map_row)
+    df["sku"] = [x["sku"] for x in mapped]
+    df["codigo_femaco"] = [x["codigo_femaco"] for x in mapped]
+    df["nombre_producto"] = [x["nombre_producto"] for x in mapped]
 
     # Parsear ETA: priorizar eta_fecha del formulario sobre la del Excel
     def _parse_eta(v):
