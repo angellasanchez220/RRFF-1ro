@@ -66,13 +66,18 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         obs_row = conn.execute(text("SELECT observacion FROM sku_observaciones WHERE sku=:s"), {"s": real_sku}).fetchone()
         observacion = obs_row.observacion if obs_row and obs_row.observacion else ""
         
-        # Familia Maquila (Recursiva)
-        if familias_map and real_sku in familias_map and len(familias_map[real_sku]["familia_maquila"]) > 1:
+        # Familia de Reemplazo
+        if familias_map and real_sku in familias_map and len(familias_map[real_sku]["familia_skus"]) > 1:
             fam = familias_map[real_sku]
             comp_strs = []
-            for c in fam["familia_maquila"]:
-                comp_strs.append(f"{c['sku']} Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])} mes")
-            fam_str = f"Familia maquila: {' | '.join(comp_strs)}. Stock bruto total familia: {int(fam['stock_total_familia_maquila'])} uds."
+            for c in fam["familia_skus"]:
+                nt_str = " [NO TRANSFORMABLE]" if c.get("no_transformable") else ""
+                comp_strs.append(f"{c['sku']} Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])}{nt_str}")
+            fam_str = f"Familia SKU:\n" + "\n".join(comp_strs) + f"\n\nStock bruto familia: {int(fam['stock_bruto_familia'])} uds."
+            
+            reemplazos = [r['sku'] for r in fam["reemplazos_validos"]]
+            if reemplazos:
+                fam_str += f"\n\nReemplazos válidos para {real_sku}:\n" + ", ".join(reemplazos)
             
             if observacion:
                 observacion = observacion + "\n\n" + fam_str

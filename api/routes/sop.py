@@ -412,21 +412,25 @@ def get_sop():
         d["excepciones"] = excs
         d["explicacion_excepcion"] = [EXPLICACIONES.get(code, code) for code in excs]
         
-        # Familia Maquila (Recursiva)
+        # Familia (Reemplazo Simétrico)
         sku_str = str(row["sku"])
         
-        # Si no tiene receta (no está en el mapa), entonces la familia es él mismo.
         if sku_str in familias_map:
-            d["familia_maquila"] = familias_map[sku_str]["familia_maquila"]
-            d["stock_total_familia_maquila"] = familias_map[sku_str]["stock_total_familia_maquila"]
+            d["familia_skus"] = familias_map[sku_str]["familia_skus"]
+            d["stock_bruto_familia"] = familias_map[sku_str]["stock_bruto_familia"]
+            d["reemplazos_validos"] = familias_map[sku_str]["reemplazos_validos"]
+            d["stock_reemplazable_adicional"] = familias_map[sku_str]["stock_reemplazable_adicional"]
         else:
-            d["familia_maquila"] = [{
+            d["familia_skus"] = [{
                 "sku": sku_str,
                 "nombre_producto": str(row.get("nombre_producto", "Desconocido")),
                 "stock_act": float(row.get("stock_act") or 0),
-                "ritmo_mensual": float(row.get("total_4_sem_verificado") or 0)
+                "ritmo_mensual": float(row.get("total_4_sem_verificado") or 0),
+                "no_transformable": False
             }]
-            d["stock_total_familia_maquila"] = float(row.get("stock_act") or 0)
+            d["stock_bruto_familia"] = float(row.get("stock_act") or 0)
+            d["reemplazos_validos"] = []
+            d["stock_reemplazable_adicional"] = 0.0
         
         records.append(d)
 

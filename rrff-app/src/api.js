@@ -272,13 +272,6 @@ export async function deleteReceta(id) {
   return res.json();
 }
 
-export async function calcularMaquila(receta_id, cantidad_a_fabricar) {
-  const res = await fetch(`${BASE}/maquila/calcular`, {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify({ receta_id, cantidad_a_fabricar }),
-  });
-  if (!res.ok) throw new Error((await res.json()).detail || 'Error calculando maquila');
-  return res.json();
-}
 
 // ── Órdenes Maquila ──────────────────────────────────────────────────────────
 
