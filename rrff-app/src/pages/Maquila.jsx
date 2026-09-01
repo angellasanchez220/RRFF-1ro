@@ -90,6 +90,19 @@ export default function Maquila() {
     }
   }
 
+  async function handleDelete(id) {
+    if (!window.confirm("¿Seguro que desea eliminar esta receta permanentemente?")) return;
+    try {
+      setLoading(true);
+      await api.deleteReceta(id);
+      loadRecetas();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSaveForm(e) {
     e.preventDefault();
     if (!formData.sku_maquilable) return alert("SKU terminado es requerido");
@@ -277,6 +290,9 @@ export default function Maquila() {
                         <button style={{ padding: '4px 8px', fontSize: '0.85em', cursor: 'pointer' }} onClick={() => handleEdit(r.id)}>✏️ Editar</button>
                         <button style={{ padding: '4px 8px', fontSize: '0.85em', cursor: 'pointer' }} onClick={() => handleToggle(r.id, r.activa)}>
                           {r.activa ? 'Desactivar' : 'Activar'}
+                        </button>
+                        <button style={{ padding: '4px 8px', fontSize: '0.85em', cursor: 'pointer', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }} onClick={() => handleDelete(r.id)}>
+                          🗑️ Borrar
                         </button>
                       </td>
                     </tr>

@@ -26,44 +26,6 @@ def _check_descontinuados(conn, skus):
         bad_skus = ", ".join([r[0] for r in rows])
         raise ValueError(f"Los siguientes SKUs están descontinuados: {bad_skus}")
 
-def _check_cycles(conn, sku_terminado, componentes_skus, ignore_receta_id=None):
-    query = """
-        SELECT r.sku_maquilable, c.sku_componente
-        FROM recetas_maquila r
-        JOIN receta_maquila_componentes c ON r.id = c.receta_id
-        WHERE r.activa = TRUE
-    """
-    if ignore_receta_id:
-        query += f" AND r.id != {ignore_receta_id}"
-        
-    df = pd.read_sql(text(query), conn)
-    
-    graph = {}
-    for _, row in df.iterrows():
-        p = row['sku_maquilable']
-        c = row['sku_componente']
-        graph.setdefault(p, []).append(c)
-        
-    # Reemplazar/añadir el nodo actual
-    graph[sku_terminado] = componentes_skus
-    
-    def dfs(node, path):
-        if node in path:
-            return path[path.index(node):] + [node]
-        
-        path.append(node)
-        for child in graph.get(node, []):
-            cycle = dfs(child, list(path))
-            if cycle:
-                return cycle
-        return None
-        
-    for node in list(graph.keys()):
-        cycle = dfs(node, [])
-        if cycle:
-            cycle_str = " -> ".join(cycle)
-            raise ValueError(f"No se puede activar la receta porque se genera un ciclo: {cycle_str}")
-
 @router.get("/recetas")
 def get_recetas():
     with engine.connect() as conn:
@@ -144,7 +106,7 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                 if active_row:
                     raise ValueError("Ya existe una receta activa para este SKU. Desactívela primero.")
                 
-                _check_cycles(conn, sku_maquilable, skus_componentes)
+                
                 
             result = conn.execute(text("""
                 INSERT INTO recetas_maquila (sku_maquilable, descripcion, activa)
@@ -201,7 +163,7 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                 if active_row:
                     raise ValueError("Ya existe una receta activa para este SKU. Desactívela primero.")
                 
-                _check_cycles(conn, sku_maquilable, skus_componentes, ignore_receta_id=receta_id)
+                
                 
             conn.execute(text("""
                 UPDATE recetas_maquila 
@@ -250,7 +212,7 @@ def toggle_receta_estado(receta_id: int, body: dict = Body(...), authorization: 
                 # Para revisar ciclos, necesitamos los componentes
                 comps_rows = conn.execute(text("SELECT sku_componente FROM receta_maquila_componentes WHERE receta_id = :id"), {"id": receta_id}).fetchall()
                 _check_descontinuados(conn, [sku] + [c[0] for c in comps_rows])
-                _check_cycles(conn, sku, [c[0] for c in comps_rows], ignore_receta_id=receta_id)
+                
                     
             conn.execute(text("UPDATE recetas_maquila SET activa = :activa, fecha_actualizacion = NOW() WHERE id = :id"), {"activa": activa, "id": receta_id})
     except ValueError as ve:
@@ -325,3 +287,27 @@ def calcular_requerimientos(body: dict = Body(...)):
         })
         
     return resultado
+
+@router.delete("/recetas/{receta_id}")
+def delete_receta(receta_id: int, authorization: str = Header(None)):
+    _require_admin(authorization)
+    
+    try:
+        with engine.begin() as conn:
+            # Check if exists
+            row = conn.execute(text("SELECT id FROM recetas_maquila WHERE id = :id"), {"id": receta_id}).fetchone()
+            if not row:
+                raise ValueError("Receta no encontrada")
+                
+            # Eliminar componentes
+            conn.execute(text("DELETE FROM receta_maquila_componentes WHERE receta_id = :id"), {"id": receta_id})
+            
+            # Eliminar receta
+            conn.execute(text("DELETE FROM recetas_maquila WHERE id = :id"), {"id": receta_id})
+            
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return {"ok": True, "msg": "Receta eliminada correctamente"}

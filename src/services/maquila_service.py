@@ -30,7 +30,11 @@ def build_maquila_families(conn, lookup_dict):
         
         if padre not in grafo:
             grafo[padre] = set()
+        if hijo not in grafo:
+            grafo[hijo] = set()
+            
         grafo[padre].add(hijo)
+        grafo[hijo].add(padre)
         
         todos_skus_involucrados.add(padre)
         todos_skus_involucrados.add(hijo)

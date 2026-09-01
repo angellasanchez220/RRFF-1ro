@@ -264,6 +264,14 @@ export async function toggleReceta(id, activa) {
   return res.json();
 }
 
+export async function deleteReceta(id) {
+  const res = await fetch(`${BASE}/maquila/recetas/${id}`, {
+    method: 'DELETE', headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error eliminando receta');
+  return res.json();
+}
+
 export async function calcularMaquila(receta_id, cantidad_a_fabricar) {
   const res = await fetch(`${BASE}/maquila/calcular`, {
     method: 'POST', headers: authHeaders(), body: JSON.stringify({ receta_id, cantidad_a_fabricar }),
