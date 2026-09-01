@@ -130,8 +130,8 @@ def _calcular_metricas(df: pd.DataFrame, df_transito: pd.DataFrame) -> pd.DataFr
     """
     hoy = date.today()
 
-    # Ritmo mensual (semanas → meses)
-    df["ritmo_mensual"] = df["ritmo_semanal_uds"] * 4.33
+    # Ritmo mensual (suma de 4 semanas)
+    df["ritmo_mensual"] = df[["sem1_uds", "sem2_uds", "sem3_uds", "sem4_uds"]].fillna(0).sum(axis=1)
 
     # Duración stock físico
     df["duracion_stock_fisico_meses"] = (
@@ -285,6 +285,7 @@ def _aplicar_reglas(df: pd.DataFrame) -> pd.DataFrame:
                 "fecha_analisis"              : hoy.isoformat(),
                 "nivel_alerta"                : nivel,
                 "sku"                         : row["sku"],
+                "codigo_femaco"               : row.get("codigo_femaco", ""),
                 "nombre_producto"             : row["nombre_producto"],
                 "categoria"                   : row.get("categoria", ""),
                 "stock_act"                   : row["stock_act"],
