@@ -300,10 +300,10 @@ def get_sop():
     if "cantidad_transito" in df.columns:
         df = df.drop(columns=["cantidad_transito"]) # Evita collision _x _y con df_tr
         
-    df["sku"] = df["sku"].astype(str)
+    df["sku"] = df["sku"].astype(str).str.strip()
     for d in (df_tr, df_obs, df_maq):
         if not d.empty:
-            d["sku"] = d["sku"].astype(str)
+            d["sku"] = d["sku"].astype(str).str.strip()
     df = df.merge(df_tr,  on="sku", how="left")
     df = df.merge(df_obs, on="sku", how="left")
     df = df.merge(df_maq, on="sku", how="left")
@@ -416,10 +416,22 @@ def get_sop():
         sku_str = str(row["sku"])
         
         if sku_str in familias_map:
-            d["familia_skus"] = familias_map[sku_str]["familia_skus"]
-            d["stock_bruto_familia"] = familias_map[sku_str]["stock_bruto_familia"]
-            d["reemplazos_validos"] = familias_map[sku_str]["reemplazos_validos"]
-            d["stock_reemplazable_adicional"] = familias_map[sku_str]["stock_reemplazable_adicional"]
+            familia = familias_map[sku_str]
+
+            # En el modelo actual los registros FAM-* son nodos internos y los
+            # SKU reales viven en receta_maquila_componentes. Por eso no basta
+            # con cruzar planificacion_sop contra recetas_maquila.sku_maquilable:
+            # todo miembro de una familia activa debe marcarse como maquila.
+            d["es_maquilable"] = True
+            d["familia_skus"] = familia["familia_skus"]
+            d["stock_bruto_familia"] = familia["stock_bruto_familia"]
+            d["reemplazos_validos"] = familia["reemplazos_validos"]
+            d["stock_reemplazable_adicional"] = familia["stock_reemplazable_adicional"]
+            d["familia_ids"] = familia["familia_ids"]
+            d["nombre_familia_maquila"] = familia["nombre_familia"]
+            d["cantidad_componentes_receta"] = familia["cantidad_miembros"]
+            if familia["familia_ids"]:
+                d["receta_maquila_id"] = familia["familia_ids"][0]
         else:
             d["familia_skus"] = [{
                 "sku": sku_str,
@@ -431,6 +443,8 @@ def get_sop():
             d["stock_bruto_familia"] = float(row.get("stock_act") or 0)
             d["reemplazos_validos"] = []
             d["stock_reemplazable_adicional"] = 0.0
+            d["familia_ids"] = []
+            d["nombre_familia_maquila"] = None
         
         records.append(d)
 

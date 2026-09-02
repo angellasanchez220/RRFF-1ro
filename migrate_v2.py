@@ -1,8 +1,11 @@
-"""Migración DB v2 — separada por transacciones independientes"""
-from sqlalchemy import create_engine, text
+"""Migración DB v2 — separada por transacciones independientes."""
+import hashlib
 import json
+import os
 
-engine = create_engine('postgresql+psycopg2://postgres:postgres@localhost:5432/RRFF_AS_db')
+from sqlalchemy import text
+
+from api.db import engine
 
 def run(sql, params=None):
     try:
@@ -53,31 +56,28 @@ run("""CREATE TABLE IF NOT EXISTS usuarios (
     creado_en TIMESTAMP DEFAULT NOW()
 )""")
 
-# Insert admin
+# Insertar admin solo con una credencial entregada por el entorno.
 admin_perms = json.dumps({
     "can_upload_maestro": True, "can_upload_inventario": True,
     "can_upload_transito": True, "can_manage_transito": True,
     "can_edit_obs": True, "can_manage_users": True
 })
-try:
-    with engine.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO usuarios (username, password_hash, rol, permisos) "
-            "VALUES ('admin', 'rrff2026', 'admin', :p::jsonb) ON CONFLICT (username) DO NOTHING"
-        ), {"p": admin_perms})
-    print("OK: admin user")
-except Exception as e:
-    print("SKIP admin:", e)
-
-try:
-    with engine.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO usuarios (username, password_hash, rol, permisos) "
-            "VALUES ('viewer', 'rrff2026', 'viewer', '{}'::jsonb) ON CONFLICT (username) DO NOTHING"
-        ))
-    print("OK: viewer user")
-except Exception as e:
-    print("SKIP viewer:", e)
+admin_user = os.getenv("ADMIN_USER", "admin")
+admin_pass = os.getenv("ADMIN_PASS")
+if not admin_pass:
+    print("SKIP admin: falta ADMIN_PASS en el entorno")
+else:
+    try:
+        admin_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO usuarios (username, password_hash, rol, permisos) "
+                "VALUES (:u, :h, 'admin', CAST(:p AS jsonb)) "
+                "ON CONFLICT (username) DO NOTHING"
+            ), {"u": admin_user, "h": admin_hash, "p": admin_perms})
+        print("OK: admin user")
+    except Exception as e:
+        print("SKIP admin:", e)
 
 engine.dispose()
 print("\nMIGRATION DONE")

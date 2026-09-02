@@ -13,7 +13,9 @@ def build_maquila_families(conn, lookup_dict):
              {"SKU1": {"familia_skus": [...], "stock_bruto_familia": 250, "reemplazos_validos": [...], "stock_reemplazable_adicional": 150}, ...}
     """
     df_comp = pd.read_sql(text("""
-        SELECT r.sku_maquilable,
+        SELECT r.id AS familia_id,
+               r.sku_maquilable,
+               COALESCE(NULLIF(TRIM(r.descripcion), ''), r.sku_maquilable) AS nombre_familia,
                c.sku_componente,
                COALESCE(c.no_transformable, FALSE) as no_transformable
         FROM recetas_maquila r
@@ -25,6 +27,7 @@ def build_maquila_families(conn, lookup_dict):
     grafo = {}
     todos_skus = set()
     no_transformable_map = {}
+    familia_meta = {}
     
     for _, row in df_comp.iterrows():
         padre = str(row["sku_maquilable"]).strip()
@@ -42,6 +45,14 @@ def build_maquila_families(conn, lookup_dict):
         
         todos_skus.add(padre)
         todos_skus.add(hijo)
+
+        # Los nodos FAM-* son agrupadores internos. Guardamos sus datos para
+        # poder exponer el nombre real de la familia en el dashboard.
+        if padre.startswith("FAM-"):
+            familia_meta[padre] = {
+                "id": int(row["familia_id"]),
+                "nombre": str(row["nombre_familia"]).strip(),
+            }
         
         if padre not in no_transformable_map:
             no_transformable_map[padre] = False
@@ -53,8 +64,11 @@ def build_maquila_families(conn, lookup_dict):
             
     resultado = {}
     
+    # Evita que espacios accidentales en SKU impidan encontrar stock/nombre.
+    lookup_normalizado = {str(k).strip(): v for k, v in lookup_dict.items()}
+
     def get_info(s):
-        info = lookup_dict.get(s, {})
+        info = lookup_normalizado.get(s, {})
         return {
             "sku": s,
             "nombre_producto": info.get("nombre_producto", "Desconocido"),
@@ -94,12 +108,24 @@ def build_maquila_families(conn, lookup_dict):
                 if not info["no_transformable"]:
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
+
+        familias_conectadas = [
+            familia_meta[nodo]
+            for nodo in sorted(visitados)
+            if nodo in familia_meta
+        ]
+        nombres_familia = sorted({f["nombre"] for f in familias_conectadas})
+        familia_ids = sorted({f["id"] for f in familias_conectadas})
             
         resultado[sku] = {
             "familia_skus": familia_list,
             "stock_bruto_familia": stock_bruto,
             "reemplazos_validos": reemplazos_validos,
-            "stock_reemplazable_adicional": stock_reemplazable
+            "stock_reemplazable_adicional": stock_reemplazable,
+            "familia_ids": familia_ids,
+            "nombres_familia": nombres_familia,
+            "nombre_familia": " / ".join(nombres_familia),
+            "cantidad_miembros": len(familia_list),
         }
         
     return resultado

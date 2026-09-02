@@ -9,7 +9,10 @@ host = os.getenv("DB_HOST", "localhost").strip().strip('"')
 port = os.getenv("DB_PORT", "5432").strip().strip('"')
 name = os.getenv("DB_NAME", "RRFF_AS_db").strip().strip('"')
 user = os.getenv("DB_USER", "postgres").strip().strip('"')
-pwd  = os.getenv("DB_PASS", "postgres").strip().strip('"')
+pwd_env = os.getenv("DB_PASS")
+if not pwd_env:
+    raise RuntimeError("Falta DB_PASS en el entorno o archivo .env")
+pwd = pwd_env.strip().strip('"')
 engine = create_engine(f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{name}", isolation_level="AUTOCOMMIT")
 
 with engine.connect() as conn:

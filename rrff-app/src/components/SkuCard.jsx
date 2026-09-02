@@ -2,7 +2,7 @@
 // Todo el data visible por defecto, expand = gráfico + desglose tránsito + por qué sugerencia
 import { useState } from 'react';
 import {
-  ResponsiveContainer, ComposedChart, Bar, Line, Area,
+  ResponsiveContainer, ComposedChart, Line, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { fetchTransito, fetchObservacion, saveObservacion, getPermisos } from '../api';
@@ -88,7 +88,12 @@ export default function SkuCard({ product }) {
   const calendario  = product.calendario || [];
   const chartData = product.chart_12m || [];
   
-  const isMaquilable = product.es_maquilable === true;
+  const familySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
+  const isFamilyMember = familySkus.length > 1;
+  const isMaquilable = product.es_maquilable === true || isFamilyMember;
+  const familyName = product.nombre_familia_maquila || 'Familia de reemplazo';
+  const familyStock = product.stock_bruto_familia ??
+    familySkus.reduce((sum, member) => sum + Number(member.stock_act || 0), 0);
 
   const sem1 = product.sem1_uds ?? 0;
   const sem2 = product.sem2_uds ?? 0;
@@ -136,7 +141,7 @@ export default function SkuCard({ product }) {
         <span className="ch-desc">{product.nombre_producto || '—'}</span>
         {condicion && <span className={`ch-badge ${esNuevo ? 'nuevo' : ''}`}>{condicion}</span>}
         {esNuevo && <span className="ch-badge nuevo">PRODUCTO NUEVO</span>}
-        {isMaquilable && <span className="ch-badge maquila-badge" title="Producto Maquilable">🏭 Maquilable</span>}
+        {isMaquilable && <span className="ch-badge maquila-badge" title={`Familia: ${familyName}`}>🏭 Maquila</span>}
         <span className="ch-item"><b>Formato</b> {product.formato || '—'}</span>
         <span className="ch-item"><b>U/E</b> {ueDisplay}</span>
         <span className="expand-chevron">{expanded ? '▾' : '▸'}</span>
@@ -214,6 +219,34 @@ export default function SkuCard({ product }) {
           <div className="mb-sub">{ump > 0 ? `${Math.ceil(sug / ump)} cajas` : ''}</div>
         </div>
       </div>
+
+      {/* ── STOCK CONSOLIDADO DE LA FAMILIA DE MAQUILA ── */}
+      {isFamilyMember && (
+        <div className="family-stock-summary">
+          <div className="family-stock-header">
+            <span className="family-stock-title">🏭 {familyName}</span>
+            <span className="family-stock-total">
+              Stock total familia: <strong>{fmt(familyStock)} unidades</strong>
+            </span>
+          </div>
+          <div className="family-stock-members">
+            {familySkus.map(member => (
+              <div
+                className={`family-stock-member ${String(member.sku) === String(product.sku) ? 'current' : ''}`}
+                key={member.sku}
+                title={member.nombre_producto || member.sku}
+              >
+                <span className="family-member-id">
+                  {String(member.sku) === String(product.sku) && <span aria-label="Producto actual">● </span>}
+                  {member.sku}
+                </span>
+                <span className="family-member-stock">{fmt(member.stock_act)} uds</span>
+                {member.no_transformable && <span className="family-member-locked">No transformable</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── SEMANAS + OBJETIVO ── */}
       <div className="sem-row">

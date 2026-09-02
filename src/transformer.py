@@ -770,7 +770,10 @@ def run_transformation(archivos_raw=None):
             _port = os.getenv("DB_PORT", "5432").strip().strip('"')
             _name = os.getenv("DB_NAME", "RRFF_AS_db").strip().strip('"')
             _user = os.getenv("DB_USER", "postgres").strip().strip('"')
-            _pwd  = os.getenv("DB_PASS", "postgres").strip().strip('"')
+            _pwd_env = os.getenv("DB_PASS")
+            if not _pwd_env:
+                raise RuntimeError("Falta DB_PASS; configura DATABASE_URL o las variables DB_*")
+            _pwd = _pwd_env.strip().strip('"')
             _engine_tr = _create_engine(
                 f"postgresql+psycopg2://{_user}:{_pwd}@{_host}:{_port}/{_name}",
                 connect_args={"connect_timeout": 10},

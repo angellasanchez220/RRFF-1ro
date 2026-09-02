@@ -1,12 +1,13 @@
-"""
-reset_admin.py — Resetea la contrasena del admin a rrff2026
-"""
+"""Resetea la contraseña del administrador usando variables de entorno."""
 import hashlib
+import os
 from api.db import engine
 from sqlalchemy import text
 
-admin_user = "admin"
-admin_pass = "rrff2026"
+admin_user = os.getenv("ADMIN_USER", "admin")
+admin_pass = os.getenv("ADMIN_PASS")
+if not admin_pass:
+    raise RuntimeError("Falta ADMIN_PASS en el entorno; no se modificó el administrador")
 pwd_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
 
 with engine.begin() as conn:
@@ -31,7 +32,7 @@ with engine.begin() as conn:
                  '"can_upload_transito":true,"can_edit_obs":true,'
                  '"can_manage_oc":true,"can_manage_users":true}'
         })
-        print(f"[OK] Password de '{admin_user}' reseteada a 'rrff2026'")
+        print(f"[OK] Password de '{admin_user}' actualizado desde ADMIN_PASS")
     else:
         conn.execute(text("""
             INSERT INTO usuarios (username, password_hash, role, permisos, activo)
@@ -43,7 +44,7 @@ with engine.begin() as conn:
                  '"can_upload_transito":true,"can_edit_obs":true,'
                  '"can_manage_oc":true,"can_manage_users":true}'
         })
-        print(f"[OK] Usuario admin creado con password 'rrff2026'")
+        print(f"[OK] Usuario admin '{admin_user}' creado desde ADMIN_PASS")
 
     # Listar usuarios
     rows = conn.execute(text("SELECT username, role, activo FROM usuarios")).fetchall()

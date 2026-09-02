@@ -28,7 +28,12 @@ def get_engine():
     port = os.getenv("DB_PORT", "5432").strip().strip('"')
     name = os.getenv("DB_NAME", "RRFF_AS_db").strip().strip('"')
     user = os.getenv("DB_USER", "postgres").strip().strip('"')
-    pwd  = os.getenv("DB_PASS", "postgres").strip().strip('"')
+    pwd_env = os.getenv("DB_PASS")
+    if not pwd_env:
+        raise RuntimeError(
+            "Falta configuración de base de datos: define DATABASE_URL o DB_PASS."
+        )
+    pwd = pwd_env.strip().strip('"')
     return create_engine(
         f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{name}",
         pool_pre_ping=True,
@@ -128,6 +133,7 @@ def run_migrations():
             receta_id           INTEGER NOT NULL REFERENCES recetas_maquila(id) ON DELETE CASCADE,
             sku_componente      TEXT NOT NULL,
             cantidad_por_unidad NUMERIC(12,4) NOT NULL,
+            no_transformable    BOOLEAN NOT NULL DEFAULT FALSE,
             observacion         TEXT,
             fecha_creacion      TIMESTAMP DEFAULT NOW(),
             fecha_actualizacion TIMESTAMP DEFAULT NOW()
@@ -138,6 +144,7 @@ def run_migrations():
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_receta_activa ON recetas_maquila (sku_maquilable) WHERE activa = TRUE",
 
         # ── Maquila: Forzar tipo NUMERIC ─────────────────────────────────────
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS no_transformable BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE receta_maquila_componentes ALTER COLUMN cantidad_por_unidad TYPE NUMERIC(12,4)",
 
         # ── Órdenes de Maquila ───────────────────────────────────────────────
@@ -209,27 +216,34 @@ def run_migrations():
 def _seed_admin_user():
     """Inserta el usuario admin por defecto si no existe ninguno."""
     import hashlib
-    import os
 
     admin_user = os.getenv("ADMIN_USER", "admin")
-    admin_pass = os.getenv("ADMIN_PASS", "rrff2026")
-    # Hash simple SHA-256 (suficiente para uso interno)
-    pwd_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
+    admin_pass = os.getenv("ADMIN_PASS")
 
     with engine.begin() as conn:
         exists = conn.execute(
             text("SELECT 1 FROM usuarios WHERE username = :u"),
             {"u": admin_user}
         ).fetchone()
-        if not exists:
-            conn.execute(text("""
-                INSERT INTO usuarios (username, password_hash, role, permisos, activo)
-                VALUES (:u, :h, 'admin', :p, TRUE)
-                ON CONFLICT (username) DO NOTHING
-            """), {
-                "u": admin_user,
-                "h": pwd_hash,
-                "p": '{"can_upload_maestro":true,"can_upload_inventario":true,'
-                     '"can_upload_transito":true,"can_edit_obs":true,'
-                     '"can_manage_oc":true,"can_manage_users":true}'
-            })
+        if exists:
+            return
+
+        if not admin_pass:
+            raise RuntimeError(
+                "No existen usuarios y falta ADMIN_PASS. Define una contraseña segura "
+                "para crear el administrador inicial."
+            )
+
+        # Hash simple SHA-256 (compatibilidad con el esquema de autenticación actual)
+        pwd_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
+        conn.execute(text("""
+            INSERT INTO usuarios (username, password_hash, role, permisos, activo)
+            VALUES (:u, :h, 'admin', :p, TRUE)
+            ON CONFLICT (username) DO NOTHING
+        """), {
+            "u": admin_user,
+            "h": pwd_hash,
+            "p": '{"can_upload_maestro":true,"can_upload_inventario":true,'
+                 '"can_upload_transito":true,"can_edit_obs":true,'
+                 '"can_manage_oc":true,"can_manage_users":true}'
+        })

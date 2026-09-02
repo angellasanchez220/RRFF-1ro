@@ -94,12 +94,16 @@ export default function Dashboard() {
   const filtered = useMemo(() => {
     const search = fSearch.toLowerCase().trim();
     return allData.filter(d => {
+      // Compatibilidad con payloads nuevos y anteriores: un SKU pertenece a
+      // maquila si el backend lo marca o si trae una familia real (>1 miembro).
+      const esMaquila = d.es_maquilable === true ||
+        (Array.isArray(d.familia_skus) && d.familia_skus.length > 1);
       if (fCat   && d.categoria    !== fCat) return false;
       if (fSub   && d.subcategoria !== fSub) return false;
       if (fFmt   && d.formato      !== fFmt) return false;
       if (fSku   && d.sku          !== fSku) return false;
-      if (fMaquila === 'SI' && !d.es_maquilable) return false;
-      if (fMaquila === 'NO' && d.es_maquilable) return false;
+      if (fMaquila === 'SI' && !esMaquila) return false;
+      if (fMaquila === 'NO' && esMaquila) return false;
       if (search && !`${d.sku} ${d.nombre_producto} ${d.codigo_femaco}`.toLowerCase().includes(search)) return false;
       if (fNiveles.size > 0 && !fNiveles.has(d.nivel_alerta)) return false;
       return true;

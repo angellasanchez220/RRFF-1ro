@@ -308,6 +308,70 @@ body {
   border-bottom-color: #81d4fa;
 }
 
+/* Resumen de stock para familias de maquila/reemplazo */
+.family-stock-summary {
+  padding: 9px 14px 11px;
+  background: #f2faff;
+  border-bottom: 1px solid #b3e5fc;
+}
+.family-stock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.family-stock-title {
+  color: #075985;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.family-stock-total {
+  color: #334155;
+  font-size: 0.78rem;
+}
+.family-stock-total strong { color: #075985; font-size: 0.9rem; }
+.family-stock-members {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+}
+.family-stock-member {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #bae6fd;
+  border-radius: 5px;
+  font-size: 0.75rem;
+}
+.family-stock-member.current {
+  background: #e0f2fe;
+  border-color: #0288d1;
+}
+.family-member-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-weight: 700;
+}
+.family-member-stock { color: #075985; font-weight: 800; white-space: nowrap; }
+.family-member-locked {
+  grid-column: 1 / -1;
+  color: #9a3412;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .family-stock-header { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .family-stock-members { grid-template-columns: 1fr; }
+}
+
 /* Calendario */
 .cal-wrap {
   border-bottom: 1px solid var(--border);

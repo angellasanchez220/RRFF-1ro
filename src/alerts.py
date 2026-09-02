@@ -86,7 +86,10 @@ def _build_engine():
     port = os.getenv("DB_PORT", "5432").strip().strip('"')
     name = os.getenv("DB_NAME", "RRFF_AS_db").strip().strip('"')
     user = os.getenv("DB_USER", "postgres").strip().strip('"')
-    pwd  = os.getenv("DB_PASS", "postgres").strip().strip('"')
+    pwd_env = os.getenv("DB_PASS")
+    if not pwd_env:
+        raise RuntimeError("Falta DB_PASS; configura DATABASE_URL o las variables DB_*")
+    pwd = pwd_env.strip().strip('"')
     eng  = create_engine(
         f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{name}",
         connect_args={"connect_timeout": 10},
