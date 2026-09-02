@@ -1,0 +1,53 @@
+"""Reglas puras para determinar el stock usado por la sugerencia de compra."""
+
+import pandas as pd
+
+
+def aplicar_stock_familia_para_sugerencia(
+    df: pd.DataFrame,
+    familias_map: dict,
+) -> pd.DataFrame:
+    """Reemplaza el stock de cálculo por el total familiar cuando corresponde.
+
+    ``stock_act`` se mantiene intacto como inventario individual. La columna
+    ``sug_stock_actual`` es la que consume el cálculo de sugerencia de compra.
+    """
+    resultado = df.copy()
+    stock_individual = pd.to_numeric(
+        resultado.get("stock_act", pd.Series(0, index=resultado.index)),
+        errors="coerce",
+    ).fillna(0.0)
+
+    stocks_familia = []
+    usa_familia = []
+    cantidades_miembros = []
+    nombres_familia = []
+
+    for sku, stock_sku in zip(
+        resultado["sku"].astype(str).str.strip(),
+        stock_individual,
+    ):
+        familia = familias_map.get(sku, {})
+        miembros = familia.get("familia_skus") or []
+        es_familia_activa = len(miembros) > 1
+
+        if es_familia_activa:
+            try:
+                stock_calculo = float(familia.get("stock_bruto_familia", stock_sku))
+            except (TypeError, ValueError):
+                stock_calculo = float(stock_sku)
+        else:
+            stock_calculo = float(stock_sku)
+
+        stocks_familia.append(stock_calculo)
+        usa_familia.append(es_familia_activa)
+        cantidades_miembros.append(len(miembros) if es_familia_activa else 1)
+        nombres_familia.append(familia.get("nombre_familia", "") if es_familia_activa else "")
+
+    resultado["sug_stock_individual"] = stock_individual
+    resultado["sug_stock_familia"] = stocks_familia
+    resultado["sug_stock_actual"] = stocks_familia
+    resultado["sug_usa_stock_familia"] = usa_familia
+    resultado["sug_cantidad_miembros_familia"] = cantidades_miembros
+    resultado["sug_nombre_familia"] = nombres_familia
+    return resultado

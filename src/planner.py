@@ -499,6 +499,57 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
 # Paso 5 — Sell-In Ajustado por UMP
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFrame:
+    """Carga familias activas y aplica su stock consolidado al cálculo."""
+    try:
+        try:
+            from src.services.maquila_service import build_maquila_families
+            from src.services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
+        except ModuleNotFoundError:
+            # Compatibilidad al ejecutar directamente: python src/planner.py
+            from services.maquila_service import build_maquila_families
+            from services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
+
+        lookup = df[["sku", "nombre_producto", "stock_act"]].copy()
+        lookup["sku"] = lookup["sku"].astype(str).str.strip()
+        if "total_4_sem_verificado" in df.columns:
+            lookup["ritmo_mensual"] = pd.to_numeric(
+                df["total_4_sem_verificado"], errors="coerce"
+            ).fillna(0.0)
+        else:
+            lookup["ritmo_mensual"] = 0.0
+
+        lookup_dict = lookup.set_index("sku")[
+            ["nombre_producto", "stock_act", "ritmo_mensual"]
+        ].to_dict("index")
+
+        with engine.connect() as conn:
+            familias_map = build_maquila_families(conn, lookup_dict)
+
+        cantidad_skus = sum(
+            1 for familia in familias_map.values()
+            if len(familia.get("familia_skus") or []) > 1
+        )
+        log.info(
+            "Stock de familia aplicado a la sugerencia de compra para %d SKU(s).",
+            cantidad_skus,
+        )
+    except Exception as exc:
+        log.warning(
+            "No se pudieron cargar las familias de maquila para la sugerencia (%s). "
+            "Se utilizará stock individual.",
+            exc,
+        )
+        familias_map = {}
+
+        try:
+            from src.services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
+        except ModuleNotFoundError:
+            from services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
+
+    return aplicar_stock_familia_para_sugerencia(df, familias_map)
+
+
 def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     """
     Para cada mes, calcula el Sell-In ajustado al múltiplo de UMP (gancheras).
@@ -576,7 +627,10 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["stock_objetivo"] = df["sug_target_uds"]
     
     # 5. Inventario Disponible
-    df["sug_stock_actual"] = df["stock_act"].fillna(0)
+    # Si el SKU pertenece a una familia de maquila activa, el stock físico útil
+    # para decidir la compra es la suma de todos los integrantes de la familia.
+    # El stock individual se conserva en stock_act para inventario y alertas.
+    df = _integrar_stock_familia_en_sugerencia(df, engine)
     df["sug_cantidad_transito"] = df.get("cantidad_transito", pd.Series(0, index=df.index)).fillna(0)
     inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
     

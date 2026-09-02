@@ -331,6 +331,16 @@ body {
   font-size: 0.78rem;
 }
 .family-stock-total strong { color: #075985; font-size: 0.9rem; }
+.family-stock-calculation-note {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  color: #0c4a6e;
+  background: #e0f2fe;
+  border-left: 3px solid #0288d1;
+  border-radius: 4px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
 .family-stock-members {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -360,6 +370,15 @@ body {
   font-weight: 700;
 }
 .family-member-stock { color: #075985; font-weight: 800; white-space: nowrap; }
+.family-member-name {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .family-member-locked {
   grid-column: 1 / -1;
   color: #9a3412;

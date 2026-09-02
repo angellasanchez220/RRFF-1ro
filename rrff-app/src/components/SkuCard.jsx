@@ -94,6 +94,10 @@ export default function SkuCard({ product }) {
   const familyName = product.nombre_familia_maquila || 'Familia de reemplazo';
   const familyStock = product.stock_bruto_familia ??
     familySkus.reduce((sum, member) => sum + Number(member.stock_act || 0), 0);
+  const usesFamilyStockForPurchase = product.sug_usa_stock_familia === true;
+  const stockUsedForPurchase = product.sug_stock_actual ??
+    (usesFamilyStockForPurchase ? familyStock : stockFemaco);
+  const familyAdditionalStock = Math.max(0, Number(familyStock) - Number(stockFemaco));
 
   const sem1 = product.sem1_uds ?? 0;
   const sem2 = product.sem2_uds ?? 0;
@@ -216,37 +220,13 @@ export default function SkuCard({ product }) {
         <div className="metric-box sug">
           <div className="mb-lbl">🛒 Sugerencia Compra</div>
           <div className="mb-val green">{fmt(sug)} <small>unidades</small></div>
-          <div className="mb-sub">{ump > 0 ? `${Math.ceil(sug / ump)} cajas` : ''}</div>
+          <div className="mb-sub">
+            {usesFamilyStockForPurchase
+              ? `Calculada con ${fmt(stockUsedForPurchase)} uds de la familia`
+              : (ump > 0 ? `${Math.ceil(sug / ump)} cajas` : '')}
+          </div>
         </div>
       </div>
-
-      {/* ── STOCK CONSOLIDADO DE LA FAMILIA DE MAQUILA ── */}
-      {isFamilyMember && (
-        <div className="family-stock-summary">
-          <div className="family-stock-header">
-            <span className="family-stock-title">🏭 {familyName}</span>
-            <span className="family-stock-total">
-              Stock total familia: <strong>{fmt(familyStock)} unidades</strong>
-            </span>
-          </div>
-          <div className="family-stock-members">
-            {familySkus.map(member => (
-              <div
-                className={`family-stock-member ${String(member.sku) === String(product.sku) ? 'current' : ''}`}
-                key={member.sku}
-                title={member.nombre_producto || member.sku}
-              >
-                <span className="family-member-id">
-                  {String(member.sku) === String(product.sku) && <span aria-label="Producto actual">● </span>}
-                  {member.sku}
-                </span>
-                <span className="family-member-stock">{fmt(member.stock_act)} uds</span>
-                {member.no_transformable && <span className="family-member-locked">No transformable</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── SEMANAS + OBJETIVO ── */}
       <div className="sem-row">
@@ -280,6 +260,46 @@ export default function SkuCard({ product }) {
       {/* ── SECCIÓN EXPANDIDA ── */}
       {expanded && (
         <div className="expanded-section">
+
+          {/* FAMILIA ACTIVA Y STOCK USADO PARA LA COMPRA */}
+          {isFamilyMember && (
+            <div className="exp-block family-stock-summary">
+              <div className="family-stock-header">
+                <span className="family-stock-title">🏭 Familia activa: {familyName}</span>
+                <span className="family-stock-total">
+                  Stock total familia: <strong>{fmt(familyStock)} unidades</strong>
+                </span>
+              </div>
+              <div className="family-stock-calculation-note">
+                {usesFamilyStockForPurchase ? (
+                  <>
+                    Para calcular la sugerencia, el stock individual de <b>{fmt(stockFemaco)} uds</b>
+                    {' '}se reemplaza por el total familiar de <b>{fmt(stockUsedForPurchase)} uds</b>
+                    {' '}({fmt(familyAdditionalStock)} uds aportadas por los otros integrantes).
+                  </>
+                ) : (
+                  <>La familia está identificada, pero falta recalcular la planificación para aplicar su stock a la sugerencia.</>
+                )}
+              </div>
+              <div className="family-stock-members">
+                {familySkus.map(member => (
+                  <div
+                    className={`family-stock-member ${String(member.sku) === String(product.sku) ? 'current' : ''}`}
+                    key={member.sku}
+                    title={member.nombre_producto || member.sku}
+                  >
+                    <span className="family-member-id">
+                      {String(member.sku) === String(product.sku) && <span aria-label="Producto actual">● </span>}
+                      {member.sku}
+                    </span>
+                    <span className="family-member-stock">{fmt(member.stock_act)} uds</span>
+                    <span className="family-member-name">{member.nombre_producto || 'Sin nombre'}</span>
+                    {member.no_transformable && <span className="family-member-locked">No transformable</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* GRÁFICO 12 MESES */}
           {chartData.length > 0 && (
@@ -356,7 +376,11 @@ export default function SkuCard({ product }) {
                 <span>5. Tránsito activo descontado</span><span>- {fmt(product.sug_cantidad_transito ?? cantTr)} unidades</span>
               </div>
               <div className="sd-row" style={{ color: '#E65100' }}>
-                <span>6. Stock actual físico descontado</span><span>- {fmt(product.sug_stock_actual ?? stockFemaco)} unidades</span>
+                <span>
+                  6. {usesFamilyStockForPurchase ? 'Stock total de familia descontado' : 'Stock actual físico descontado'}
+                  {usesFamilyStockForPurchase && <small> (stock individual {fmt(stockFemaco)} + otros {fmt(familyAdditionalStock)})</small>}
+                </span>
+                <span>- {fmt(stockUsedForPurchase)} unidades</span>
               </div>
               
               <div className="sd-row result" style={{ marginTop: 8 }}>
