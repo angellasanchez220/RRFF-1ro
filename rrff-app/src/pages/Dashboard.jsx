@@ -6,6 +6,12 @@ import SkuCard from '../components/SkuCard';
 const NIVELES = ['ROJO','NARANJA','AMARILLO','AZUL','MORADO','VERDE'];
 const EMOJI = { ROJO:'🔴', NARANJA:'🟠', AMARILLO:'🟡', AZUL:'🔵', MORADO:'🟣', VERDE:'🟢' };
 
+function isDiscontinued(product) {
+  const estado = String(product.estado || '').trim().toUpperCase();
+  return estado === 'DESCONTINUADO' || estado === 'INACTIVO' ||
+    (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_DESCONTINUADO'));
+}
+
 export default function Dashboard() {
   const [allData,   setAllData]   = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -21,18 +27,35 @@ export default function Dashboard() {
   const [fSearch,  setFSearch]  = useState('');
   const [fNiveles, setFNiveles] = useState(new Set());
   const [fMaquila, setFMaquila] = useState('');
+  const [fEstado,  setFEstado]  = useState('ACTIVOS');
 
   const loadData = async () => {
     setLoading(true); setError('');
     try {
-      const res = await fetchSOP();
+      const res = await fetchSOP({ includeDiscontinued: true });
       setAllData(res.data || []);
       setLastFetch(new Date().toLocaleTimeString('es-CL'));
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetchSOP({ includeDiscontinued: true })
+      .then(res => {
+        if (cancelled) return;
+        setAllData(res.data || []);
+        setLastFetch(new Date().toLocaleTimeString('es-CL'));
+      })
+      .catch(e => {
+        if (!cancelled) setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleDownloadExcel() {
     if (isDownloadingExcel) return;
@@ -56,44 +79,51 @@ export default function Dashboard() {
 
   function clearFilters() {
     setFCat(''); setFSub(''); setFFmt(''); setFSku('');
-    setFSearch(''); setFNiveles(new Set()); setFMaquila('');
+    setFSearch(''); setFNiveles(new Set()); setFMaquila(''); setFEstado('ACTIVOS');
   }
 
-  const hasFilters = !!(fCat || fSub || fFmt || fSku || fSearch || fMaquila || fNiveles.size > 0);
+  const hasFilters = !!(fCat || fSub || fFmt || fSku || fSearch || fMaquila ||
+    fEstado !== 'ACTIVOS' || fNiveles.size > 0);
+
+  const estadoData = useMemo(() => {
+    if (fEstado === 'TODOS') return allData;
+    if (fEstado === 'DESCONTINUADOS') return allData.filter(isDiscontinued);
+    return allData.filter(d => !isDiscontinued(d));
+  }, [allData, fEstado]);
 
   // ── Opciones derivadas del dataset ───────────────────────────────────────────
   const cats = useMemo(() =>
-    [...new Set(allData.map(d => d.categoria).filter(Boolean))].sort(),
-  [allData]);
+    [...new Set(estadoData.map(d => d.categoria).filter(Boolean))].sort(),
+  [estadoData]);
 
   const subcats = useMemo(() => {
-    const arr = allData
+    const arr = estadoData
       .filter(d => !fCat || d.categoria === fCat)
       .map(d => d.subcategoria).filter(Boolean);
     return [...new Set(arr)].sort();
-  }, [fCat, allData]);
+  }, [fCat, estadoData]);
 
   const formatos = useMemo(() => {
-    const arr = allData
+    const arr = estadoData
       .filter(d => (!fCat || d.categoria === fCat) && (!fSub || d.subcategoria === fSub))
       .map(d => d.formato).filter(Boolean);
     return [...new Set(arr)].sort();
-  }, [fCat, fSub, allData]);
+  }, [fCat, fSub, estadoData]);
 
   const skusDisp = useMemo(() => {
-    const arr = allData
+    const arr = estadoData
       .filter(d =>
         (!fCat || d.categoria === fCat) &&
         (!fSub || d.subcategoria === fSub) &&
         (!fFmt || d.formato === fFmt)
       ).map(d => d.sku).filter(Boolean);
     return [...new Set(arr)].sort();
-  }, [fCat, fSub, fFmt, allData]);
+  }, [fCat, fSub, fFmt, estadoData]);
 
   // ── Datos filtrados ───────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const search = fSearch.toLowerCase().trim();
-    return allData.filter(d => {
+    return estadoData.filter(d => {
       // Compatibilidad con payloads nuevos y anteriores: un SKU pertenece a
       // maquila si el backend lo marca o si trae una familia real (>1 miembro).
       const esMaquila = d.es_maquilable === true ||
@@ -108,14 +138,14 @@ export default function Dashboard() {
       if (fNiveles.size > 0 && !fNiveles.has(d.nivel_alerta)) return false;
       return true;
     });
-  }, [allData, fCat, fSub, fFmt, fSku, fSearch, fMaquila, fNiveles]);
+  }, [estadoData, fCat, fSub, fFmt, fSku, fSearch, fMaquila, fNiveles]);
 
   const alertCounts = useMemo(() => {
     const counts = {};
     NIVELES.forEach(n => { counts[n] = 0; });
-    allData.forEach(d => { if (d.nivel_alerta) counts[d.nivel_alerta]++; });
+    estadoData.forEach(d => { if (d.nivel_alerta) counts[d.nivel_alerta]++; });
     return counts;
-  }, [allData]);
+  }, [estadoData]);
 
   function toggleNivel(n) {
     setFNiveles(prev => {
@@ -174,6 +204,13 @@ export default function Dashboard() {
               <option value="SI">Solo Maquila</option>
               <option value="NO">No Maquilables</option>
             </select>
+
+            <label>Estado del producto</label>
+            <select value={fEstado} onChange={e => { setFEstado(e.target.value); setFSku(''); }}>
+              <option value="ACTIVOS">Solo vigentes</option>
+              <option value="DESCONTINUADOS">Solo descontinuados</option>
+              <option value="TODOS">Vigentes y descontinuados</option>
+            </select>
           </div>
         </div>
 
@@ -213,7 +250,7 @@ export default function Dashboard() {
           <div className="sidebar-section-title">Resumen</div>
           <div className="stat-pill">
             <span>Mostrando</span>
-            <span className="count">{filtered.length} / {allData.length}</span>
+            <span className="count">{filtered.length} / {estadoData.length}</span>
           </div>
           {lastFetch && (
             <div style={{ fontSize: '0.7rem', color: 'var(--gray)', textAlign: 'center', marginTop: 6, marginBottom: 12 }}>
@@ -285,7 +322,11 @@ export default function Dashboard() {
           </div>
         )}
         {!loading && !error && filtered.map(p => (
-          <SkuCard key={p.sku || p.codigo_femaco} product={p} />
+          <SkuCard
+            key={p.sku || p.codigo_femaco}
+            product={p}
+            showDiscontinued={fEstado !== 'ACTIVOS'}
+          />
         ))}
       </main>
     </div>

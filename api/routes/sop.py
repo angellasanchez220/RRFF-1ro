@@ -25,6 +25,7 @@ from api.routes.auth import decode_token, _get_auth_header
 from src.services.maquila_service import (
     build_maquila_families,
     build_product_lookup_by_internal_code,
+    is_discontinued,
 )
 
 router = APIRouter()
@@ -248,8 +249,8 @@ def _get_semanas_fact_ventas(conn) -> dict:
 
 # ── GET /api/sop/ ─────────────────────────────────────────────────────────────
 @router.get("/")
-def get_sop():
-    """Retorna todos los SKUs con métricas completas para el dashboard React."""
+def get_sop(include_discontinued: bool = False):
+    """Retorna S&OP; los descontinuados solo se incluyen bajo petición explícita."""
     with engine.connect() as conn:
         try:
             df_sop = pd.read_sql(text("SELECT * FROM planificacion_sop ORDER BY sku"), conn)
@@ -449,6 +450,13 @@ def get_sop():
         
         records.append(d)
 
+    if not include_discontinued:
+        records = [
+            record for record in records
+            if not is_discontinued(record.get("estado"))
+            and "PRODUCTO_DESCONTINUADO" not in (record.get("excepciones") or [])
+        ]
+
     return {"data": records, "total": len(records)}
 
 
@@ -457,7 +465,10 @@ def get_categories():
     with engine.connect() as conn:
         df = pd.read_sql(
             text("SELECT DISTINCT categoria, subcategoria, formato "
-                 "FROM planificacion_sop ORDER BY categoria, subcategoria, formato NULLS LAST"),
+                 "FROM planificacion_sop "
+                 "WHERE UPPER(TRIM(COALESCE(estado, ''))) "
+                 "NOT IN ('DESCONTINUADO', 'INACTIVO') "
+                 "ORDER BY categoria, subcategoria, formato NULLS LAST"),
             conn
         )
     tree = {}

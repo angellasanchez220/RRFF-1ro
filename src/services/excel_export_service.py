@@ -41,7 +41,13 @@ def _safe_int(v, default=0):
 def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
     """Extrae la informaci\u00f3n consolidada de un SKU para exportaci\u00f3n a Excel."""
     with engine.connect() as conn:
-        df_sop = pd.read_sql(text("SELECT * FROM planificacion_sop WHERE (sku = :s OR codigo_femaco = :s)"), conn, params={"s": sku})
+        df_sop = pd.read_sql(text("""
+            SELECT *
+            FROM planificacion_sop
+            WHERE (sku = :s OR codigo_femaco = :s)
+              AND UPPER(TRIM(COALESCE(estado, '')))
+                  NOT IN ('DESCONTINUADO', 'INACTIVO')
+        """), conn, params={"s": sku})
         if df_sop.empty:
             return None
         row_sop = df_sop.iloc[0].to_dict()
@@ -366,7 +372,13 @@ def generate_excel_for_sku(sku: str) -> bytes:
 def generar_excel_todos_skus() -> bytes:
     """Genera un archivo Excel único conteniendo todos los SKUs de planificacion_sop en orden alfanumérico."""
     with engine.connect() as conn:
-        df = pd.read_sql(text("SELECT sku FROM planificacion_sop ORDER BY sku ASC"), conn)
+        df = pd.read_sql(text("""
+            SELECT sku
+            FROM planificacion_sop
+            WHERE UPPER(TRIM(COALESCE(estado, '')))
+                  NOT IN ('DESCONTINUADO', 'INACTIVO')
+            ORDER BY sku ASC
+        """), conn)
         
     skus_totales = df["sku"].dropna().tolist()
     if not skus_totales:

@@ -54,7 +54,7 @@ function fmtDate(s) {
   return String(s).slice(0, 10);
 }
 
-export default function SkuCard({ product }) {
+export default function SkuCard({ product, showDiscontinued = false }) {
   const [expanded,  setExpanded]  = useState(false);
   const [transito,  setTransito]  = useState(null);
   const [trLoad,    setTrLoad]    = useState(false);
@@ -88,7 +88,10 @@ export default function SkuCard({ product }) {
   const calendario  = product.calendario || [];
   const chartData = product.chart_12m || [];
   
-  const familySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
+  const allFamilySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
+  const familySkus = showDiscontinued
+    ? allFamilySkus
+    : allFamilySkus.filter(member => member.descontinuado !== true);
   const isFamilyMember = familySkus.length > 1;
   const isMaquilable = product.es_maquilable === true || isFamilyMember;
   const familyName = product.nombre_familia_maquila || 'Familia de reemplazo';

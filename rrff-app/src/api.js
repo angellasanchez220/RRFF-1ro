@@ -47,8 +47,9 @@ export async function login(username, password) {
 
 // ── S&OP ─────────────────────────────────────────────────────────────────────
 
-export async function fetchSOP() {
-  const res = await fetch(`${BASE}/sop/`, { headers: authHeaders() });
+export async function fetchSOP({ includeDiscontinued = false } = {}) {
+  const query = includeDiscontinued ? '?include_discontinued=true' : '';
+  const res = await fetch(`${BASE}/sop/${query}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Error cargando datos S&OP');
   return res.json();
 }
@@ -349,4 +350,3 @@ export async function downloadRrffExcel() {
   }
   return { blob, filename };
 }
-

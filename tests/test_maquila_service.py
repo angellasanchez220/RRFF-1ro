@@ -6,10 +6,16 @@ import pandas as pd
 from src.services.maquila_service import (
     build_maquila_families,
     build_product_lookup_by_internal_code,
+    is_discontinued,
 )
 
 
 class BuildMaquilaFamiliesTests(unittest.TestCase):
+    def test_discontinued_status_normalization(self):
+        self.assertTrue(is_discontinued("descontinuado"))
+        self.assertTrue(is_discontinued(" INACTIVO "))
+        self.assertFalse(is_discontinued("ACTIVO"))
+
     def test_lookup_ignores_empty_and_repeated_internal_codes(self):
         productos = pd.DataFrame([
             {"codigo_femaco": None, "sku": "SIN-COD-1", "stock_act": 9},
@@ -89,6 +95,38 @@ class BuildMaquilaFamiliesTests(unittest.TestCase):
         self.assertEqual(familia["familia_ids"], [1, 2])
         self.assertEqual(familia["nombres_familia"], ["Tiras conectadas", "Tiras removibles"])
         self.assertTrue(next(m for m in familia["familia_skus"] if m["codigo_femaco"] == "COD-C")["no_transformable"])
+
+    @patch("src.services.maquila_service.pd.read_sql")
+    def test_discontinued_member_does_not_add_family_stock(self, read_sql):
+        read_sql.return_value = pd.DataFrame([
+            {
+                "familia_id": 1,
+                "sku_maquilable": "FAM-ONE",
+                "nombre_familia": "Familia activa",
+                "sku_componente": "COD-A",
+                "no_transformable": False,
+            },
+            {
+                "familia_id": 1,
+                "sku_maquilable": "FAM-ONE",
+                "nombre_familia": "Familia activa",
+                "sku_componente": "COD-B",
+                "no_transformable": False,
+            },
+        ])
+        lookup = {
+            "COD-A": {"sku": "SKU-A", "stock_act": 10, "estado": "ACTIVO"},
+            "COD-B": {"sku": "SKU-B", "stock_act": 90, "estado": "DESCONTINUADO"},
+        }
+
+        result = build_maquila_families(object(), lookup)
+
+        self.assertEqual(result["COD-A"]["stock_bruto_familia"], 10)
+        member_b = next(
+            member for member in result["COD-A"]["familia_skus"]
+            if member["codigo_femaco"] == "COD-B"
+        )
+        self.assertTrue(member_b["descontinuado"])
 
 
 if __name__ == "__main__":

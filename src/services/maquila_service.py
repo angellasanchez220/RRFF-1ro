@@ -2,6 +2,13 @@ import pandas as pd
 from sqlalchemy import text
 
 
+def is_discontinued(value):
+    """Normaliza los estados que el planner trata como descontinuados."""
+    if value is None or pd.isna(value):
+        return False
+    return str(value).strip().upper() in {"DESCONTINUADO", "INACTIVO"}
+
+
 def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
     """Construye un lookup estable por CÓD. interno.
 
@@ -25,6 +32,7 @@ def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
 
         stock_value = row.get("stock_act", 0)
         ritmo_value = row.get(ritmo_col, 0)
+        estado_value = row.get("estado")
         lookup[codigo] = {
             "sku": "" if pd.isna(row.get("sku")) else str(row.get("sku")).strip(),
             "nombre_producto": (
@@ -34,6 +42,7 @@ def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
             ),
             "stock_act": 0 if pd.isna(stock_value) else stock_value,
             "ritmo_mensual": 0 if pd.isna(ritmo_value) else ritmo_value,
+            "estado": "" if pd.isna(estado_value) else str(estado_value).strip().upper(),
         }
 
     return lookup
@@ -114,6 +123,8 @@ def build_maquila_families(conn, lookup_dict):
             "nombre_producto": info.get("nombre_producto", "Desconocido"),
             "stock_act": float(info.get("stock_act", 0)),
             "ritmo_mensual": float(info.get("ritmo_mensual", 0)),
+            "estado": str(info.get("estado") or "").strip().upper(),
+            "descontinuado": is_discontinued(info.get("estado")),
             "no_transformable": no_transformable_map.get(codigo, False)
         }
 
@@ -142,10 +153,11 @@ def build_maquila_families(conn, lookup_dict):
                 
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
-            stock_bruto += info["stock_act"]
+            if not info["descontinuado"]:
+                stock_bruto += info["stock_act"]
             
             if nodo_alcanzable != codigo:
-                if not info["no_transformable"]:
+                if not info["no_transformable"] and not info["descontinuado"]:
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
 
