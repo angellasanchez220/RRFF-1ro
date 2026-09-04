@@ -283,15 +283,16 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     if not skus:
         raise ValueError("Lista de SKUs vac\u00eda")
 
-    from src.services.maquila_service import build_maquila_families
+    from src.services.maquila_service import (
+        build_maquila_families,
+        build_product_lookup_by_internal_code,
+    )
     with engine.connect() as conn:
         df_lookup = pd.read_sql(text("SELECT codigo_femaco, sku, nombre_producto, stock_act, total_4_sem_verificado FROM planificacion_sop"), conn)
-    df_lookup["codigo_femaco"] = (
-        df_lookup["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
+    lookup_dict = build_product_lookup_by_internal_code(
+        df_lookup,
+        ritmo_col="total_4_sem_verificado",
     )
-    lookup_dict = df_lookup.set_index("codigo_femaco")[["sku", "nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
-    for k, v in lookup_dict.items():
-        v["ritmo_mensual"] = v.pop("total_4_sem_verificado", 0)
     
     with engine.connect() as conn:
         familias_map = build_maquila_families(conn, lookup_dict)

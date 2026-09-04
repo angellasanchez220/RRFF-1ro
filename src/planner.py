@@ -503,27 +503,23 @@ def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFr
     """Carga familias activas y aplica su stock consolidado al cálculo."""
     try:
         try:
-            from src.services.maquila_service import build_maquila_families
+            from src.services.maquila_service import (
+                build_maquila_families,
+                build_product_lookup_by_internal_code,
+            )
             from src.services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
         except ModuleNotFoundError:
             # Compatibilidad al ejecutar directamente: python src/planner.py
-            from services.maquila_service import build_maquila_families
+            from services.maquila_service import (
+                build_maquila_families,
+                build_product_lookup_by_internal_code,
+            )
             from services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
 
-        lookup = df[["codigo_femaco", "sku", "nombre_producto", "stock_act"]].copy()
-        lookup["codigo_femaco"] = (
-            lookup["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
+        lookup_dict = build_product_lookup_by_internal_code(
+            df,
+            ritmo_col="total_4_sem_verificado",
         )
-        if "total_4_sem_verificado" in df.columns:
-            lookup["ritmo_mensual"] = pd.to_numeric(
-                df["total_4_sem_verificado"], errors="coerce"
-            ).fillna(0.0)
-        else:
-            lookup["ritmo_mensual"] = 0.0
-
-        lookup_dict = lookup.set_index("codigo_femaco")[
-            ["sku", "nombre_producto", "stock_act", "ritmo_mensual"]
-        ].to_dict("index")
 
         with engine.connect() as conn:
             familias_map = build_maquila_families(conn, lookup_dict)

@@ -1,6 +1,44 @@
 import pandas as pd
 from sqlalchemy import text
 
+
+def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
+    """Construye un lookup estable por CÓD. interno.
+
+    Los códigos vacíos no representan productos identificables y se omiten.
+    Si el origen trae un código repetido, se conserva una sola entrada para
+    evitar contar dos veces el mismo producto y para no depender de un índice
+    único de pandas.
+    """
+    if df.empty or "codigo_femaco" not in df.columns:
+        return {}
+
+    lookup = {}
+    for _, row in df.iterrows():
+        codigo_value = row.get("codigo_femaco")
+        if pd.isna(codigo_value):
+            continue
+
+        codigo = str(codigo_value).strip().upper()
+        if not codigo or codigo in lookup:
+            continue
+
+        stock_value = row.get("stock_act", 0)
+        ritmo_value = row.get(ritmo_col, 0)
+        lookup[codigo] = {
+            "sku": "" if pd.isna(row.get("sku")) else str(row.get("sku")).strip(),
+            "nombre_producto": (
+                "Desconocido"
+                if pd.isna(row.get("nombre_producto"))
+                else str(row.get("nombre_producto")).strip()
+            ),
+            "stock_act": 0 if pd.isna(stock_value) else stock_value,
+            "ritmo_mensual": 0 if pd.isna(ritmo_value) else ritmo_value,
+        }
+
+    return lookup
+
+
 def build_maquila_families(conn, lookup_dict):
     """
     Construye las familias de reemplazo (simétricas) para todos los códigos

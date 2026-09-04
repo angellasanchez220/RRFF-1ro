@@ -3,10 +3,43 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.services.maquila_service import build_maquila_families
+from src.services.maquila_service import (
+    build_maquila_families,
+    build_product_lookup_by_internal_code,
+)
 
 
 class BuildMaquilaFamiliesTests(unittest.TestCase):
+    def test_lookup_ignores_empty_and_repeated_internal_codes(self):
+        productos = pd.DataFrame([
+            {"codigo_femaco": None, "sku": "SIN-COD-1", "stock_act": 9},
+            {"codigo_femaco": "", "sku": "SIN-COD-2", "stock_act": 8},
+            {
+                "codigo_femaco": " cod-a ",
+                "sku": "SKU-A",
+                "nombre_producto": "Producto A",
+                "stock_act": 10,
+                "total_4_sem_verificado": 2,
+            },
+            {
+                "codigo_femaco": "COD-A",
+                "sku": "SKU-DUPLICADO",
+                "nombre_producto": "No debe reemplazar al primero",
+                "stock_act": 999,
+                "total_4_sem_verificado": 999,
+            },
+        ])
+
+        lookup = build_product_lookup_by_internal_code(
+            productos,
+            ritmo_col="total_4_sem_verificado",
+        )
+
+        self.assertEqual(set(lookup), {"COD-A"})
+        self.assertEqual(lookup["COD-A"]["sku"], "SKU-A")
+        self.assertEqual(lookup["COD-A"]["stock_act"], 10)
+        self.assertEqual(lookup["COD-A"]["ritmo_mensual"], 2)
+
     @patch("src.services.maquila_service.pd.read_sql")
     def test_connected_families_include_all_members_and_total_stock(self, read_sql):
         read_sql.return_value = pd.DataFrame([

@@ -22,7 +22,10 @@ import pandas as pd
 
 from api.db import engine
 from api.routes.auth import decode_token, _get_auth_header
-from src.services.maquila_service import build_maquila_families
+from src.services.maquila_service import (
+    build_maquila_families,
+    build_product_lookup_by_internal_code,
+)
 
 router = APIRouter()
 
@@ -365,17 +368,10 @@ def get_sop():
     # Serializar
     all_cols = df.columns.tolist()
     
-    lookup_df = {}
-    if not df.empty:
-        df_tmp = df.copy()
-        df_tmp["codigo_str"] = (
-            df_tmp["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
-        )
-        lookup_df = df_tmp.set_index("codigo_str")[["sku", "nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
-        
-        # Mapear 'total_4_sem_verificado' a 'ritmo_mensual' para el servicio
-        for k, v in lookup_df.items():
-            v["ritmo_mensual"] = v.pop("total_4_sem_verificado", 0)
+    lookup_df = build_product_lookup_by_internal_code(
+        df,
+        ritmo_col="total_4_sem_verificado",
+    )
 
     # Obtenemos las familias de maquila procesadas (DFS + Detección de ciclos)
     with engine.connect() as conn:
