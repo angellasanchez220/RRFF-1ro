@@ -3,14 +3,14 @@ from sqlalchemy import text
 
 def build_maquila_families(conn, lookup_dict):
     """
-    Construye las familias de reemplazo (simétricas) para todos los SKU
+    Construye las familias de reemplazo (simétricas) para todos los códigos
+    internos (codigo_femaco)
     involucrados en recetas de maquila activas.
     
     :param conn: Conexión a la BD (sqlalchemy).
-    :param lookup_dict: Diccionario lookup de SKU a datos: 
-           {"SKU1": {"nombre_producto": "X", "stock_act": 100, "ritmo_mensual": 50}, ...}
-    :return: dict con el resultado por SKU.
-             {"SKU1": {"familia_skus": [...], "stock_bruto_familia": 250, "reemplazos_validos": [...], "stock_reemplazable_adicional": 150}, ...}
+    :param lookup_dict: Diccionario indexado por código interno:
+           {"COD1": {"sku": "SKU1", "nombre_producto": "X", ...}, ...}
+    :return: dict con el resultado por código interno.
     """
     df_comp = pd.read_sql(text("""
         SELECT r.id AS familia_id,
@@ -30,8 +30,8 @@ def build_maquila_families(conn, lookup_dict):
     familia_meta = {}
     
     for _, row in df_comp.iterrows():
-        padre = str(row["sku_maquilable"]).strip()
-        hijo = str(row["sku_componente"]).strip()
+        padre = str(row["sku_maquilable"]).strip().upper()
+        hijo = str(row["sku_componente"]).strip().upper()
         nt = bool(row["no_transformable"])
         
         if not padre or not hijo: 
@@ -64,21 +64,23 @@ def build_maquila_families(conn, lookup_dict):
             
     resultado = {}
     
-    # Evita que espacios accidentales en SKU impidan encontrar stock/nombre.
-    lookup_normalizado = {str(k).strip(): v for k, v in lookup_dict.items()}
+    # sku_componente conserva su nombre histórico en la tabla, pero para las
+    # familias FAM-* contiene el código interno (codigo_femaco).
+    lookup_normalizado = {str(k).strip().upper(): v for k, v in lookup_dict.items()}
 
-    def get_info(s):
-        info = lookup_normalizado.get(s, {})
+    def get_info(codigo):
+        info = lookup_normalizado.get(codigo, {})
         return {
-            "sku": s,
+            "codigo_femaco": codigo,
+            "sku": str(info.get("sku") or "").strip(),
             "nombre_producto": info.get("nombre_producto", "Desconocido"),
             "stock_act": float(info.get("stock_act", 0)),
             "ritmo_mensual": float(info.get("ritmo_mensual", 0)),
-            "no_transformable": no_transformable_map.get(s, False)
+            "no_transformable": no_transformable_map.get(codigo, False)
         }
 
-    for sku in todos_skus:
-        if sku.startswith("FAM-"):
+    for codigo in todos_skus:
+        if codigo.startswith("FAM-"):
             continue # Ignorar nodos dummy de agrupacion
             
         visitados = set()
@@ -88,7 +90,7 @@ def build_maquila_families(conn, lookup_dict):
             for h in grafo.get(nodo, set()):
                 dfs(h)
                 
-        dfs(sku)
+        dfs(codigo)
         
         familia_list = []
         stock_bruto = 0.0
@@ -104,7 +106,7 @@ def build_maquila_families(conn, lookup_dict):
             familia_list.append(info)
             stock_bruto += info["stock_act"]
             
-            if nodo_alcanzable != sku:
+            if nodo_alcanzable != codigo:
                 if not info["no_transformable"]:
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
@@ -117,7 +119,7 @@ def build_maquila_families(conn, lookup_dict):
         nombres_familia = sorted({f["nombre"] for f in familias_conectadas})
         familia_ids = sorted({f["id"] for f in familias_conectadas})
             
-        resultado[sku] = {
+        resultado[codigo] = {
             "familia_skus": familia_list,
             "stock_bruto_familia": stock_bruto,
             "reemplazos_validos": reemplazos_validos,

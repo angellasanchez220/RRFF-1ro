@@ -284,16 +284,18 @@ export default function SkuCard({ product }) {
               <div className="family-stock-members">
                 {familySkus.map(member => (
                   <div
-                    className={`family-stock-member ${String(member.sku) === String(product.sku) ? 'current' : ''}`}
-                    key={member.sku}
+                    className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
+                    key={member.codigo_femaco || member.sku}
                     title={member.nombre_producto || member.sku}
                   >
                     <span className="family-member-id">
-                      {String(member.sku) === String(product.sku) && <span aria-label="Producto actual">● </span>}
-                      {member.sku}
+                      {String(member.codigo_femaco) === String(product.codigo_femaco) && <span aria-label="Producto actual">● </span>}
+                      CÓD. {member.codigo_femaco || '—'}
                     </span>
                     <span className="family-member-stock">{fmt(member.stock_act)} uds</span>
-                    <span className="family-member-name">{member.nombre_producto || 'Sin nombre'}</span>
+                    <span className="family-member-name">
+                      SKU {member.sku || '—'} · {member.nombre_producto || 'Sin nombre'}
+                    </span>
                     {member.no_transformable && <span className="family-member-locked">No transformable</span>}
                   </div>
                 ))}

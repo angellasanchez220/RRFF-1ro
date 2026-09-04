@@ -23,11 +23,13 @@ def aplicar_stock_familia_para_sugerencia(
     cantidades_miembros = []
     nombres_familia = []
 
-    for sku, stock_sku in zip(
-        resultado["sku"].astype(str).str.strip(),
+    identificadores = resultado.get("codigo_femaco", resultado["sku"])
+
+    for codigo_femaco, stock_sku in zip(
+        identificadores.fillna("").astype(str).str.strip().str.upper(),
         stock_individual,
     ):
-        familia = familias_map.get(sku, {})
+        familia = familias_map.get(codigo_femaco, {})
         miembros = familia.get("familia_skus") or []
         es_familia_activa = len(miembros) > 1
 

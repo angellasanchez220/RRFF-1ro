@@ -48,6 +48,8 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         
         # Obtener el SKU real canónico desde la base de datos (por si se buscó por código femaco)
         real_sku = str(row_sop.get("sku", sku))
+        codigo_value = row_sop.get("codigo_femaco")
+        real_codigo = "" if pd.isna(codigo_value) else str(codigo_value).strip().upper()
 
         sem_map = _get_semanas_fact_ventas(conn)
         ventas_sku = sem_map.get(real_sku, {})
@@ -67,17 +69,20 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         observacion = obs_row.observacion if obs_row and obs_row.observacion else ""
         
         # Familia de Reemplazo
-        if familias_map and real_sku in familias_map and len(familias_map[real_sku]["familia_skus"]) > 1:
-            fam = familias_map[real_sku]
+        if familias_map and real_codigo in familias_map and len(familias_map[real_codigo]["familia_skus"]) > 1:
+            fam = familias_map[real_codigo]
             comp_strs = []
             for c in fam["familia_skus"]:
                 nt_str = " [NO TRANSFORMABLE]" if c.get("no_transformable") else ""
-                comp_strs.append(f"{c['sku']} Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])}{nt_str}")
+                comp_strs.append(
+                    f"CÓD {c['codigo_femaco']} / SKU {c['sku']} "
+                    f"Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])}{nt_str}"
+                )
             fam_str = f"Familia SKU:\n" + "\n".join(comp_strs) + f"\n\nStock bruto familia: {int(fam['stock_bruto_familia'])} uds."
             
             reemplazos = [r['sku'] for r in fam["reemplazos_validos"]]
             if reemplazos:
-                fam_str += f"\n\nReemplazos válidos para {real_sku}:\n" + ", ".join(reemplazos)
+                fam_str += f"\n\nReemplazos válidos para CÓD {real_codigo}:\n" + ", ".join(reemplazos)
             
             if observacion:
                 observacion = observacion + "\n\n" + fam_str
@@ -280,9 +285,11 @@ def generar_excel_skus(skus: list[str]) -> bytes:
 
     from src.services.maquila_service import build_maquila_families
     with engine.connect() as conn:
-        df_lookup = pd.read_sql(text("SELECT sku, nombre_producto, stock_act, total_4_sem_verificado FROM planificacion_sop"), conn)
-    df_lookup["sku"] = df_lookup["sku"].astype(str)
-    lookup_dict = df_lookup.set_index("sku")[["nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
+        df_lookup = pd.read_sql(text("SELECT codigo_femaco, sku, nombre_producto, stock_act, total_4_sem_verificado FROM planificacion_sop"), conn)
+    df_lookup["codigo_femaco"] = (
+        df_lookup["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
+    )
+    lookup_dict = df_lookup.set_index("codigo_femaco")[["sku", "nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
     for k, v in lookup_dict.items():
         v["ritmo_mensual"] = v.pop("total_4_sem_verificado", 0)
     

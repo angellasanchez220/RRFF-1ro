@@ -18,14 +18,31 @@ def _require_admin(authorization: str):
         raise HTTPException(status_code=403, detail="Solo administradores pueden modificar familias")
     return payload
 
-def _check_descontinuados(conn, skus):
-    if not skus:
+def _codigo_miembro(miembro):
+    """Acepta el contrato nuevo y el antiguo, pero siempre retorna CÓD. interno."""
+    return str(miembro.get("codigo_femaco") or miembro.get("sku") or "").strip().upper()
+
+
+def _check_descontinuados(conn, codigos):
+    if not codigos:
         return
-    query = "SELECT sku FROM planificacion_sop WHERE sku IN :skus AND estado = 'DESCONTINUADO'"
-    rows = conn.execute(text(query).bindparams(skus=tuple(skus))).fetchall()
-    if rows:
-        bad_skus = ", ".join([r[0] for r in rows])
-        raise ValueError(f"Los siguientes SKUs están descontinuados: {bad_skus}")
+    rows = conn.execute(text("""
+        SELECT codigo_femaco, estado
+        FROM planificacion_sop
+        WHERE codigo_femaco = ANY(:codigos)
+    """), {"codigos": codigos}).fetchall()
+
+    encontrados = {str(r[0]).strip().upper() for r in rows}
+    faltantes = sorted(set(codigos) - encontrados)
+    if faltantes:
+        raise ValueError(
+            f"Los siguientes códigos internos no existen: {', '.join(faltantes)}"
+        )
+
+    descontinuados = [str(r[0]) for r in rows if str(r[1]).upper() == "DESCONTINUADO"]
+    if descontinuados:
+        bad_codigos = ", ".join(descontinuados)
+        raise ValueError(f"Los siguientes códigos internos están descontinuados: {bad_codigos}")
 
 @router.get("/recetas")
 def get_recetas():
@@ -55,9 +72,14 @@ def get_receta(receta_id: int):
                 
             componentes = pd.read_sql(text("""
                 SELECT 
-                    c.id, c.sku_componente as sku, c.no_transformable,
-                    (SELECT nombre_producto FROM planificacion_sop p WHERE p.sku = c.sku_componente LIMIT 1) as nombre_producto
+                    c.id,
+                    c.sku_componente AS codigo_femaco,
+                    p.sku,
+                    c.no_transformable,
+                    p.nombre_producto
                 FROM receta_maquila_componentes c
+                LEFT JOIN planificacion_sop p
+                       ON TRIM(p.codigo_femaco) = TRIM(c.sku_componente)
                 WHERE c.receta_id = :id
             """), conn, params={"id": receta_id})
             
@@ -87,18 +109,20 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
     if not nombre_familia:
         raise HTTPException(status_code=400, detail="Falta el nombre de la familia")
     if not miembros or len(miembros) < 2:
-        raise HTTPException(status_code=400, detail="Debe haber al menos dos SKUs en la familia")
+        raise HTTPException(status_code=400, detail="Debe haber al menos dos códigos internos en la familia")
         
-    skus_miembros = [m["sku"] for m in miembros]
-    if len(skus_miembros) != len(set(skus_miembros)):
-        raise HTTPException(status_code=400, detail="Hay SKUs duplicados en la familia")
+    codigos_miembros = [_codigo_miembro(m) for m in miembros]
+    if any(not codigo for codigo in codigos_miembros):
+        raise HTTPException(status_code=400, detail="Todos los integrantes deben tener código interno")
+    if len(codigos_miembros) != len(set(codigos_miembros)):
+        raise HTTPException(status_code=400, detail="Hay códigos internos duplicados en la familia")
 
     # Identificador dummy para la base de datos
     sku_dummy = f"FAM-{uuid.uuid4().hex[:16].upper()}"
 
     try:
         with engine.begin() as conn:
-            _check_descontinuados(conn, skus_miembros)
+            _check_descontinuados(conn, codigos_miembros)
                 
             result = conn.execute(text("""
                 INSERT INTO recetas_maquila (sku_maquilable, descripcion, activa)
@@ -108,13 +132,13 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
             
             receta_id = result.fetchone()[0]
             
-            for m in miembros:
+            for m, codigo in zip(miembros, codigos_miembros):
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (receta_id, sku_componente, cantidad_por_unidad, no_transformable)
                     VALUES (:rid, :skuc, :qty, :nt)
                 """), {
                     "rid": receta_id, 
-                    "skuc": m["sku"], 
+                    "skuc": codigo,
                     "qty": Decimal("1.0"),
                     "nt": bool(m.get("no_transformable", False))
                 })
@@ -136,13 +160,15 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
     if not nombre_familia or not miembros or len(miembros) < 2:
         raise HTTPException(status_code=400, detail="Datos incompletos o menos de 2 miembros")
         
-    skus_miembros = [m["sku"] for m in miembros]
-    if len(skus_miembros) != len(set(skus_miembros)):
-        raise HTTPException(status_code=400, detail="Hay SKUs duplicados en la familia")
+    codigos_miembros = [_codigo_miembro(m) for m in miembros]
+    if any(not codigo for codigo in codigos_miembros):
+        raise HTTPException(status_code=400, detail="Todos los integrantes deben tener código interno")
+    if len(codigos_miembros) != len(set(codigos_miembros)):
+        raise HTTPException(status_code=400, detail="Hay códigos internos duplicados en la familia")
 
     try:
         with engine.begin() as conn:
-            _check_descontinuados(conn, skus_miembros)
+            _check_descontinuados(conn, codigos_miembros)
             
             conn.execute(text("""
                 UPDATE recetas_maquila 
@@ -152,13 +178,13 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
             
             conn.execute(text("DELETE FROM receta_maquila_componentes WHERE receta_id = :id"), {"id": receta_id})
             
-            for m in miembros:
+            for m, codigo in zip(miembros, codigos_miembros):
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (receta_id, sku_componente, cantidad_por_unidad, no_transformable)
                     VALUES (:rid, :skuc, :qty, :nt)
                 """), {
                     "rid": receta_id, 
-                    "skuc": m["sku"], 
+                    "skuc": codigo,
                     "qty": Decimal("1.0"),
                     "nt": bool(m.get("no_transformable", False))
                 })

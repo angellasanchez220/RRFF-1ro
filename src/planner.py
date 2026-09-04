@@ -510,8 +510,10 @@ def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFr
             from services.maquila_service import build_maquila_families
             from services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
 
-        lookup = df[["sku", "nombre_producto", "stock_act"]].copy()
-        lookup["sku"] = lookup["sku"].astype(str).str.strip()
+        lookup = df[["codigo_femaco", "sku", "nombre_producto", "stock_act"]].copy()
+        lookup["codigo_femaco"] = (
+            lookup["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
+        )
         if "total_4_sem_verificado" in df.columns:
             lookup["ritmo_mensual"] = pd.to_numeric(
                 df["total_4_sem_verificado"], errors="coerce"
@@ -519,8 +521,8 @@ def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFr
         else:
             lookup["ritmo_mensual"] = 0.0
 
-        lookup_dict = lookup.set_index("sku")[
-            ["nombre_producto", "stock_act", "ritmo_mensual"]
+        lookup_dict = lookup.set_index("codigo_femaco")[
+            ["sku", "nombre_producto", "stock_act", "ritmo_mensual"]
         ].to_dict("index")
 
         with engine.connect() as conn:

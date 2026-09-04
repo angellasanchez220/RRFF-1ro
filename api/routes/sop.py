@@ -368,8 +368,10 @@ def get_sop():
     lookup_df = {}
     if not df.empty:
         df_tmp = df.copy()
-        df_tmp["sku_str"] = df_tmp["sku"].astype(str)
-        lookup_df = df_tmp.set_index("sku_str")[["nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
+        df_tmp["codigo_str"] = (
+            df_tmp["codigo_femaco"].fillna("").astype(str).str.strip().str.upper()
+        )
+        lookup_df = df_tmp.set_index("codigo_str")[["sku", "nombre_producto", "stock_act", "total_4_sem_verificado"]].to_dict("index")
         
         # Mapear 'total_4_sem_verificado' a 'ritmo_mensual' para el servicio
         for k, v in lookup_df.items():
@@ -413,13 +415,15 @@ def get_sop():
         d["explicacion_excepcion"] = [EXPLICACIONES.get(code, code) for code in excs]
         
         # Familia (Reemplazo Simétrico)
-        sku_str = str(row["sku"])
+        sku_str = str(row["sku"]).strip()
+        codigo_value = row.get("codigo_femaco")
+        codigo_str = "" if pd.isna(codigo_value) else str(codigo_value).strip().upper()
         
-        if sku_str in familias_map:
-            familia = familias_map[sku_str]
+        if codigo_str in familias_map:
+            familia = familias_map[codigo_str]
 
             # En el modelo actual los registros FAM-* son nodos internos y los
-            # SKU reales viven en receta_maquila_componentes. Por eso no basta
+            # códigos internos viven en receta_maquila_componentes. Por eso no basta
             # con cruzar planificacion_sop contra recetas_maquila.sku_maquilable:
             # todo miembro de una familia activa debe marcarse como maquila.
             d["es_maquilable"] = True
@@ -435,6 +439,7 @@ def get_sop():
         else:
             d["familia_skus"] = [{
                 "sku": sku_str,
+                "codigo_femaco": codigo_str,
                 "nombre_producto": str(row.get("nombre_producto", "Desconocido")),
                 "stock_act": float(row.get("stock_act") or 0),
                 "ritmo_mensual": float(row.get("total_4_sem_verificado") or 0),

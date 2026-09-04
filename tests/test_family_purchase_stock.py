@@ -8,21 +8,21 @@ from src.services.purchase_stock_service import aplicar_stock_familia_para_suger
 class FamilyPurchaseStockTests(unittest.TestCase):
     def setUp(self):
         self.df = pd.DataFrame([
-            {"sku": "SKU-1", "stock_act": 10},
-            {"sku": "SKU-2", "stock_act": 140},
-            {"sku": "SKU-SIN-FAMILIA", "stock_act": 25},
+            {"codigo_femaco": "COD-1", "sku": "SKU-1", "stock_act": 10},
+            {"codigo_femaco": "COD-2", "sku": "SKU-2", "stock_act": 140},
+            {"codigo_femaco": "COD-SIN-FAMILIA", "sku": "SKU-SIN-FAMILIA", "stock_act": 25},
         ])
         miembros = [
-            {"sku": "SKU-1", "stock_act": 10},
-            {"sku": "SKU-2", "stock_act": 140},
+            {"codigo_femaco": "COD-1", "sku": "SKU-1", "stock_act": 10},
+            {"codigo_femaco": "COD-2", "sku": "SKU-2", "stock_act": 140},
         ]
         self.familias = {
-            "SKU-1": {
+            "COD-1": {
                 "familia_skus": miembros,
                 "stock_bruto_familia": 150,
                 "nombre_familia": "Familia de prueba",
             },
-            "SKU-2": {
+            "COD-2": {
                 "familia_skus": miembros,
                 "stock_bruto_familia": 150,
                 "nombre_familia": "Familia de prueba",

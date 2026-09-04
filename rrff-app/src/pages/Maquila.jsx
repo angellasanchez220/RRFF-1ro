@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import * as api from '../api';
 import MaquilaOrdenes from './MaquilaOrdenes';
 
@@ -87,7 +87,7 @@ export default function FamiliasReemplazo() {
   async function handleSaveForm(e) {
     e.preventDefault();
     if (!formData.nombre_familia) return alert("Nombre de la familia es requerido");
-    if (formData.miembros.length < 2) return alert("Agregue al menos dos SKUs a la familia");
+    if (formData.miembros.length < 2) return alert("Agregue al menos dos códigos internos a la familia");
     
     try {
       setLoading(true);
@@ -107,7 +107,7 @@ export default function FamiliasReemplazo() {
   function addMiembro() {
     setFormData({
       ...formData,
-      miembros: [...formData.miembros, { sku: '', no_transformable: false }]
+      miembros: [...formData.miembros, { codigo_femaco: '', no_transformable: false }]
     });
   }
 
@@ -273,19 +273,19 @@ export default function FamiliasReemplazo() {
               <hr style={{ margin: '20px 0', borderColor: '#eee', borderStyle: 'solid' }} />
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h3 style={{ margin: 0 }}>SKUs Miembros</h3>
+                <h3 style={{ margin: 0 }}>Integrantes por código interno</h3>
                 <button type="button" onClick={addMiembro} style={{ padding: '4px 8px' }}>+ Agregar Miembro</button>
               </div>
 
               <div style={{ padding: '10px', background: '#e9ecef', borderRadius: '4px', marginBottom: '20px', fontSize: '0.9em' }}>
-                <strong>ⓘ Nota:</strong> Al agregar un SKU que ya pertenece a otra familia, ambas familias quedarán conectadas como un único gran conjunto de reemplazo.<br/><br/>
+                <strong>ⓘ Nota:</strong> Ingresa el código interno que aparece como <b>CÓD.</b> en el dashboard. Al agregar un código que ya pertenece a otra familia, ambas familias quedarán conectadas como un único gran conjunto de reemplazo.<br/><br/>
                 <strong>No transformable:</strong> Este producto puede ser reemplazado por otros miembros de su familia, pero no puede utilizarse para reemplazar a otros productos.
               </div>
 
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', marginBottom: '20px' }}>
                 <thead>
                   <tr style={{ background: '#f9f9f9' }}>
-                    <th style={{ padding: '8px' }}>SKU</th>
+                    <th style={{ padding: '8px' }}>Código interno (CÓD.)</th>
                     <th style={{ padding: '8px', textAlign: 'center' }}>No Transformable</th>
                     <th style={{ padding: '8px', width: '80px' }}>Acción</th>
                   </tr>
@@ -296,10 +296,10 @@ export default function FamiliasReemplazo() {
                       <td style={{ padding: '4px 8px' }}>
                         <input 
                           type="text" 
-                          value={m.sku} 
-                          onChange={e => updateMiembro(i, 'sku', e.target.value.toUpperCase())}
+                          value={m.codigo_femaco || ''}
+                          onChange={e => updateMiembro(i, 'codigo_femaco', e.target.value.toUpperCase())}
                           style={{ width: '100%', padding: '6px' }}
-                          placeholder="SKU..."
+                          placeholder="CÓD. interno..."
                           required
                         />
                       </td>
@@ -317,7 +317,7 @@ export default function FamiliasReemplazo() {
                     </tr>
                   ))}
                   {formData.miembros.length === 0 && (
-                    <tr><td colSpan="3" style={{ padding: '10px', textAlign: 'center', color: '#999' }}>Agregue al menos dos SKUs a la familia</td></tr>
+                    <tr><td colSpan="3" style={{ padding: '10px', textAlign: 'center', color: '#999' }}>Agregue al menos dos códigos internos a la familia</td></tr>
                   )}
                 </tbody>
               </table>
