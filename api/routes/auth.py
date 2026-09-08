@@ -94,6 +94,10 @@ def _get_auth_header(authorization: str = Header(None)) -> str:
         raise HTTPException(status_code=401, detail="No autenticado")
     return authorization.replace("Bearer ", "")
 
+def require_authenticated(authorization: str = Header(None)):
+    token = _get_auth_header(authorization)
+    return decode_token(token)
+
 
 def require_permission(perm: str):
     """Factory: retorna un Depends que valida que el token tenga el permiso."""

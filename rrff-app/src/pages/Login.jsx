@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { login } from '../api';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, isModal = false }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [err,  setErr]  = useState('');
@@ -23,8 +23,10 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const containerClass = isModal ? '' : 'login-page';
+
   return (
-    <div className="login-page">
+    <div className={containerClass}>
       <div className="login-card">
         <div className="login-logo">
           <div className="brand">RRFF<span className="accent"> SOFT</span></div>

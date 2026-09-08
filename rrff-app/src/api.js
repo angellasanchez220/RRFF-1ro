@@ -27,6 +27,26 @@ function authHeaders() {
   };
 }
 
+
+export async function checkAuth() {
+  const res = await fetch(`${BASE}/auth/me`, { headers: authHeaders() });
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event('session-expired'));
+    throw new Error('No autorizado');
+  }
+  return res.json();
+}
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    window.dispatchEvent(new Event('session-expired'));
+    // Lanzar un error silencioso o controlado
+    throw new Error('SESSION_EXPIRED');
+  }
+  return res;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function login(username, password) {

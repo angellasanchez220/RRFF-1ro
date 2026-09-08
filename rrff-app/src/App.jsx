@@ -10,26 +10,93 @@ import Maquila   from './pages/Maquila';
 export default function App() {
   const [auth, setAuth] = useState(null);  // { role, username, permisos }
   const [page, setPage] = useState('dashboard');
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  // Restaurar sesión desde localStorage
+  // Sync hash routing
   useEffect(() => {
-    const token   = localStorage.getItem('rrff_token');
-    const role    = localStorage.getItem('rrff_role');
-    const username = localStorage.getItem('rrff_user');
-    const permisos = JSON.parse(localStorage.getItem('rrff_permisos') || '{}');
-    if (token && role) setAuth({ role, username, permisos });
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#/', '').replace('#', '') || 'dashboard';
+      if (['dashboard', 'compras', 'maquila', 'admin'].includes(hash)) {
+        setPage(hash);
+      }
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const currentHash = window.location.hash.replace('#/', '').replace('#', '');
+    if (currentHash !== page) {
+      window.location.hash = '/' + page;
+    }
+  }, [page]);
+
+  // Manejo de expiración global
+  useEffect(() => {
+    const onExpired = () => setIsSessionExpired(true);
+    window.addEventListener('session-expired', onExpired);
+    return () => window.removeEventListener('session-expired', onExpired);
+  }, []);
+
+  // Restaurar sesión desde localStorage/sessionStorage
+  useEffect(() => {
+    const initSession = async () => {
+      const token = localStorage.getItem('rrff_token');
+      const role = localStorage.getItem('rrff_role');
+      const username = localStorage.getItem('rrff_user');
+      const permisos = JSON.parse(localStorage.getItem('rrff_permisos') || '{}');
+      const hasSession = sessionStorage.getItem('femacoSessionAuthenticated');
+
+      if (!token || !role) {
+        setIsCheckingSession(false);
+        return;
+      }
+
+      if (!hasSession) {
+        setIsCheckingSession(false);
+        return;
+      }
+
+      try {
+        const { checkAuth } = await import('./api');
+        await checkAuth();
+        setAuth({ role, username, permisos });
+      } catch (e) {
+        // Aunque falle (ej. 401), montamos el shell con datos en caché para no perder la ruta.
+        // Si fue 401, se disparó 'session-expired' y el modal bloqueará la pantalla inmediatamente.
+        setAuth({ role, username, permisos });
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+    initSession();
   }, []);
 
   function handleLogin(data) {
+    sessionStorage.setItem('femacoSessionAuthenticated', 'true');
     setAuth(data);
-    setPage('dashboard');
+    setIsSessionExpired(false);
+    if (!window.location.hash || window.location.hash === '#/') {
+      setPage('dashboard');
+    } else {
+      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      if (['dashboard', 'compras', 'maquila', 'admin'].includes(hash)) {
+        setPage(hash);
+      } else {
+        setPage('dashboard');
+      }
+    }
   }
 
   function handleLogout() {
     localStorage.clear();
+    sessionStorage.removeItem('femacoSessionAuthenticated');
     setAuth(null);
   }
 
+  if (isCheckingSession) return <div style={{padding: 40}}>Cargando sesión...</div>;
   if (!auth) return <Login onLogin={handleLogin} />;
 
   return (
@@ -94,9 +161,32 @@ export default function App() {
           <span>Acceso restringido — solo administradores.</span>
         </div>
       )}
+
+      {/* ── MODAL SESIÓN EXPIRADA ── */}
+      {isSessionExpired && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 99999,
+          display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }}>
+          <div style={{
+            background: '#1a1a1a', padding: 30, borderRadius: 12,
+            border: '1px solid #333', maxWidth: 400, width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+          }}>
+            <h2 style={{color: '#ff5252', marginTop: 0}}>Sesión Expirada</h2>
+            <p style={{color: '#ccc', marginBottom: 20}}>Tu sesión ha expirado por inactividad o seguridad. Vuelve a iniciar sesión para continuar sin perder tu trabajo actual.</p>
+            <div style={{pointerEvents: 'auto'}}>
+              <Login onLogin={handleLogin} isModal={true} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 function TaskNotifications() {
   const [tasks, setTasks] = useState({});
@@ -168,6 +258,29 @@ function TaskNotifications() {
           </div>
         );
       })}
+
+      {/* ── MODAL SESIÓN EXPIRADA ── */}
+      {isSessionExpired && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 99999,
+          display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }}>
+          <div style={{
+            background: '#1a1a1a', padding: 30, borderRadius: 12,
+            border: '1px solid #333', maxWidth: 400, width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+          }}>
+            <h2 style={{color: '#ff5252', marginTop: 0}}>Sesión Expirada</h2>
+            <p style={{color: '#ccc', marginBottom: 20}}>Tu sesión ha expirado. Vuelve a iniciar sesión para continuar.</p>
+            <div style={{pointerEvents: 'auto'}}>
+              <Login onLogin={handleLogin} isModal={true} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

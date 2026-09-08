@@ -6,7 +6,7 @@ Expone los datos de PostgreSQL al frontend React.
 import os
 import sys
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 # Añadir la raíz del proyecto al path para importar módulos src/
@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from api.routes import auth, sop, upload, maquila, maquila_ordenes, export
+from api.routes.auth import require_authenticated
 
 app = FastAPI(title="RRFF Soft API", version="2.1.0")
 
@@ -38,11 +39,11 @@ app.add_middleware(
 )
 
 app.include_router(auth.router,   prefix="/api/auth",   tags=["Auth"])
-app.include_router(sop.router,    prefix="/api/sop",    tags=["S&OP"])
-app.include_router(upload.router, prefix="/api/upload", tags=["Upload"])
-app.include_router(maquila.router, prefix="/api/maquila", tags=["Maquila"])
-app.include_router(maquila_ordenes.router, prefix="/api/maquila/ordenes", tags=["Maquila Ordenes"])
-app.include_router(export.router, prefix="/api/export", tags=["Export"])
+app.include_router(sop.router,    prefix="/api/sop",    tags=["S&OP"], dependencies=[Depends(require_authenticated)])
+app.include_router(upload.router, prefix="/api/upload", tags=["Upload"], dependencies=[Depends(require_authenticated)])
+app.include_router(maquila.router, prefix="/api/maquila", tags=["Maquila"], dependencies=[Depends(require_authenticated)])
+app.include_router(maquila_ordenes.router, prefix="/api/maquila/ordenes", tags=["Maquila Ordenes"], dependencies=[Depends(require_authenticated)])
+app.include_router(export.router, prefix="/api/export", tags=["Export"], dependencies=[Depends(require_authenticated)])
 
 
 @app.on_event("startup")
