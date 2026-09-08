@@ -300,8 +300,9 @@ def get_sop(include_discontinued: bool = False):
 
     # Merge principal
     df = df_sop.copy()
-    if "cantidad_transito" in df.columns:
-        df = df.drop(columns=["cantidad_transito"]) # Evita collision _x _y con df_tr
+    cols_to_drop = [c for c in ["cantidad_transito", "eta_proxima"] if c in df.columns]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop) # Evita collision _x _y con df_tr
         
     df["sku"] = df["sku"].astype(str).str.strip()
     for d in (df_tr, df_obs, df_maq):
