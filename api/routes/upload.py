@@ -791,17 +791,46 @@ from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException,
 # EXTRACCIÓN FEMACO SHINYAPPS (BACKGROUND TASK)
 # ─────────────────────────────────────────────────────────────────────────────
 
+import json
+from datetime import datetime
+
+TASK_STATUS_FILE = ROOT / "data" / "task_status.json"
+
+def set_task_status(task_name, status, msg=""):
+    try:
+        TASK_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if TASK_STATUS_FILE.exists():
+            data = json.loads(TASK_STATUS_FILE.read_text())
+        data[task_name] = {
+            "status": status,
+            "msg": msg,
+            "updated_at": datetime.now().isoformat()
+        }
+        TASK_STATUS_FILE.write_text(json.dumps(data))
+    except Exception as e:
+        print(f"Error guardando estado de tarea: {e}")
+
 def _run_extract_task():
     """Tarea larga en segundo plano para evitar timeout de 100s de Render."""
+    set_task_status("extract", "running", "Extrayendo datos de Matrix...")
     try:
         subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), check=True, timeout=300)
+        set_task_status("extract", "running", "Transformando datos...")
         subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), check=True, timeout=120)
+        set_task_status("extract", "running", "Cargando en BD...")
         subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), check=True, timeout=120)
+        set_task_status("extract", "running", "Calculando S&OP...")
         subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), check=True, timeout=120)
+        set_task_status("extract", "done", "Sincronización de Matrix completada con éxito.")
     except subprocess.CalledProcessError as e:
-        print(f"Error critico en pipeline (fail-fast) - Etapa fallida: {e.cmd}")
+        msg = f"Error crítico en pipeline (fail-fast) - Etapa fallida: {e.cmd}"
+        print(msg)
+        set_task_status("extract", "error", msg)
     except Exception as e:
-        print(f"Error en tarea de extraccion: {e}")
+        msg = f"Error en tarea de extracción: {e}"
+        print(msg)
+        set_task_status("extract", "error", msg)
 
 @router.post("/extract")
 async def run_extract(background_tasks: BackgroundTasks, authorization: str = Header(None)):
@@ -823,12 +852,18 @@ async def run_extract(background_tasks: BackgroundTasks, authorization: str = He
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _run_reprocess_task():
+    set_task_status("reprocess", "running", "Transformando datos...")
     try:
         subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), timeout=120)
+        set_task_status("reprocess", "running", "Cargando en BD...")
         subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), timeout=120)
+        set_task_status("reprocess", "running", "Calculando S&OP...")
         subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), timeout=120)
+        set_task_status("reprocess", "done", "Reprocesamiento completado con éxito.")
     except Exception as e:
-        print(f"Error en tarea de reprocesamiento: {e}")
+        msg = f"Error en tarea de reprocesamiento: {e}"
+        print(msg)
+        set_task_status("reprocess", "error", msg)
 
 @router.post("/reprocess")
 async def reprocess(background_tasks: BackgroundTasks, authorization: str = Header(None)):
@@ -843,3 +878,13 @@ async def reprocess(background_tasks: BackgroundTasks, authorization: str = Head
         "ok": True, 
         "msg": "El pipeline de reprocesamiento ha iniciado en segundo plano. Los datos se actualizarán pronto."
     }
+
+@router.get("/task-status")
+def get_task_status():
+    """Retorna el estado actual de las tareas en segundo plano."""
+    try:
+        if TASK_STATUS_FILE.exists():
+            return json.loads(TASK_STATUS_FILE.read_text())
+    except Exception:
+        pass
+    return {}

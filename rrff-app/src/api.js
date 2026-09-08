@@ -120,6 +120,12 @@ export async function extractShinyapps() {
   return res.json();
 }
 
+export async function fetchTaskStatus() {
+  const res = await fetch(`${BASE}/upload/task-status`, { headers: authHeaders() });
+  if (!res.ok) return {};
+  return res.json();
+}
+
 // ── Embarques / OCs ───────────────────────────────────────────────────────────
 
 export async function fetchEmbarques() {

@@ -80,6 +80,9 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── NOTIFICACIONES DE TAREAS EN SEGUNDO PLANO ── */}
+      {auth && <TaskNotifications />}
+
       {/* ── CONTENIDO ── */}
       {page === 'dashboard' && <Dashboard />}
       {page === 'compras'   && <Compras />}
@@ -91,6 +94,80 @@ export default function App() {
           <span>Acceso restringido — solo administradores.</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function TaskNotifications() {
+  const [tasks, setTasks] = useState({});
+  const [closed, setClosed] = useState({});
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const { fetchTaskStatus } = await import('./api');
+        const data = await fetchTaskStatus();
+        setTasks(prevTasks => {
+          let hasChanges = false;
+          let shouldUnclose = [];
+          
+          Object.keys(data).forEach(key => {
+            if (!prevTasks[key] || prevTasks[key].updated_at !== data[key].updated_at) {
+              hasChanges = true;
+              shouldUnclose.push(key);
+            }
+          });
+          
+          if (shouldUnclose.length > 0) {
+            setClosed(prevClosed => {
+              const nc = { ...prevClosed };
+              shouldUnclose.forEach(k => delete nc[k]);
+              return nc;
+            });
+          }
+          
+          return hasChanges ? data : prevTasks;
+        });
+      } catch (e) {
+        // Ignorar errores de red
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeTasks = Object.keys(tasks).filter(k => !closed[k]);
+  if (activeTasks.length === 0) return null;
+
+  return (
+    <div style={{ position: 'fixed', top: 70, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {activeTasks.map(k => {
+        const t = tasks[k];
+        let bg = '#e3f2fd', color = '#0d47a1', border = '#90caf9';
+        if (t.status === 'done') { bg = '#e8f5e9'; color = '#1b5e20'; border = '#a5d6a7'; }
+        if (t.status === 'error') { bg = '#ffebee'; color = '#b71c1c'; border = '#ef9a9a'; }
+
+        return (
+          <div key={k} style={{
+            background: bg, color, border: `1px solid ${border}`,
+            padding: '12px 16px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            minWidth: 280, maxWidth: 350, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between'
+          }}>
+            <div>
+              <strong style={{ display: 'block', marginBottom: 4, fontSize: '0.9rem' }}>
+                {k === 'extract' ? 'Sincronización Matrix' : 'Reprocesamiento'}
+              </strong>
+              <span style={{ fontSize: '0.85rem' }}>{t.msg}</span>
+            </div>
+            <button
+              onClick={() => setClosed(prev => ({ ...prev, [k]: true }))}
+              style={{ background: 'none', border: 'none', color, cursor: 'pointer', fontSize: '1.2rem', lineHeight: 1, padding: '0 0 0 10px', marginTop: -2 }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
