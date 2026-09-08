@@ -35,7 +35,8 @@ def aplicar_stock_familia_para_sugerencia(
 
         if es_familia_activa:
             try:
-                stock_calculo = float(familia.get("stock_bruto_familia", stock_sku))
+                stock_reemplazable = float(familia.get("stock_reemplazable_adicional", 0))
+                stock_calculo = float(stock_sku) + stock_reemplazable
             except (TypeError, ValueError):
                 stock_calculo = float(stock_sku)
         else:

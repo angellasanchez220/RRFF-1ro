@@ -151,8 +151,8 @@ export default function Compras() {
           'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
           'Stock Físico': s.stock_act || 0,
-          'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
-          'Explicación': (s.explicacion_compra || '') + familiaStr
+          'Ventas (4 sem)': s.total_4_sem_verificado || 0,
+          'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
         });
       });
     });
@@ -168,6 +168,7 @@ export default function Compras() {
         'Nombre de Producto': s.nombre_producto,
         'U/E': s.ump || '',
         'Stock Físico': s.stock_act || 0,
+        'Ventas (4 sem)': s.total_4_sem_verificado || 0,
         'Observación Original': (s.observacion || '') + familiaStr,
         'Extracción (Uds)': s.extraido || '?'
       };
