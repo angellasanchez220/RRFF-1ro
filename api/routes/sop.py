@@ -332,7 +332,19 @@ def get_sop(include_discontinued: bool = False):
         else:
             df[col] = 0.0
 
-    df["cantidad_transito"] = df["cantidad_transito"].fillna(0)
+    if "cantidad_transito" not in df.columns:
+        df["cantidad_transito"] = 0.0
+    else:
+        df["cantidad_transito"] = pd.to_numeric(
+            df["cantidad_transito"], errors="coerce"
+        ).fillna(0.0)
+
+    if "eta_proxima" not in df.columns:
+        df["eta_proxima"] = pd.NaT
+    else:
+        df["eta_proxima"] = pd.to_datetime(
+            df["eta_proxima"], errors="coerce"
+        )
 
     # Objetivo = (sellout_mes_ant_estimado + total_4_sem) / 2
     df["objetivo"] = ((df["sellout_mes_anterior_estimado"] + df["total_4_sem_verificado"]) / 2
@@ -355,7 +367,10 @@ def get_sop(include_discontinued: bool = False):
         if dur < 2.5: al = "NARANJA"
         if dur < 1.0: al = "ROJO"
         
-        if row["cantidad_transito"] > 0 and pd.notna(row["eta_proxima"]):
+        cantidad_transito = row.get("cantidad_transito", 0) or 0
+        eta_proxima = row.get("eta_proxima", pd.NaT)
+        
+        if cantidad_transito > 0 and pd.notna(eta_proxima):
             al = "MORADO"
         return al
 
