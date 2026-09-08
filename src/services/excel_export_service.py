@@ -158,7 +158,8 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("sug_ritmo_mensual")), 1) if _safe_float(row_sop.get("sug_ritmo_mensual")) > 0 else 999.0,
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
         "motivo": str(row_sop.get("explicacion_compra_dinamica") or row_sop.get("explicacion_compra") or ""),
-        "obs": observacion
+        "obs": observacion,
+        "tiene_familia": tiene_familia
     }
     return data
 
@@ -246,6 +247,15 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
         else:
             set_val(col_idx, 7, "-")
         set_val(col_idx, 8, "-")  # Duración no disponible
+
+    # Pintar cabecera (primera fila del bloque) si tiene familia
+    if data.get("tiene_familia"):
+        from openpyxl.styles import PatternFill
+        familia_fill = PatternFill(start_color="D2B4DE", end_color="D2B4DE", fill_type="solid")
+        # Columnas A a M (1 a 13)
+        for col in range(1, 14):
+            celda = ws.cell(row=fila_inicio, column=col)
+            celda.fill = familia_fill
 
     # Sugerencia bruta
     set_val(12, 6, "Sugerencia bruta")
