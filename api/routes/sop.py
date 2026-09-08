@@ -289,15 +289,14 @@ def get_sop(include_discontinued: bool = False):
         # Maquila activa
         try:
             df_maq = pd.read_sql(text("""
-                SELECT r.sku_maquilable AS sku, 
-                       True AS es_maquilable,
-                       r.id AS receta_maquila_id,
-                       (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id) as cantidad_componentes_receta
-                FROM recetas_maquila r 
-                WHERE r.activa = True
+                SELECT sku, True AS es_maquilable FROM (
+                    SELECT sku_maquilable AS sku FROM recetas_maquila WHERE activa = True
+                    UNION
+                    SELECT c.sku_componente AS sku FROM recetas_maquila r JOIN receta_maquila_componentes c ON c.receta_id = r.id WHERE r.activa = True
+                ) as mq
             """), conn)
         except Exception:
-            df_maq = pd.DataFrame(columns=["sku", "es_maquilable", "receta_maquila_id", "cantidad_componentes_receta"])
+            df_maq = pd.DataFrame(columns=["sku", "es_maquilable"])
 
     # Merge principal
     df = df_sop.copy()
@@ -346,11 +345,25 @@ def get_sop(include_discontinued: bool = False):
     dur_solo_stock = (df["stock_act"] / ritmo_mensual).fillna(999)
     dur_total      = ((df["stock_act"] + df["cantidad_transito"]) / ritmo_mensual).fillna(999)
 
-    # Duración a mostrar en el dashboard
-    df["duracion_meses"] = dur_solo_stock
-    if "nivel_alerta" in df.columns:
-        df.loc[df["nivel_alerta"] == "MORADO", "duracion_meses"] = dur_total
     df["duracion_fisica_solo"] = dur_solo_stock
+
+    def _calc_alerta(row):
+        dur = row["duracion_fisica_solo"]
+        al = "VERDE"
+        if dur > 10: al = "AZUL"
+        elif dur < 4: al = "AMARILLO"
+        if dur < 2.5: al = "NARANJA"
+        if dur < 1.0: al = "ROJO"
+        
+        if row["cantidad_transito"] > 0 and pd.notna(row["eta_proxima"]):
+            al = "MORADO"
+        return al
+
+    df["nivel_alerta"] = df.apply(_calc_alerta, axis=1)
+
+    # Duración a mostrar en el dashboard
+    df["duracion_meses"] = df["duracion_fisica_solo"]
+    df.loc[df["nivel_alerta"] == "MORADO", "duracion_meses"] = dur_total
 
     # Diccionario de explicaciones de excepciones
     EXPLICACIONES = {

@@ -150,27 +150,9 @@ export default function Compras() {
           'SKU': s.sku,
           'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
-          'Categoría': s.categoria || 'Sin Categoría',
-          'Alerta': s.nivel_alerta,
-          'Excepciones': s.excepciones ? s.excepciones.join(', ') : '',
           'Stock Físico': s.stock_act || 0,
-          'Cobertura (meses)': Number(s.duracion_fisica_solo || 0).toFixed(1),
-          'Tránsito Total (Uds)': s.cantidad_transito || 0,
-          'Tránsito Confirmado': s.transito_confirmado || 0,
-          'Tránsito Estimado': s.transito_estimado || 0,
-          'Tránsito Vencido': s.transito_vencido || 0,
-          'ETA Tránsito': etaStr,
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
-          'Explicación': (s.explicacion_compra || '') + familiaStr,
-          'Cobertura Dinámica': s.cobertura_proyectada_meses != null ? Number(s.cobertura_proyectada_meses).toFixed(1) : '—',
-          'Estado Dinámico': s.estado_alerta || '—',
-          'Sugerido Dinámico (Uds)': s.sugerencia_compra_dinamica != null ? Number(s.sugerencia_compra_dinamica).toFixed(0) : '—',
-          'Lead Time': 5,
-          'Fecha Estimada Llegada OC': s.fecha_estimada_llegada_oc || '—',
-          'Quiebre Antes de Llegada': s.quiebre_antes_de_llegada ? 'Sí' : 'No',
-          'Mes de Quiebre Antes': s.primer_mes_quiebre_antes_llegada || '—',
-          'Acción Dinámica': s.accion_recomendada_dinamica || '—',
-          'Explicación Dinámica': s.explicacion_compra_dinamica || '—'
+          'Explicación': (s.explicacion_compra || '') + familiaStr
         });
       });
     });
