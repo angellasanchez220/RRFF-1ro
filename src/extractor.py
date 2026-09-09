@@ -50,7 +50,7 @@ SEL_BTN_DL_INVENTARIO   = "#dl_stock_hist\u00f3rico"
 # Timeouts (ms)
 TIMEOUT_NAV = 90_000    # carga inicial / navegación
 TIMEOUT_UI  = 60_000    # aparición de elementos en DOM
-TIMEOUT_DL  = 120_000   # espera de evento download
+TIMEOUT_DL  = 300_000   # espera de evento download
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Logger

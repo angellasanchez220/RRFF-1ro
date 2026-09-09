@@ -815,7 +815,7 @@ def _run_extract_task():
     """Tarea larga en segundo plano para evitar timeout de 100s de Render."""
     set_task_status("extract", "running", "Extrayendo datos de Matrix...")
     try:
-        subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), check=True, timeout=300)
+        subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), check=True, timeout=900)
         set_task_status("extract", "running", "Transformando datos...")
         subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), check=True, timeout=120)
         set_task_status("extract", "running", "Cargando en BD...")
