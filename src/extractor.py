@@ -473,10 +473,14 @@ def run_extraction() -> dict[str, Path]:
     log.info("Total: %d/%d reportes descargados.", len(exitos), len(resultados))
     log.info("=" * 60)
 
-    if fallidos:
+    criticos_fallidos = [k for k in fallidos if k in ["maestro_productos.csv", "ventas_semanales.csv"]]
+    if criticos_fallidos:
         raise RuntimeError(
-            f"Los siguientes reportes no pudieron descargarse: {fallidos}"
+            f"Reportes CRITICOS no pudieron descargarse: {criticos_fallidos}. "
+            f"Reportes secundarios fallidos: {[k for k in fallidos if k not in criticos_fallidos]}"
         )
+    elif fallidos:
+        log.warning("Se omitiran los reportes secundarios que fallaron: %s", fallidos)
 
     return resultados
 
