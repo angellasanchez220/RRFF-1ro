@@ -259,27 +259,6 @@ function TaskNotifications() {
         );
       })}
 
-      {/* ── MODAL SESIÓN EXPIRADA ── */}
-      {isSessionExpired && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 99999,
-          display: 'flex', justifyContent: 'center', alignItems: 'center'
-        }}>
-          <div style={{
-            background: '#1a1a1a', padding: 30, borderRadius: 12,
-            border: '1px solid #333', maxWidth: 400, width: '100%',
-            textAlign: 'center',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
-          }}>
-            <h2 style={{color: '#ff5252', marginTop: 0}}>Sesión Expirada</h2>
-            <p style={{color: '#ccc', marginBottom: 20}}>Tu sesión ha expirado. Vuelve a iniciar sesión para continuar.</p>
-            <div style={{pointerEvents: 'auto'}}>
-              <Login onLogin={handleLogin} isModal={true} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
