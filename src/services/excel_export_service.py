@@ -159,7 +159,8 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
         "motivo": str(row_sop.get("explicacion_compra_dinamica") or row_sop.get("explicacion_compra") or ""),
         "obs": observacion,
-        "tiene_familia": tiene_familia
+        "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
+        "nombre_familia": familias_map[real_codigo].get("nombre_familia", "") if (familias_map and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1) else ""
     }
     return data
 
@@ -333,9 +334,9 @@ def generar_excel_skus(skus: list[str]) -> bytes:
             agrupados[cat] = []
         agrupados[cat].append(d)
         
-    # Ordenar interno por sku
+    # Ordenar interno por familia (para agrupar las maquilables) y luego por sku
     for cat in agrupados:
-        agrupados[cat].sort(key=lambda x: str(x["sku"]))
+        agrupados[cat].sort(key=lambda x: (x.get("nombre_familia") or str(x["sku"]), str(x["sku"])))
         
     base_dir = Path(__file__).resolve().parent.parent
     template_path = base_dir / "templates" / "RRFF_AS_PLANTILLA_APP.xlsx"
