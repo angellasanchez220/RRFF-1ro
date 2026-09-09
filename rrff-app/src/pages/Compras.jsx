@@ -138,11 +138,27 @@ export default function Compras() {
     
     keysToExport.forEach(key => {
       const group = groupedSug[key];
-      group.items.forEach(s => {
-        const stockoutDate = s.fecha_estimada_quiebre ? new Date(s.fecha_estimada_quiebre).toLocaleDateString('es-CL') : '—';
-        const etaStr = s.eta_proxima ? new Date(s.eta_proxima).toLocaleDateString('es-CL') : '—';
+
+      // Ordenar para el Excel: Categoria -> Familia Maquila -> Fecha
+      const sortedItems = [...group.items].sort((a, b) => {
+        const catA = a.categoria || '';
+        const catB = b.categoria || '';
+        if (catA < catB) return -1;
+        if (catA > catB) return 1;
+        
+        const famA = a.familia_maquila && a.familia_maquila.length > 0 ? a.familia_maquila.map(c=>c.sku).sort().join('-') : '';
+        const famB = b.familia_maquila && b.familia_maquila.length > 0 ? b.familia_maquila.map(c=>c.sku).sort().join('-') : '';
+        if (famA && !famB) return -1;
+        if (!famA && famB) return 1;
+        if (famA && famB && famA !== famB) return famA.localeCompare(famB);
+
+        return a.idealDateObj - b.idealDateObj;
+      });
+
+      sortedItems.forEach(s => {
+        const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí (Maquilable)' : 'No';
         const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
-          ? ' | Familia Maquila: ' + s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
+          ? s.familia_maquila.map(c => `${c.sku} (Stk: ${c.stock_act})`).join(' | ')
           : '';
         
         wsSugData.push({
@@ -150,6 +166,8 @@ export default function Compras() {
           'SKU': s.sku,
           'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
+          'Es Maquilable?': esMaquilable,
+          'Familia (Componentes)': familiaStr,
           'Stock Físico': s.stock_act || 0,
           'Ventas (4 sem)': s.total_4_sem_verificado || 0,
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
@@ -159,17 +177,20 @@ export default function Compras() {
     
     // Hoja 2: Observaciones Manuales
     const wsObsData = obsList.map(s => {
+      const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí' : 'No';
       const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
-          ? ' | Familia Maquila: ' + s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
+          ? s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
           : '';
       return {
         'SKU': s.sku,
         'Código Femaco': s.codigo_femaco || '',
         'Nombre de Producto': s.nombre_producto,
+        'Es Maquilable?': esMaquilable,
         'U/E': s.ump || '',
         'Stock Físico': s.stock_act || 0,
         'Ventas (4 sem)': s.total_4_sem_verificado || 0,
-        'Observación Original': (s.observacion || '') + familiaStr,
+        'Observación Original': s.observacion || '',
+        'Detalle Familia': familiaStr,
         'Extracción (Uds)': s.extraido || '?'
       };
     });
@@ -178,14 +199,23 @@ export default function Compras() {
     const wsResumenData = [];
     keysToExport.forEach(key => {
       const group = groupedSug[key];
-      group.items.forEach(s => {
+      const sortedItems = [...group.items].sort((a, b) => {
+        const famA = a.familia_maquila && a.familia_maquila.length > 0 ? 'A' : 'B';
+        const famB = b.familia_maquila && b.familia_maquila.length > 0 ? 'A' : 'B';
+        if (famA !== famB) return famA.localeCompare(famB);
+        return a.sku.localeCompare(b.sku);
+      });
+
+      sortedItems.forEach(s => {
         const sugerido = s.sugerencia_compra_inmediata_uds || 0;
         const dinamico = s.sugerencia_compra_dinamica || 0;
         const diferencia = dinamico - sugerido;
+        const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí' : 'No';
         wsResumenData.push({
           'SKU': s.sku,
           'Código Femaco': s.codigo_femaco || '',
           'Grupo': group.label,
+          'Es Maquilable?': esMaquilable,
           'Stock Físico': s.stock_act || 0,
           'Sugerido (Uds)': sugerido,
           'Sugerido Dinámico (Uds)': dinamico,
