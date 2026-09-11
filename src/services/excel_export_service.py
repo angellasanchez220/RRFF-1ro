@@ -46,7 +46,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
             FROM planificacion_sop
             WHERE (sku = :s OR codigo_femaco = :s)
               AND UPPER(TRIM(COALESCE(estado, '')))
-                  NOT IN ('DESCONTINUADO', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
         """), conn, params={"s": sku})
         if df_sop.empty:
             return None
@@ -387,7 +387,7 @@ def generar_excel_todos_skus() -> bytes:
             SELECT sku
             FROM planificacion_sop
             WHERE UPPER(TRIM(COALESCE(estado, '')))
-                  NOT IN ('DESCONTINUADO', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
             ORDER BY sku ASC
         """), conn)
         

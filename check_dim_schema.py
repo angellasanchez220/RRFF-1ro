@@ -1,0 +1,1 @@
+import pandas as pd; from sqlalchemy import create_engine; engine = create_engine('postgresql://postgres:postgres@localhost:5432/RRFF_AS_db'); df = pd.read_sql('SELECT * FROM dim_productos LIMIT 0', engine); print(df.columns)

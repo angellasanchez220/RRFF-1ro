@@ -56,7 +56,7 @@ def calculate_forecast():
         }
         
         # 1. Productos descontinuados
-        if estado_oficial.lower() in ['descontinuado', 'inactivo', 'bloqueado', 'bloqueados']:
+        if estado_oficial.lower() in ['descontinuado', 'descontinuados', 'inactivo', 'bloqueado', 'bloqueados']:
             res['forecast_mes_1'] = 0.0
             res['forecast_mes_2'] = 0.0
             res['forecast_mes_3'] = 0.0
@@ -239,7 +239,7 @@ def calculate_forecast():
     # --- Validations Output ---
     print("\n================ RESUMEN DE VALIDACIONES ================")
     print(f"Total de SKU: {len(out_df)}")
-    print(f"Descontinuados bloqueados: {out_df[out_df['estado_producto'].str.lower() == 'descontinuado'].shape[0]}")
+    print(f"Descontinuados bloqueados: {out_df[out_df['estado_producto'].str.lower().isin(['descontinuado', 'descontinuados'])].shape[0]}")
     print(f"Sin historial suficiente: {out_df[out_df['metodo_seleccionado'] == 'Sin historial suficiente'].shape[0]}")
     print(f"Sin demanda: {out_df[out_df['metodo_seleccionado'] == 'Sin demanda histórica'].shape[0]}")
     

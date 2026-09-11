@@ -698,7 +698,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
             bloquea = True
 
         # 3. PRODUCTO_DESCONTINUADO
-        if estado in ["DESCONTINUADO", "INACTIVO", "BLOQUEADO", "BLOQUEADOS"]:
+        if estado in ["DESCONTINUADO", "DESCONTINUADOS", "INACTIVO", "BLOQUEADO", "BLOQUEADOS"]:
             excepciones.append("PRODUCTO_DESCONTINUADO")
             bloquea = True
 

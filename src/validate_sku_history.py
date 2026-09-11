@@ -72,7 +72,7 @@ def validate_history():
 
     # Rule application
     # Active SKUs are 'Mix', 'Activo', etc. Not 'Descontinuado'.
-    active_mask = ~df['estado_sku'].str.lower().isin(['descontinuado', 'desconocido'])
+    active_mask = ~df['estado_sku'].str.lower().isin(['descontinuado', 'descontinuados', 'desconocido'])
     
     # For sellout
     sellout_infer = df['falta_sellout'] & active_mask
@@ -100,8 +100,8 @@ def validate_history():
     print(f"Sell-In desconocidos (mantenidos NaN): {df['sellin_dato_desconocido'].sum()}")
     
     skus_df = df[['sku', 'estado_sku']].drop_duplicates()
-    activos = skus_df[~skus_df['estado_sku'].str.lower().isin(['descontinuado', 'desconocido'])].shape[0]
-    descontinuados = skus_df[skus_df['estado_sku'].str.lower() == 'descontinuado'].shape[0]
+    activos = skus_df[~skus_df['estado_sku'].str.lower().isin(['descontinuado', 'descontinuados', 'desconocido'])].shape[0]
+    descontinuados = skus_df[skus_df['estado_sku'].str.lower().isin(['descontinuado', 'descontinuados'])].shape[0]
     desconocidos = skus_df[skus_df['estado_sku'].str.lower() == 'desconocido'].shape[0]
     
     print(f"SKUs activos (Mix/Activo): {activos}")
@@ -118,7 +118,7 @@ def validate_history():
     print(df[df['sellout_dato_desconocido']].head(5)[['sku', 'fecha_mes', 'estado_sku', 'sellout', 'sellout_dato_desconocido']])
     
     print("\n--- 5 Ejemplos: SKU descontinuado ---")
-    print(df[df['estado_sku'].str.lower() == 'descontinuado'].head(5)[['sku', 'fecha_mes', 'estado_sku', 'sellout']])
+    print(df[df['estado_sku'].str.lower().isin(['descontinuado', 'descontinuados'])].head(5)[['sku', 'fecha_mes', 'estado_sku', 'sellout']])
     
     print("\n--- 5 Ejemplos: SKU sin stock histórico ---")
     print(df[~df['sku_con_stock_historico']].head(5)[['sku', 'fecha_mes', 'sku_con_stock_historico', 'falta_stock']])

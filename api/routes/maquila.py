@@ -39,7 +39,7 @@ def _check_descontinuados(conn, codigos):
             f"Los siguientes códigos internos no existen: {', '.join(faltantes)}"
         )
 
-    descontinuados = [str(r[0]) for r in rows if str(r[1]).upper() == "DESCONTINUADO"]
+    descontinuados = [str(r[0]) for r in rows if str(r[1]).upper() in ["DESCONTINUADO", "DESCONTINUADOS"]]
     if descontinuados:
         bad_codigos = ", ".join(descontinuados)
         raise ValueError(f"Los siguientes códigos internos están descontinuados: {bad_codigos}")
