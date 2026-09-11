@@ -32,9 +32,9 @@ router = APIRouter()
 from api.routes.auth import decode_token, _get_auth_header, require_admin, require_permission
 
 # ── Columnas Maestra ──────────────────────────────────────────────────────────
-# Fila 2 como header, columnas (0-based): B=1, C=2, E=4, F=5, G=6, L=11, M=12, T=19
-MAESTRO_COL_IDX = [1, 2, 4, 5, 6, 11, 12, 19]
-MAESTRO_COL_NAMES = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "estado", "condicion", "ump"]
+# Fila 2 como header, columnas (0-based): B=1, C=2, E=4, F=5, G=6, M=12, T=19
+MAESTRO_COL_IDX = [1, 2, 4, 5, 6, 12, 19]
+MAESTRO_COL_NAMES = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "condicion", "ump"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -79,8 +79,8 @@ async def upload_maestro(
 
     n_cols = len(df.columns)
 
-    # Columnas requeridas (0-based): B=1, C=2, E=4, F=5, G=6, L=11, M=12
-    REQUIRED_IDX = [1, 2, 4, 5, 6, 11, 12]
+    # Columnas requeridas (0-based): B=1, C=2, E=4, F=5, G=6, M=12
+    REQUIRED_IDX = [1, 2, 4, 5, 6, 12]
     if n_cols < 13:
         raise HTTPException(400, f"El archivo tiene solo {n_cols} columnas. Se necesitan al menos 13 (hasta M).")
 
@@ -89,7 +89,7 @@ async def upload_maestro(
     except Exception as e:
         raise HTTPException(400, f"Error al extraer columnas: {e}")
 
-    sub.columns = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "estado", "condicion"]
+    sub.columns = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "condicion"]
 
     # Columna T (índice 19) = ump — opcional
     if n_cols > 19:
@@ -147,12 +147,12 @@ async def upload_maestro(
                         conn.execute(text("""
                             UPDATE dim_productos
                             SET codigo_femaco=:cf, categoria=:cat, subcategoria=:sub,
-                                formato=:fmt, estado=:estado, condicion=:cond, ump=COALESCE(:ump, ump)
+                                formato=:fmt, estado=:cond, condicion=:cond, ump=COALESCE(:ump, ump)
                             WHERE sku=:sku
                         """), {
                             "cf": row["codigo_femaco"], "cat": row["categoria"],
                             "sub": row["subcategoria"], "fmt": row["formato"],
-                            "estado": row["estado"], "cond": row["condicion"], 
+                            "cond": row["condicion"], 
                             "ump": ump_val, "sku": sku_val
                         })
                         updated += 1
@@ -163,7 +163,7 @@ async def upload_maestro(
                         INSERT INTO dim_productos
                             (sku, codigo_femaco, nombre_producto, categoria,
                              subcategoria, formato, estado, condicion, ump)
-                        VALUES (:sku, :cf, 'PRODUCTO NUEVO', :cat, :sub, :fmt, :estado, :cond, :ump)
+                        VALUES (:sku, :cf, 'PRODUCTO NUEVO', :cat, :sub, :fmt, :cond, :cond, :ump)
                         ON CONFLICT (sku) DO UPDATE SET
                             codigo_femaco=EXCLUDED.codigo_femaco,
                             categoria=EXCLUDED.categoria,
@@ -176,7 +176,7 @@ async def upload_maestro(
                         "sku": sku_val or row["codigo_femaco"],
                         "cf": row["codigo_femaco"], "cat": row["categoria"],
                         "sub": row["subcategoria"], "fmt": row["formato"],
-                        "estado": row["estado"], "cond": row["condicion"], "ump": ump_val,
+                        "cond": row["condicion"], "ump": ump_val,
                     })
                     inserted += 1
 
