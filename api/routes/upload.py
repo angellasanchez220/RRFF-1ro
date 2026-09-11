@@ -221,56 +221,49 @@ async def upload_inventario(
     except Exception as e:
         raise HTTPException(500, f"Error al guardar el archivo: {e}")
 
-    # Intentar leer con hoja "INVENTARIO FINAL" (que es realmente la que contiene STOCK ACT en la columna E)
+    # Intentar leer con hoja "INVENTARIO ACTUAL" (que es la hoja 2 y contiene STOCK ACT en la columna FA)
     df = None
     try:
         xl = pd.ExcelFile(io.BytesIO(contents))
-        # Buscar hoja que contenga "INVENTARIO FINAL"
-        target_sheet = next((s for s in xl.sheet_names if "INVENTARIO FINAL" in s.upper()), None)
+        # Buscar hoja que contenga "INVENTARIO ACTUAL"
+        target_sheet = next((s for s in xl.sheet_names if "INVENTARIO ACTUAL" in s.upper()), None)
         
         if target_sheet:
-            # En INVENTARIO FINAL:
-            # Columna A (0): COD_CAJA
-            # Columna B (1): SKU
-            # Columna E (4): STOCK ACT
-            # La cabecera esta en la fila 0
+            # En INVENTARIO ACTUAL:
+            # Columna B (1): CÓD (SKU)
+            # Columna C (2): Nombre
+            # Columna FA (156): STOCK ACT
             df = xl.parse(sheet_name=target_sheet, header=0)
         else:
-            # Fallback a lectura genérica si no existe esa hoja
-            for sheet, hdr in [(0, 0), (1, 0), (1, 1), (3, 0)]:
+            # Fallback a lectura de la hoja 2 (index 1) si no existe esa hoja
+            for sheet, hdr in [(1, 0), (1, 1)]:
                 try:
                     df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet, header=hdr)
-                    if len(df.columns) >= 5:
+                    if len(df.columns) > 156:
                         break
                 except Exception:
                     continue
     except Exception as e:
         raise HTTPException(400, f"Error leyendo Excel: {e}")
 
-    if df is None or len(df.columns) < 5:
-        raise HTTPException(400, "No se pudo leer el archivo de inventario o no tiene al menos 5 columnas (hasta la E).")
+    if df is None or len(df.columns) <= 156:
+        raise HTTPException(400, "No se pudo leer el archivo de inventario o no tiene suficientes columnas (hasta la FA).")
 
-    # Extraer columnas según reglas del usuario (A=0, B=1, E=4)
+    # Extraer columnas según reglas del usuario (B=1, FA=156)
     try:
-        col_caja = df.iloc[:, 0]
         col_sku = df.iloc[:, 1]
-        col_stock = df.iloc[:, 4]
+        col_stock = df.iloc[:, 156]
         
-        # Consolidar SKU: Si B está vacío/nulo, usar A
-        sku_final = col_sku.copy()
-        mask_empty = sku_final.isna() | (sku_final.astype(str).str.strip() == "") | (sku_final.astype(str).str.strip().str.lower() == "nan") | (sku_final.astype(str).str.strip() == "0")
-        sku_final.loc[mask_empty] = col_caja.loc[mask_empty]
-        
-        sub = pd.DataFrame({"sku": sku_final, "stock_act": col_stock})
+        sub = pd.DataFrame({"sku": col_sku, "stock_act": col_stock})
     except Exception as e:
-        raise HTTPException(400, f"Error extrayendo columnas A, B, E: {e}")
+        raise HTTPException(400, f"Error extrayendo columnas B, FA: {e}")
 
     sub["sku"]       = sub["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     sub["stock_act"] = pd.to_numeric(sub["stock_act"], errors="coerce").fillna(0)
     sub = sub[sub["sku"].notna() & (sub["sku"] != "") & (sub["sku"] != "nan") & (sub["sku"] != "None") & (sub["sku"] != "0")]
 
     if sub.empty:
-        raise HTTPException(400, "No se encontraron filas validas con SKU (Revisando columnas A y B).")
+        raise HTTPException(400, "No se encontraron filas validas con SKU (Revisando columna B).")
 
     from api.db import engine
     updated = 0

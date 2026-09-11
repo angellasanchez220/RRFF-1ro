@@ -629,7 +629,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     # para decidir la compra es la suma de todos los integrantes de la familia.
     # El stock individual se conserva en stock_act para inventario y alertas.
     df = _integrar_stock_familia_en_sugerencia(df, engine)
-    df["sug_cantidad_transito"] = df.get("cantidad_transito", pd.Series(0, index=df.index)).fillna(0)
+    df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
     inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
     
     # 6. Sugerencia Neta Bruta

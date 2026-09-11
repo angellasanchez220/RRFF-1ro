@@ -18,16 +18,23 @@ def aplicar_stock_familia_para_sugerencia(
         errors="coerce",
     ).fillna(0.0)
 
+    transito_individual = pd.to_numeric(
+        resultado.get("cantidad_transito", pd.Series(0, index=resultado.index)),
+        errors="coerce",
+    ).fillna(0.0)
+
     stocks_familia = []
+    transitos_familia = []
     usa_familia = []
     cantidades_miembros = []
     nombres_familia = []
 
     identificadores = resultado.get("codigo_femaco", resultado["sku"])
 
-    for codigo_femaco, stock_sku in zip(
+    for codigo_femaco, stock_sku, transito_sku in zip(
         identificadores.fillna("").astype(str).str.strip().str.upper(),
         stock_individual,
+        transito_individual,
     ):
         familia = familias_map.get(codigo_femaco, {})
         miembros = familia.get("familia_skus") or []
@@ -37,12 +44,18 @@ def aplicar_stock_familia_para_sugerencia(
             try:
                 stock_reemplazable = float(familia.get("stock_reemplazable_adicional", 0))
                 stock_calculo = float(stock_sku) + stock_reemplazable
+                
+                transito_reemplazable = float(familia.get("transito_reemplazable_adicional", 0))
+                transito_calculo = float(transito_sku) + transito_reemplazable
             except (TypeError, ValueError):
                 stock_calculo = float(stock_sku)
+                transito_calculo = float(transito_sku)
         else:
             stock_calculo = float(stock_sku)
+            transito_calculo = float(transito_sku)
 
         stocks_familia.append(stock_calculo)
+        transitos_familia.append(transito_calculo)
         usa_familia.append(es_familia_activa)
         cantidades_miembros.append(len(miembros) if es_familia_activa else 1)
         nombres_familia.append(familia.get("nombre_familia", "") if es_familia_activa else "")
@@ -50,6 +63,7 @@ def aplicar_stock_familia_para_sugerencia(
     resultado["sug_stock_individual"] = stock_individual
     resultado["sug_stock_familia"] = stocks_familia
     resultado["sug_stock_actual"] = stocks_familia
+    resultado["sug_transito_actual"] = transitos_familia
     resultado["sug_usa_stock_familia"] = usa_familia
     resultado["sug_cantidad_miembros_familia"] = cantidades_miembros
     resultado["sug_nombre_familia"] = nombres_familia

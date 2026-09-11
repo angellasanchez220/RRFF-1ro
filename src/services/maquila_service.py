@@ -31,6 +31,7 @@ def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
             continue
 
         stock_value = row.get("stock_act", 0)
+        transito_value = row.get("cantidad_transito", 0)
         ritmo_value = row.get(ritmo_col, 0)
         estado_value = row.get("estado")
         lookup[codigo] = {
@@ -41,6 +42,7 @@ def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
                 else str(row.get("nombre_producto")).strip()
             ),
             "stock_act": 0 if pd.isna(stock_value) else stock_value,
+            "cantidad_transito": 0 if pd.isna(transito_value) else transito_value,
             "ritmo_mensual": 0 if pd.isna(ritmo_value) else ritmo_value,
             "estado": "" if pd.isna(estado_value) else str(estado_value).strip().upper(),
         }
@@ -122,6 +124,7 @@ def build_maquila_families(conn, lookup_dict):
             "sku": str(info.get("sku") or "").strip(),
             "nombre_producto": info.get("nombre_producto", "Desconocido"),
             "stock_act": float(info.get("stock_act", 0)),
+            "cantidad_transito": float(info.get("cantidad_transito", 0)),
             "ritmo_mensual": float(info.get("ritmo_mensual", 0)),
             "estado": str(info.get("estado") or "").strip().upper(),
             "descontinuado": is_discontinued(info.get("estado")),
@@ -143,9 +146,11 @@ def build_maquila_families(conn, lookup_dict):
         
         familia_list = []
         stock_bruto = 0.0
+        transito_bruto = 0.0
         
         reemplazos_validos = []
         stock_reemplazable = 0.0
+        transito_reemplazable = 0.0
         
         for nodo_alcanzable in sorted(list(visitados)):
             if nodo_alcanzable.startswith("FAM-"):
@@ -153,13 +158,15 @@ def build_maquila_families(conn, lookup_dict):
                 
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
-            if not info["descontinuado"]:
-                stock_bruto += info["stock_act"]
+            # Ya no ignoramos el stock de los descontinuados, sí se puede usar para cubrir necesidades de la familia
+            stock_bruto += info["stock_act"]
+            transito_bruto += info["cantidad_transito"]
             
             if nodo_alcanzable != codigo:
-                if not info["no_transformable"] and not info["descontinuado"]:
+                if not info["no_transformable"]:
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
+                    transito_reemplazable += info["cantidad_transito"]
 
         familias_conectadas = [
             familia_meta[nodo]
@@ -172,8 +179,10 @@ def build_maquila_families(conn, lookup_dict):
         resultado[codigo] = {
             "familia_skus": familia_list,
             "stock_bruto_familia": stock_bruto,
+            "transito_bruto_familia": transito_bruto,
             "reemplazos_validos": reemplazos_validos,
             "stock_reemplazable_adicional": stock_reemplazable,
+            "transito_reemplazable_adicional": transito_reemplazable,
             "familia_ids": familia_ids,
             "nombres_familia": nombres_familia,
             "nombre_familia": " / ".join(nombres_familia),
