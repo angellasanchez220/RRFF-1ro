@@ -4,9 +4,9 @@ from sqlalchemy import text
 
 def is_discontinued(value):
     """Normaliza los estados que el planner trata como descontinuados."""
-    if value is None or pd.isna(value):
+    if pd.isna(value) or not value:
         return False
-    return str(value).strip().upper() in {"DESCONTINUADO", "INACTIVO"}
+    return str(value).strip().upper() in {"DESCONTINUADO", "INACTIVO", "BLOQUEADO", "BLOQUEADOS"}
 
 
 def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):

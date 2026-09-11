@@ -8,7 +8,7 @@ const EMOJI = { ROJO:'🔴', NARANJA:'🟠', AMARILLO:'🟡', AZUL:'🔵', MORAD
 
 function isDiscontinued(product) {
   const estado = String(product.estado || '').trim().toUpperCase();
-  return estado === 'DESCONTINUADO' || estado === 'INACTIVO' ||
+  return estado === 'DESCONTINUADO' || estado === 'INACTIVO' || estado === 'BLOQUEADO' || estado === 'BLOQUEADOS' ||
     (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_DESCONTINUADO'));
 }
 

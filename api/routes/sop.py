@@ -496,7 +496,7 @@ def get_categories():
             text("SELECT DISTINCT categoria, subcategoria, formato "
                  "FROM planificacion_sop "
                  "WHERE UPPER(TRIM(COALESCE(estado, ''))) "
-                 "NOT IN ('DESCONTINUADO', 'INACTIVO') "
+                 "NOT IN ('DESCONTINUADO', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS') "
                  "ORDER BY categoria, subcategoria, formato NULLS LAST"),
             conn
         )

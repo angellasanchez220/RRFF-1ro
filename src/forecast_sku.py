@@ -56,7 +56,7 @@ def calculate_forecast():
         }
         
         # 1. Productos descontinuados
-        if estado_oficial.lower() == 'descontinuado':
+        if estado_oficial.lower() in ['descontinuado', 'inactivo', 'bloqueado', 'bloqueados']:
             res['forecast_mes_1'] = 0.0
             res['forecast_mes_2'] = 0.0
             res['forecast_mes_3'] = 0.0

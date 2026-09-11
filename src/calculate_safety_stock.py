@@ -89,7 +89,7 @@ def generate_safety_stock():
         exp_lines = []
         
         # Casos especiales
-        if bloquea or str(estado).lower() == 'descontinuado':
+        if bloquea or str(estado).lower() in ['descontinuado', 'inactivo', 'bloqueado', 'bloqueados']:
             res['stock_seguridad'] = 0.0
             res['sugerencia_con_seguridad'] = 0.0
             res['necesidad_con_seguridad'] = 0.0

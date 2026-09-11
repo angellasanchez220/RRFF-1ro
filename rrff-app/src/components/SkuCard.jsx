@@ -285,23 +285,32 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 )}
               </div>
               <div className="family-stock-members">
-                {familySkus.map(member => (
-                  <div
-                    className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
-                    key={member.codigo_femaco || member.sku}
-                    title={member.nombre_producto || member.sku}
-                  >
-                    <span className="family-member-id">
-                      {String(member.codigo_femaco) === String(product.codigo_femaco) && <span aria-label="Producto actual">● </span>}
-                      CÓD. {member.codigo_femaco || '—'}
-                    </span>
-                    <span className="family-member-stock">{fmt(member.stock_act)} uds</span>
-                    <span className="family-member-name">
-                      SKU {member.sku || '—'} · {member.nombre_producto || 'Sin nombre'}
-                    </span>
-                    {member.no_transformable && <span className="family-member-locked">No transformable</span>}
-                  </div>
-                ))}
+                {familySkus.map(member => {
+                  const ritmo = member.ritmo_mensual || 0;
+                  const stockTotal = Number(member.stock_act || 0) + Number(member.cantidad_transito || 0);
+                  const durMeses = ritmo > 0 ? stockTotal / ritmo : 999;
+                  const durStr = durMeses >= 999 ? '∞' : `${durMeses.toFixed(1)} m`;
+
+                  return (
+                    <div
+                      className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
+                      key={member.codigo_femaco || member.sku}
+                      title={member.nombre_producto || member.sku}
+                    >
+                      <span className="family-member-id">
+                        {String(member.codigo_femaco) === String(product.codigo_femaco) && <span aria-label="Producto actual">● </span>}
+                        CÓD. {member.codigo_femaco || '—'}
+                      </span>
+                      <span className="family-member-stock" style={{ minWidth: 200, textAlign: 'right' }}>
+                        {fmt(member.stock_act)} uds | Vts: {fmt(ritmo)} | Dur: {durStr}
+                      </span>
+                      <span className="family-member-name">
+                        SKU {member.sku || '—'} · {member.nombre_producto || 'Sin nombre'}
+                      </span>
+                      {member.no_transformable && <span className="family-member-locked">No transformable</span>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

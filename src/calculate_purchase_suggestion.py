@@ -122,7 +122,7 @@ def generate_suggestions():
         
         motivos = [m.strip() for m in str(res['motivos_revision_manual']).split(';') if m.strip() and m.strip() != 'nan']
         
-        if bloquea or str(estado).lower() == 'descontinuado':
+        if bloquea or str(estado).lower() in ['descontinuado', 'inactivo', 'bloqueado', 'bloqueados']:
             res['compra_automatica_permitida'] = False
             res['accion_recomendada'] = "Compra bloqueada"
             res['estado_alerta'] = "Bloqueado"
