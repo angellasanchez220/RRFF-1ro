@@ -206,15 +206,11 @@ def _get_semanas_fact_ventas(conn) -> dict:
         semana_excluida = False
         fecha_ultima = sem_cols[-1] if sem_cols else "N/A"
         
-        # Descartar la última columna si es semana actual incompleta
+        # Siempre descartar la última columna porque es la semana actual (incompleta)
         if len(vals) >= 2:
-            avg_prev = sum(vals[:-1]) / max(len(vals) - 1, 1) if sum(vals[:-1]) > 0 else 1
-            if vals[-1] == 0 or vals[-1] < avg_prev * 0.25:
-                completed = vals[:-1]   # descartar semana incompleta
-                semana_excluida = True
-                fecha_ultima = sem_cols[-2] if len(sem_cols) >= 2 else sem_cols[0]
-            else:
-                completed = vals
+            completed = vals[:-1]   # descartar semana en curso siempre
+            semana_excluida = True
+            fecha_ultima = sem_cols[-2] if len(sem_cols) >= 2 else sem_cols[0]
         else:
             completed = vals
 
