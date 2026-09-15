@@ -463,8 +463,6 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
       mes_pico_sellout: nombre del mes con mayor Sell-Out en los 12 meses
       mes_pico_sellin:  nombre del mes con mayor Sell-In en los 12 meses
     """
-    FACTOR_TENDENCIA_YOY = 1.08   # crecimiento estimado del negocio 8% anual
-
     log.info("Calculando YoY y meses pico...")
 
     # Columnas de sell-out y sell-in para los 12 meses
@@ -472,12 +470,50 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
     cols_si = [f"sellin_{_nombre_mes(m)[:3].lower()}_{a}" for m, a in meses]
     labels  = [f"{_nombre_mes(m)} {a}" for m, a in meses]
 
-    # YoY del mes base (Mayo 2026 vs Mayo 2025)
-    col_so_base  = cols_so[0]   # primer mes = mes base (Mayo 2026)
-    so_2026 = df[col_so_base]
-    so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimación año anterior
-    df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
-    df["sellout_mes_anterior_estimado"] = so_2025.round(0)
+    # YoY basado en los próximos 4 meses vs los mismos 4 meses del año anterior
+    cols_so_futuros = cols_so[0:4]
+    try:
+        from pathlib import Path
+        import sys
+        import numpy as np
+        proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
+        so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", encoding="latin1")
+        so_hist.columns = [c.replace('\ufeff', '').strip() for c in so_hist.columns]
+        so_hist["sku"] = so_hist["sku"].astype(str).str.strip()
+        so_hist["año"] = so_hist["año"].astype(str).str.strip()
+        so_hist["mes"] = so_hist["mes"].astype(str).str.strip().str.lower()
+        
+        hist_cols = []
+        for m, a in meses[0:4]:
+            nombre_mes = _nombre_mes(m).lower()
+            anio_hist = str(a - 1)
+            hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["año"] == anio_hist)]
+            temp_df = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
+            col_name = f"hist_{nombre_mes}_{anio_hist}"
+            df[col_name] = df["sku"].map(temp_df).fillna(0)
+            hist_cols.append(col_name)
+        
+        df["sellout_4m_historico"] = df[hist_cols].sum(axis=1)
+        df["sellout_4m_proyectado"] = df[cols_so_futuros].sum(axis=1)
+        
+        df["yoy_sellout_pct"] = ((df["sellout_4m_proyectado"] - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
+        df["sellout_mes_anterior_estimado"] = (df["sellout_4m_historico"] / 4).round(0)
+        
+        # Métrica de duración basada en últimos 4 meses cerrados
+        df["ritmo_mensual_4_meses"] = df["sellout_4m_historico"] / 4
+        # stock_tienda ya está sumado en inv_disponible después, aquí solo pre-calculamos duración
+        df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        
+    except Exception as e:
+        log.warning(f"Error calculando YoY con historico: {e}. Usando estimación fallback.")
+        FACTOR_TENDENCIA_YOY = 1.08
+        col_so_base  = cols_so[0]   # primer mes = mes base (Mayo 2026)
+        so_2026 = df[col_so_base]
+        so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimación año anterior
+        df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
+        df["sellout_mes_anterior_estimado"] = so_2025.round(0)
+        df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
+        df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
 
     # Mes pico Sell-Out: índice del máximo entre las 12 proyecciones
     so_matrix = df[cols_so].values
@@ -630,7 +666,8 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     # El stock individual se conserva en stock_act para inventario y alertas.
     df = _integrar_stock_familia_en_sugerencia(df, engine)
     df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
-    inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
+    df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
+    inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"] + df["stock_tienda"]
     
     # 6. Sugerencia Neta Bruta
     sug_bruta = df["sug_target_uds"] - inv_disponible
@@ -641,10 +678,27 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["sugerencia_compra_inmediata_uds"] = df.apply(
         lambda row: _ceil_to_multiple(sug_bruta[row.name], row["ump"]), axis=1
     ).round(0)
+    
+    # 8. Descuento por Decrecimiento YoY <= -11%
+    def apply_growth_discount(row):
+        sug = row["sugerencia_compra_inmediata_uds"]
+        yoy = row.get("yoy_sellout_pct", 0)
+        if pd.notna(yoy) and yoy <= -11.0:
+            reduction = abs(yoy) / 100.0
+            return _ceil_to_multiple(sug * (1 - reduction), row["ump"])
+        return sug
+
+    df["sugerencia_compra_inmediata_uds"] = df.apply(apply_growth_discount, axis=1)
+    df["descuento_aplicado_por_decrecimiento"] = (df.get("yoy_sellout_pct", 0) <= -11.0)
+    
+    # 9. Alerta de Sobrestock en Tienda
+    # Si stock_fisico_matrix / (ritmo semanal * 4.33) > 2 meses
+    ritmo_mensual = df["ritmo_semanal_uds"] * 4.33
+    df["alerta_sobrestock_tienda"] = df["stock_tienda"] / ritmo_mensual.replace(0, float("nan")) > 2.0
+    
     df["sugerencia_final"] = df["sugerencia_compra_inmediata_uds"]
 
-    log.info("UMP aplicado en %d meses. SKUs sin UMP (sin ajuste): %d",
-             ajustados, (ump <= 0).sum())
+    log.info("UMP y descuentos aplicados. SKUs sin UMP (sin ajuste): %d", (ump <= 0).sum())
     return df
 
 

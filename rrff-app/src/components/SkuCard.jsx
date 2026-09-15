@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   ResponsiveContainer, ComposedChart, Line, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine
 } from 'recharts';
 import { fetchTransito, fetchObservacion, saveObservacion, getPermisos } from '../api';
 
@@ -183,7 +183,10 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           <div className="metric-box">
             <div className="mb-lbl">🏪 Stock HC (Tiendas)</div>
             <div className="mb-val">{fmt(stockHC)} <small>unidades</small></div>
-            <div className="mb-sub">{hcCajas != null ? `${hcCajas} cajas` : 'Desde Matrix'}</div>
+            <div className="mb-sub">
+              {hcCajas != null ? `${hcCajas} cajas` : 'Desde Matrix'}
+              {product.alerta_sobrestock_tienda && <span style={{color: '#E65100', fontWeight: 'bold', marginLeft: '6px', fontSize: '0.75rem'}}>⚠️ &gt; 2 meses</span>}
+            </div>
           </div>
         ) : (
           <div className="metric-box pending">
@@ -213,6 +216,11 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           ) : (
             <>
               <div className="mb-val">{durStr}</div>
+              {product.duracion_4_meses != null && (
+                <div style={{ fontSize: '0.75rem', marginTop: 2, color: '#666' }}>
+                  {Number(product.duracion_4_meses).toFixed(1)} m últimos 4m
+                </div>
+              )}
               <div className="mb-nivel">
                 <span className="semaforo-dot">{colorInfo.label}</span> {alerta}
               </div>
@@ -228,6 +236,11 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               ? `Calculada con ${fmt(stockUsedForPurchase)} uds de la familia`
               : (ump > 0 ? `${Math.ceil(sug / ump)} cajas` : '')}
           </div>
+          {product.descuento_aplicado_por_decrecimiento && (
+              <div style={{ fontSize: '0.75rem', color: '#E65100', marginTop: 4, fontWeight: 'bold' }}>
+                ⚠️ Descuento por decrecimiento ({product.yoy_sellout_pct}%)
+              </div>
+          )}
         </div>
       </div>
 
@@ -330,6 +343,9 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                     
                     <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
                     <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
+                    {product.sellout_mes_anterior_estimado > 0 && (
+                      <ReferenceLine y={product.sellout_mes_anterior_estimado} stroke="#ff7300" strokeDasharray="3 3" label={{ position: 'top', value: 'Prom. 4M Ant.', fill: '#ff7300', fontSize: 10 }} />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
