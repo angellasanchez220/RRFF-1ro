@@ -912,8 +912,8 @@ def run_planning(archivos_proc=None) -> dict:
                 df["explicacion_compra_legacy"] = df["explicacion_compra"]
                 
                 # Merge
-                df_din["sku"] = df_din["sku"].astype(str)
-                df["sku"] = df["sku"].astype(str)
+                df_din["sku"] = df_din["sku"].astype(str).str.strip()
+                df["sku"] = df["sku"].astype(str).str.strip()
                 df = df.merge(df_din, on="sku", how="left")
                 
                 # Comparaciones
