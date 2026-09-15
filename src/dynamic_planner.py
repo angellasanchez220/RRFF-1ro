@@ -18,6 +18,9 @@ def run_dynamic_pipeline() -> pd.DataFrame:
     Ejecuta el pipeline predictivo completo y devuelve un DataFrame consolidado
     con las métricas dinámicas requeridas para integrar en el planner.
     """
+    import os
+    os.makedirs("data/processed", exist_ok=True)
+    
     log.info("Iniciando pipeline dinámico...")
     
     # 1. Ejecutar en secuencia
