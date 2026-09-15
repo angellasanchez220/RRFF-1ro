@@ -9,7 +9,14 @@ def generate_suggestions():
     
     # Load UMP from database dim_productos
     try:
-        from api.db import engine
+        import sys
+        from pathlib import Path
+        base = str(Path(__file__).resolve().parent.parent)
+        if base not in sys.path:
+            sys.path.insert(0, base)
+        from src.planner import _build_engine
+        engine = _build_engine()
+        
         df_maestro = pd.read_sql("SELECT sku, ump, gancheras FROM dim_productos", engine)
         ump_dict = {}
         for _, row in df_maestro.iterrows():

@@ -21,8 +21,12 @@ def calculate_operative_demand():
     # Obtener Legacy igual que en el audit
     try:
         import sys
-        sys.path.append('.')
-        from api.db import engine
+        from pathlib import Path
+        base = str(Path(__file__).resolve().parent.parent)
+        if base not in sys.path:
+            sys.path.insert(0, base)
+        from src.planner import _build_engine
+        engine = _build_engine()
         from api.routes.sop import _get_semanas_fact_ventas
         
         with engine.connect() as conn:
