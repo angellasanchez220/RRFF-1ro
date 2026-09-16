@@ -129,7 +129,17 @@ def _build_chart_12m(cols: list, row: dict) -> list:
     recientes = [m for m in mes_map if m[0] >= mes_actual]  # May-Dic 2025
 
     chart = []
-    historial = recientes + pasados
+    
+    # Extra 1: uno mas atras (el mes anterior al primero de recientes)
+    if pasados:
+        uno_mas_atras = (pasados[-1][0], pasados[-1][1], pasados[-1][2], pasados[-1][3] - 1, pasados[-1][4] - 1)
+    else:
+        uno_mas_atras = (recientes[-1][0], recientes[-1][1], recientes[-1][2], recientes[-1][3] - 1, recientes[-1][4] - 1)
+        
+    # Extra 2: el mes actual (igual al primero de recientes, pero un año despues)
+    el_mes_actual = (recientes[0][0], recientes[0][1], recientes[0][2], recientes[0][3] + 1, recientes[0][4] + 1)
+
+    historial = [uno_mas_atras] + recientes + pasados + [el_mes_actual]
 
     # HISTORIA (12 meses)
     prev_so = None

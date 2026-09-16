@@ -187,18 +187,19 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               {hcCajas != null ? `${hcCajas} cajas` : 'Desde Matrix'}
               {product.alerta_sobrestock_tienda && <span style={{color: '#E65100', fontWeight: 'bold', marginLeft: '6px', fontSize: '0.75rem'}}>⚠️ Sobrestock en tienda: &gt; 2 meses</span>}
             </div>
+            
+            <div className="mb-lbl" style={{marginTop: '10px'}}>🌐 Stock Total Canal</div>
+            <div className="mb-val" style={{fontSize: '1rem', color: '#3A86C8'}}>{fmt(stockFemaco + (stockHC || 0))} <small>unidades</small></div>
           </div>
         ) : (
           <div className="metric-box pending">
             <div className="mb-lbl">🏪 Stock Tienda</div>
             <div className="mb-val" style={{ fontSize: '0.78rem', color: '#888', fontStyle: 'italic' }}>⏳ Pendiente</div>
+            
+            <div className="mb-lbl" style={{marginTop: '10px'}}>🌐 Stock Total Canal</div>
+            <div className="mb-val" style={{fontSize: '1rem', color: '#3A86C8'}}>{fmt(stockFemaco)} <small>unidades</small></div>
           </div>
         )}
-
-        <div className="metric-box highlight">
-          <div className="mb-lbl">🌐 Stock Total Canal</div>
-          <div className="mb-val">{fmt(stockFemaco + (stockHC || 0))} <small>unidades</small></div>
-        </div>
 
         <div className="metric-box">
           <div className="mb-lbl">🚢 Tránsito Total</div>
@@ -329,6 +330,13 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                     </div>
                   );
                 })}
+                
+                {/* Total Familia Bottom Center */}
+                <div className="family-stock-member" style={{justifyContent: 'center', fontWeight: 'bold', borderTop: '2px solid #ccc', marginTop: '10px', paddingTop: '10px'}}>
+                   <span className="family-member-stock" style={{ textAlign: 'center', width: '100%' }}>
+                     Total Familia: {fmt(familyStock)} uds | Vts: {fmt(familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0))} | Dur: {(familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0) > 0 ? (Number(familyStock) / familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0)).toFixed(1) + ' m' : '∞')}
+                   </span>
+                </div>
               </div>
             </div>
           )}
