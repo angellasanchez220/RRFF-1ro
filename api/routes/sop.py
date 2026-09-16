@@ -136,8 +136,14 @@ def _build_chart_12m(cols: list, row: dict) -> list:
     for mes_num, nombre, abrev, yr_db, yr_label in historial:
         col_so = f"sellout_{abrev}_{yr_db}"
         col_si = f"sellin_{abrev}_{yr_db}"
+        
+        # El año anterior se llama hist_{nombre_mes_minuscula}_{año_anterior}
+        anio_hist = str(int(yr_db) - 1)
+        col_hist = f"hist_{nombre.lower()}_{anio_hist}"
+        
         so_val = _safe(row.get(col_so)) if col_so in cols else 0
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
+        hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
         # Crecimiento MoM
         growth = None
@@ -148,6 +154,7 @@ def _build_chart_12m(cols: list, row: dict) -> list:
             "name": f"{nombre[:3]} {yr_label}",
             "Sell Out": so_val,
             "Sell In": si_val,
+            "Sell Out Año Anterior": hist_val,
             "growth_pct": growth
         })
         prev_so = so_val

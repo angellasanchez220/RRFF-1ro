@@ -174,26 +174,31 @@ export default function SkuCard({ product, showDiscontinued = false }) {
       {/* ── MÉTRICAS (siempre visibles) ── */}
       <div className="metrics-row">
         <div className="metric-box">
-          <div className="mb-lbl">📦 Stock Físico (Femaco)</div>
+          <div className="mb-lbl">📦 Stock Central</div>
           <div className="mb-val">{fmt(stockFemaco)} <small>unidades</small></div>
           <div className="mb-sub">{cajas} cajas · U/E {ueDisplay}</div>
         </div>
 
-        {stockHC != null && stockHC > 0 ? (
+        {stockHC != null ? (
           <div className="metric-box">
-            <div className="mb-lbl">🏪 Stock HC (Tiendas)</div>
+            <div className="mb-lbl">🏪 Stock Tienda</div>
             <div className="mb-val">{fmt(stockHC)} <small>unidades</small></div>
             <div className="mb-sub">
               {hcCajas != null ? `${hcCajas} cajas` : 'Desde Matrix'}
-              {product.alerta_sobrestock_tienda && <span style={{color: '#E65100', fontWeight: 'bold', marginLeft: '6px', fontSize: '0.75rem'}}>⚠️ &gt; 2 meses</span>}
+              {product.alerta_sobrestock_tienda && <span style={{color: '#E65100', fontWeight: 'bold', marginLeft: '6px', fontSize: '0.75rem'}}>⚠️ Sobrestock en tienda: &gt; 2 meses</span>}
             </div>
           </div>
         ) : (
           <div className="metric-box pending">
-            <div className="mb-lbl">🏪 Stock HC (Tiendas)</div>
+            <div className="mb-lbl">🏪 Stock Tienda</div>
             <div className="mb-val" style={{ fontSize: '0.78rem', color: '#888', fontStyle: 'italic' }}>⏳ Pendiente</div>
           </div>
         )}
+
+        <div className="metric-box highlight">
+          <div className="mb-lbl">🌐 Stock Total Canal</div>
+          <div className="mb-val">{fmt(stockFemaco + (stockHC || 0))} <small>unidades</small></div>
+        </div>
 
         <div className="metric-box">
           <div className="mb-lbl">🚢 Tránsito Total</div>
@@ -215,13 +220,13 @@ export default function SkuCard({ product, showDiscontinued = false }) {
             </>
           ) : (
             <>
-              <div className="mb-val">{durStr}</div>
+              <div className="mb-val">{durStr} <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 semanas</small></div>
               {product.duracion_4_meses != null && (
-                <div style={{ fontSize: '0.75rem', marginTop: 2, color: '#666' }}>
-                  {Number(product.duracion_4_meses).toFixed(1)} m últimos 4m
+                <div style={{ fontSize: '0.85rem', marginTop: 2, color: '#333' }}>
+                  {Number(product.duracion_4_meses).toFixed(1)} meses <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 meses</small>
                 </div>
               )}
-              <div className="mb-nivel">
+              <div className="mb-nivel" style={{marginTop: 4}}>
                 <span className="semaforo-dot">{colorInfo.label}</span> {alerta}
               </div>
             </>
@@ -238,7 +243,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           </div>
           {product.descuento_aplicado_por_decrecimiento && (
               <div style={{ fontSize: '0.75rem', color: '#E65100', marginTop: 4, fontWeight: 'bold' }}>
-                ⚠️ Descuento por decrecimiento ({product.yoy_sellout_pct}%)
+                ⚠️ Sugerencia reducida en {Math.abs(product.yoy_sellout_pct)}% por tendencia a la baja
               </div>
           )}
         </div>
@@ -343,9 +348,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                     
                     <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
                     <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
-                    {product.sellout_mes_anterior_estimado > 0 && (
-                      <ReferenceLine y={product.sellout_mes_anterior_estimado} stroke="#ff7300" strokeDasharray="3 3" label={{ position: 'top', value: 'Prom. 4M Ant.', fill: '#ff7300', fontSize: 10 }} />
-                    )}
+                    <Line type="monotone" dataKey="Sell Out Año Anterior" stroke="#999" strokeWidth={1} strokeDasharray="3 3" dot={{ r: 2 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

@@ -476,33 +476,72 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         from pathlib import Path
         import sys
         import numpy as np
+        from datetime import date
+        import datetime
         proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
+        
+        # --- DURACION 4 MESES ---
+        # Leer historial_mensual_sku_validado.csv para los ultimos 4 meses cerrados
+        hist_mensual = pd.read_csv(proc_dir / "historial_mensual_sku_validado.csv", dtype=str)
+        hist_mensual.columns = [c.replace('\ufeff', '').strip() for c in hist_mensual.columns]
+        hist_mensual["sku"] = hist_mensual["sku"].astype(str).str.strip()
+        hist_mensual["anio"] = pd.to_numeric(hist_mensual["anio"], errors="coerce")
+        hist_mensual["mes"] = pd.to_numeric(hist_mensual["mes"], errors="coerce")
+        hist_mensual["sellout"] = pd.to_numeric(hist_mensual["sellout"], errors="coerce").fillna(0)
+        
+        hoy = date.today()
+        fecha_actual = datetime.date(hoy.year, hoy.month, 1)
+        fechas_4_meses = []
+        for i in range(1, 5):
+            m_cerrado = fecha_actual.month - i
+            a_cerrado = fecha_actual.year
+            while m_cerrado < 1:
+                m_cerrado += 12
+                a_cerrado -= 1
+            fechas_4_meses.append((m_cerrado, a_cerrado))
+        
+        sellout_4_meses_cerrados = pd.Series(0.0, index=df.index)
+        for m_c, a_c in fechas_4_meses:
+            sub = hist_mensual[(hist_mensual["mes"] == m_c) & (hist_mensual["anio"] == a_c)]
+            mapping = sub.set_index("sku")["sellout"].to_dict()
+            sellout_4_meses_cerrados += df["sku"].map(mapping).fillna(0)
+        
+        df["ritmo_mensual_4_meses"] = sellout_4_meses_cerrados / 4.0
+        
+        # Stock físico matrix es el stock tienda
+        stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
+        stock_central = df["stock_act"].fillna(0)
+        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        # --- END DURACION 4 MESES ---
+
+        # YoY basado en los próximos 12 meses vs los mismos 12 meses del año anterior (para graficos)
         so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", encoding="latin1")
         so_hist.columns = [c.replace('\ufeff', '').strip() for c in so_hist.columns]
         so_hist["sku"] = so_hist["sku"].astype(str).str.strip()
-        so_hist["año"] = so_hist["año"].astype(str).str.strip()
+        so_hist["_ano"] = so_hist.get("año", so_hist.get("ano", so_hist.get("_ano"))).astype(str).str.strip()
         so_hist["mes"] = so_hist["mes"].astype(str).str.strip().str.lower()
         
-        hist_cols = []
-        for m, a in meses[0:4]:
+        hist_cols_4m = []
+        
+        # Recorrer 12 meses para el grafico
+        for m, a in meses:
             nombre_mes = _nombre_mes(m).lower()
             anio_hist = str(a - 1)
-            hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["año"] == anio_hist)]
-            temp_df = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
+            hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["_ano"] == anio_hist)]
+            mapping = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
+            
             col_name = f"hist_{nombre_mes}_{anio_hist}"
-            df[col_name] = df["sku"].map(temp_df).fillna(0)
-            hist_cols.append(col_name)
-        
-        df["sellout_4m_historico"] = df[hist_cols].sum(axis=1)
+            df[col_name] = df["sku"].map(mapping).fillna(0)
+            
+            # si esta en los primeros 4 meses, agregarlo a la suma del YoY
+            if (m, a) in meses[0:4]:
+                hist_cols_4m.append(col_name)
+
+        df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
         df["sellout_4m_proyectado"] = df[cols_so_futuros].sum(axis=1)
         
         df["yoy_sellout_pct"] = ((df["sellout_4m_proyectado"] - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
         df["sellout_mes_anterior_estimado"] = (df["sellout_4m_historico"] / 4).round(0)
-        
-        # Métrica de duración basada en últimos 4 meses cerrados
-        df["ritmo_mensual_4_meses"] = df["sellout_4m_historico"] / 4
-        # stock_tienda ya está sumado en inv_disponible después, aquí solo pre-calculamos duración
-        df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
         
     except Exception as e:
         log.warning(f"Error calculando YoY con historico: {e}. Usando estimación fallback.")
@@ -514,6 +553,12 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         df["sellout_mes_anterior_estimado"] = so_2025.round(0)
         df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
         df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        
+        for m, a in meses:
+            nombre_mes = _nombre_mes(m).lower()
+            anio_hist = str(a - 1)
+            col_name = f"hist_{nombre_mes}_{anio_hist}"
+            df[col_name] = 0.0
 
     # Mes pico Sell-Out: índice del máximo entre las 12 proyecciones
     so_matrix = df[cols_so].values
@@ -667,34 +712,35 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df = _integrar_stock_familia_en_sugerencia(df, engine)
     df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
     df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
-    inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"] + df["stock_tienda"]
+    
+    # Inventario disponible = stock central (sug_stock_actual) + stock_tienda + ETA
+    inv_disponible = df["sug_stock_actual"] + df["stock_tienda"] + df["sug_cantidad_transito"]
     
     # 6. Sugerencia Neta Bruta
-    sug_bruta = df["sug_target_uds"] - inv_disponible
-    sug_bruta = sug_bruta.clip(lower=0)
-    df["sugerencia_bruta"] = sug_bruta
+    sug_neta = df["sug_target_uds"] - inv_disponible
+    sug_neta = sug_neta.clip(lower=0)
+    df["sugerencia_bruta"] = sug_neta
     
-    # 7. Ajuste por UMP (U/E)
-    df["sugerencia_compra_inmediata_uds"] = df.apply(
-        lambda row: _ceil_to_multiple(sug_bruta[row.name], row["ump"]), axis=1
-    ).round(0)
-    
-    # 8. Descuento por Decrecimiento YoY <= -11%
-    def apply_growth_discount(row):
-        sug = row["sugerencia_compra_inmediata_uds"]
+    # 7. Descuento por Decrecimiento YoY <= -10% sobre la Sugerencia Neta (antes de UMP)
+    def apply_growth_discount_before_ump(row):
+        sug = row["sugerencia_bruta"]
         yoy = row.get("yoy_sellout_pct", 0)
-        if pd.notna(yoy) and yoy <= -11.0:
+        if pd.notna(yoy) and yoy <= -10.0:
             reduction = abs(yoy) / 100.0
-            return _ceil_to_multiple(sug * (1 - reduction), row["ump"])
+            return sug * (1 - reduction)
         return sug
 
-    df["sugerencia_compra_inmediata_uds"] = df.apply(apply_growth_discount, axis=1)
-    df["descuento_aplicado_por_decrecimiento"] = (df.get("yoy_sellout_pct", 0) <= -11.0)
+    sug_ajustada_por_tendencia = df.apply(apply_growth_discount_before_ump, axis=1)
+    df["descuento_aplicado_por_decrecimiento"] = (df.get("yoy_sellout_pct", 0) <= -10.0)
     
-    # 9. Alerta de Sobrestock en Tienda
-    # Si stock_fisico_matrix / (ritmo semanal * 4.33) > 2 meses
-    ritmo_mensual = df["ritmo_semanal_uds"] * 4.33
-    df["alerta_sobrestock_tienda"] = df["stock_tienda"] / ritmo_mensual.replace(0, float("nan")) > 2.0
+    # 8. Ajuste por UMP (U/E) despues de la reduccion
+    df["sugerencia_compra_inmediata_uds"] = df.apply(
+        lambda row: _ceil_to_multiple(sug_ajustada_por_tendencia[row.name], row["ump"]), axis=1
+    ).round(0)
+    
+    # 9. Alerta de Sobrestock en Tienda (meses_stock_tienda > 2)
+    # sug_ritmo_mensual es el ritmo principal consolidado
+    df["alerta_sobrestock_tienda"] = df["stock_tienda"] / df["sug_ritmo_mensual"].replace(0, float("nan")) > 2.0
     
     df["sugerencia_final"] = df["sugerencia_compra_inmediata_uds"]
 
