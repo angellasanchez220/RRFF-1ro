@@ -95,27 +95,28 @@ def _get_mes_map():
     return result
 
 
-def _build_month_calendar(cols: list, row: dict) -> list:
+def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
     """
     Tabla FIJA Enero→Diciembre.
-    Ene-Abr 2026 reales → columnas _2027.
-    May-Dic 2025 reales → columnas _2026.
-    Sin proyecciones.
+    Usa los últimos 12 meses del chart_24m para mantener la consistencia del crecimiento.
     """
-    mes_map = _get_mes_map()
+    # Obtenemos los ultimos 12 meses del grafico (que ya están en orden cronologico)
+    last_12 = chart_24m[-12:] if len(chart_24m) >= 12 else chart_24m
+    
+    # Ordenamos de Enero a Diciembre para la tabla del frontend
+    cal_sorted = sorted(last_12, key=lambda x: x["mes_num"])
+    
     result = []
-    for mes_num, nombre, abrev, yr_db, yr_label in mes_map:
-        col_so = f"sellout_{abrev}_{yr_db}"
-        col_si = f"sellin_{abrev}_{yr_db}"
-        so_val = _safe(row.get(col_so)) if col_so in cols else 0
-        si_val = _safe(row.get(col_si)) if col_si in cols else 0
+    for item in cal_sorted:
         result.append({
-            "mes":       nombre,
-            "label":     f"{nombre} {yr_label}",
-            "mes_num":   mes_num,
-            "yr_label":  yr_label,
-            "sell_out":  so_val,
-            "sell_in":   si_val,
+            "mes":       item["mes"],
+            "label":     item["label"],
+            "mes_num":   item["mes_num"],
+            "yr_label":  item["yr_label"],
+            "sell_out":  item["Sell Out"],
+            "sell_in":   item["Sell In"],
+            "growth_pct": item.get("growth_pct"),
+            "hist_val":  item.get("Sell Out Año Anterior", 0)
         })
     return result
 
@@ -439,9 +440,10 @@ def get_sop(include_discontinued: bool = False):
                 d[c] = str(v) if v is not None else None
 
         row_dict = row.to_dict()
-        cal = _build_month_calendar(all_cols, row_dict)
+        chart_24m = _build_chart_24m(all_cols, row_dict)
+        cal = _build_month_calendar(all_cols, row_dict, chart_24m)
         d["calendario"]  = cal
-        d["chart_24m"]   = _build_chart_24m(all_cols, row_dict)
+        d["chart_24m"]   = chart_24m
 
         # Parsear excepciones
         import json
