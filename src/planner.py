@@ -535,11 +535,18 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         # --- END MOM ---
 
         # YoY basado en los próximos 12 meses vs los mismos 12 meses del año anterior (para graficos)
-        so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", encoding="latin1")
-        so_hist.columns = [c.replace('\ufeff', '').strip() for c in so_hist.columns]
+        so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", dtype=str, encoding="utf-8-sig")
+        so_hist.columns = so_hist.columns.str.strip()
         so_hist["sku"] = so_hist["sku"].astype(str).str.strip()
-        so_hist["_ano"] = so_hist.get("año", so_hist.get("ano", so_hist.get("_ano"))).astype(str).str.strip()
+        
+        for col in so_hist.columns:
+            if col.lower().startswith("a") and col.lower().endswith("o"):
+                so_hist.rename(columns={col: "_ano"}, inplace=True)
+                break
+        
+        so_hist["_ano"] = so_hist["_ano"].astype(str).str.strip()
         so_hist["mes"] = so_hist["mes"].astype(str).str.strip().str.lower()
+        so_hist["unidades_sellout"] = pd.to_numeric(so_hist["unidades_sellout"], errors="coerce").fillna(0)
         
         hist_cols_4m = []
         
@@ -563,6 +570,8 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         df["sellout_mes_anterior_estimado"] = (df["sellout_4m_historico"] / 4).round(0)
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         log.warning(f"Error calculando YoY con historico: {e}. Usando estimación fallback.")
         FACTOR_TENDENCIA_YOY = 1.08
         col_so_base  = cols_so[0]   # primer mes = mes base (Mayo 2026)
