@@ -162,6 +162,10 @@ def _build_chart_24m(cols: list, row: dict) -> list:
 
         chart.append({
             "name": f"{nombre[:3]} {yr_label}",
+            "mes": nombre,
+            "label": f"{nombre} {yr_label}",
+            "mes_num": mes_num,
+            "yr_label": yr_label,
             "Sell Out": so_val,
             "Sell In": si_val,
             "Sell Out Año Anterior": hist_val,
