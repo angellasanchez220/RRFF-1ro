@@ -367,7 +367,12 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 {/* Total Familia Bottom Center */}
                 <div className="family-stock-member" style={{justifyContent: 'center', fontWeight: 'bold', borderTop: '2px solid #ccc', marginTop: '10px', paddingTop: '10px'}}>
                    <span className="family-member-stock" style={{ textAlign: 'center', width: '100%' }}>
-                     Total Familia: {fmt(familyStock)} uds | Vts: {fmt(familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0))} | Dur: {(familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0) > 0 ? (Number(familyStock) / familySkus.reduce((sum, member) => sum + Number(member.ritmo_mensual || 0), 0)).toFixed(1) + ' m' : '∞')}
+                     {(() => {
+                       const transformableSkus = familySkus.filter(m => !m.no_transformable);
+                       const totalVts = transformableSkus.reduce((sum, m) => sum + Number(m.ritmo_mensual || 0), 0);
+                       const duracion = totalVts > 0 ? (Number(familyStock) / totalVts).toFixed(1) + ' m' : '∞';
+                       return `Total Familia: ${fmt(familyStock)} uds | Vts: ${fmt(totalVts)} | Dur: ${duracion}`;
+                     })()}
                    </span>
                 </div>
               </div>

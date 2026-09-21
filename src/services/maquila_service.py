@@ -160,7 +160,7 @@ def build_maquila_families(conn, lookup_dict):
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
             # Ya no ignoramos el stock de los descontinuados, sí se puede usar para cubrir necesidades de la familia
-            if info.get("es_maquilable"):
+            if not info["no_transformable"]:
                 stock_bruto += info["stock_act"]
                 transito_bruto += info["cantidad_transito"]
             
