@@ -222,6 +222,8 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(5, 11, data["s4"])
     set_val(6, 11, data["tot4s"])
     set_val(7, 11, data["obj"])
+    set_val(8, 10, "Duración")
+    set_val(8, 11, data["cob"])
 
     for i, label in enumerate(data["anio_labels"]):
         set_val(2 + i, 1, label)

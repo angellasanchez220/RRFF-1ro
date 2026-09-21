@@ -84,7 +84,7 @@ def _get_mes_map():
     result = []
     for mes_num, nombre, abrev in MESES:
         # Meses ya cerrados este año → col _2027, label yr
-        if mes_num < mes_actual:
+        if mes_num <= mes_actual:
             result.append((mes_num, nombre, abrev, yr + 1, yr))
         # Mes actual + futuros → col _2026, label yr-1
         else:
@@ -117,37 +117,34 @@ def _build_month_calendar(cols: list, row: dict) -> list:
     return result
 
 
-def _build_chart_12m(cols: list, row: dict) -> list:
+def _build_chart_24m(cols: list, row: dict) -> list:
     """
-    Gráfico continuo de 12 meses de historia.
+    Gráfico continuo de 24 meses de historia.
     Orden cronológico.
     """
     mes_map = _get_mes_map()
     today = date.today()
     mes_actual = today.month
-    pasados  = [m for m in mes_map if m[0] < mes_actual]   # Ene-Abr 2026
-    recientes = [m for m in mes_map if m[0] >= mes_actual]  # May-Dic 2025
+    pasados  = [m for m in mes_map if m[0] <= mes_actual]
+    recientes = [m for m in mes_map if m[0] > mes_actual]
 
     chart = []
     
-    # Extra 1: uno mas atras (el mes anterior al primero de recientes)
-    if pasados:
-        uno_mas_atras = (pasados[-1][0], pasados[-1][1], pasados[-1][2], pasados[-1][3] - 1, pasados[-1][4] - 1)
+    recientes_prev = [(m[0], m[1], m[2], m[3]-1, m[4]-1) for m in recientes]
+    pasados_prev = [(m[0], m[1], m[2], m[3]-1, m[4]-1) for m in pasados]
+    
+    if pasados_prev:
+        uno_mas_atras = (pasados_prev[-1][0], pasados_prev[-1][1], pasados_prev[-1][2], pasados_prev[-1][3] - 1, pasados_prev[-1][4] - 1)
     else:
-        uno_mas_atras = (recientes[-1][0], recientes[-1][1], recientes[-1][2], recientes[-1][3] - 1, recientes[-1][4] - 1)
+        uno_mas_atras = (recientes_prev[-1][0], recientes_prev[-1][1], recientes_prev[-1][2], recientes_prev[-1][3] - 1, recientes_prev[-1][4] - 1)
         
-    # Extra 2: el mes actual (igual al primero de recientes, pero un año despues)
-    el_mes_actual = (recientes[0][0], recientes[0][1], recientes[0][2], recientes[0][3] + 1, recientes[0][4] + 1)
+    historial = [uno_mas_atras] + recientes_prev + pasados_prev + recientes + pasados
 
-    historial = [uno_mas_atras] + recientes + pasados + [el_mes_actual]
-
-    # HISTORIA (12 meses)
     prev_so = None
     for mes_num, nombre, abrev, yr_db, yr_label in historial:
         col_so = f"sellout_{abrev}_{yr_db}"
         col_si = f"sellin_{abrev}_{yr_db}"
         
-        # El año anterior se llama hist_{nombre_mes_minuscula}_{año_anterior}
         anio_hist = str(int(yr_db) - 1)
         col_hist = f"hist_{nombre.lower()}_{anio_hist}"
         
@@ -155,7 +152,6 @@ def _build_chart_12m(cols: list, row: dict) -> list:
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
         hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
-        # Crecimiento MoM
         growth = None
         if prev_so is not None and prev_so > 0:
             growth = round(((so_val - prev_so) / prev_so) * 100, 1)
@@ -442,7 +438,7 @@ def get_sop(include_discontinued: bool = False):
         row_dict = row.to_dict()
         cal = _build_month_calendar(all_cols, row_dict)
         d["calendario"]  = cal
-        d["chart_12m"]   = _build_chart_12m(all_cols, row_dict)
+        d["chart_24m"]   = _build_chart_24m(all_cols, row_dict)
 
         # Parsear excepciones
         import json

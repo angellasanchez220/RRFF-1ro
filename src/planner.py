@@ -513,6 +513,26 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         stock_central = df["stock_act"].fillna(0)
         df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
         # --- END DURACION 4 MESES ---
+        
+        # --- NUEVO: CALCULAMOS MOM (MONTH-OVER-MONTH) ---
+        # M-1 = último mes cerrado, M-2 = mes anterior
+        m_1, a_1 = fechas_4_meses[0]  # El más reciente de los 4 meses cerrados
+        m_2, a_2 = fechas_4_meses[1]  # El segundo más reciente
+        
+        sub_m1 = hist_mensual[(hist_mensual["mes"] == m_1) & (hist_mensual["anio"] == a_1)]
+        sub_m2 = hist_mensual[(hist_mensual["mes"] == m_2) & (hist_mensual["anio"] == a_2)]
+        
+        # Extraemos valores, asegurando que existan en el histórico
+        df_m1 = df["sku"].map(sub_m1.set_index("sku")["sellout"])
+        df_m2 = df["sku"].map(sub_m2.set_index("sku")["sellout"])
+        
+        def calculate_mom(v1, v2):
+            if pd.isna(v1) or pd.isna(v2) or v2 == 0:
+                return float("nan")
+            return ((v1 - v2) / v2) * 100.0
+            
+        df["mom_sellout_pct"] = [calculate_mom(v1, v2) for v1, v2 in zip(df_m1, df_m2)]
+        # --- END MOM ---
 
         # YoY basado en los próximos 12 meses vs los mismos 12 meses del año anterior (para graficos)
         so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", encoding="latin1")
@@ -538,9 +558,8 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
                 hist_cols_4m.append(col_name)
 
         df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
-        df["sellout_4m_proyectado"] = df[cols_so_futuros].sum(axis=1)
-        
-        df["yoy_sellout_pct"] = ((df["sellout_4m_proyectado"] - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
+        # La proyeccion copia el año pasado, pero el YoY debe medir ventas recientes vs año pasado
+        df["yoy_sellout_pct"] = ((sellout_4_meses_cerrados - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
         df["sellout_mes_anterior_estimado"] = (df["sellout_4m_historico"] / 4).round(0)
         
     except Exception as e:
@@ -550,6 +569,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         so_2026 = df[col_so_base]
         so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimación año anterior
         df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
+        df["mom_sellout_pct"] = float("nan")
         df["sellout_mes_anterior_estimado"] = so_2025.round(0)
         df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
         df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
@@ -670,8 +690,13 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     exist_cols_so = [c for c in cols_so_prox_4 if c in df.columns]
     df["sug_ritmo_futuro"] = df[exist_cols_so].mean(axis=1) if exist_cols_so else 0.0
     
-    # 3. Ritmo Consolidado = MAX(Pasado, Futuro)
-    df["sug_ritmo_mensual"] = df[["sug_ritmo_pasado", "sug_ritmo_futuro"]].max(axis=1).round(0)
+    # 3. Ritmo Consolidado = MAX(Pasado, Futuro) SOLO PARA SELLOS
+    es_sellos = df["categoria"].astype(str).str.strip().str.lower() == "sellos"
+    df["sug_ritmo_mensual"] = np.where(
+        es_sellos,
+        df[["sug_ritmo_pasado", "sug_ritmo_futuro"]].max(axis=1),
+        df["sug_ritmo_pasado"]
+    ).round(0)
     
     # 4. Target de Stock Configurable
     try:
@@ -721,17 +746,20 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     sug_neta = sug_neta.clip(lower=0)
     df["sugerencia_bruta"] = sug_neta
     
-    # 7. Descuento por Decrecimiento YoY <= -10% sobre la Sugerencia Neta (antes de UMP)
+    # 7. Descuento por Decrecimiento MoM <= -10% sobre la Sugerencia Neta (antes de UMP)
     def apply_growth_discount_before_ump(row):
         sug = row["sugerencia_bruta"]
-        yoy = row.get("yoy_sellout_pct", 0)
-        if pd.notna(yoy) and yoy <= -10.0:
-            reduction = abs(yoy) / 100.0
-            return sug * (1 - reduction)
+        mom = row.get("mom_sellout_pct")
+        if pd.notna(mom) and mom <= -10.0:
+            reduction = abs(mom) / 100.0
+            return max(0, sug * (1 - reduction))
         return sug
 
     sug_ajustada_por_tendencia = df.apply(apply_growth_discount_before_ump, axis=1)
-    df["descuento_aplicado_por_decrecimiento"] = (df.get("yoy_sellout_pct", 0) <= -10.0)
+    
+    def check_discount(x):
+        return pd.notna(x) and x <= -10.0
+    df["descuento_aplicado_por_decrecimiento"] = df.get("mom_sellout_pct", pd.Series([float("nan")]*len(df))).apply(check_discount)
     
     # 8. Ajuste por UMP (U/E) despues de la reduccion
     df["sugerencia_compra_inmediata_uds"] = df.apply(

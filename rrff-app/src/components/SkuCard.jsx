@@ -86,7 +86,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const condicion   = product.condicion || product.estado || '';
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
-  const chartData = product.chart_12m || [];
+  const chartData = product.chart_24m || [];
   
   const allFamilySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
   const familySkus = showDiscontinued
@@ -160,14 +160,33 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           <div className="cal-label-col">
             <span className="lbl-so">Sell Out</span>
             <span className="lbl-si">Sell In</span>
+            <span className="lbl-gr">Crecimiento</span>
           </div>
-          {calendario.map((m, i) => (
+          {calendario.map((m, i) => {
+            const prevSO = i > 0 ? calendario[i-1].sell_out : 0;
+            let growth = '-';
+            let gClass = 'zero';
+            if (prevSO > 0) {
+              const diff = ((m.sell_out - prevSO) / prevSO) * 100;
+              if (diff > 0) {
+                growth = `↑ ${diff.toFixed(0)}%`;
+                gClass = 'pos';
+              } else if (diff < 0) {
+                growth = `↓ ${Math.abs(diff).toFixed(0)}%`;
+                gClass = 'neg';
+              } else {
+                growth = '0%';
+              }
+            }
+            return (
             <div className="cal-col" key={i}>
               <div className={`cal-mes ${m.es_real ? 'real' : ''}`}>{m.label}</div>
               <div className={`cal-so ${m.sell_out === 0 ? 'zero' : ''}`}>{fmt(m.sell_out)}</div>
               <div className={`cal-si ${m.sell_in === 0 ? 'zero' : ''}`}>{fmt(m.sell_in)}</div>
+              <div className={`cal-growth ${gClass}`}>{growth}</div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -242,9 +261,9 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               ? `Calculada con ${fmt(stockUsedForPurchase)} uds de la familia`
               : (ump > 0 ? `${Math.ceil(sug / ump)} cajas` : '')}
           </div>
-          {product.descuento_aplicado_por_decrecimiento && (
+          {product.descuento_aplicado_por_decrecimiento && product.mom_sellout_pct != null && (
               <div style={{ fontSize: '0.75rem', color: '#E65100', marginTop: 4, fontWeight: 'bold' }}>
-                ⚠️ Sugerencia reducida en {Math.abs(product.yoy_sellout_pct)}% por tendencia a la baja
+                ⚠️ Sugerencia reducida {Math.abs(product.mom_sellout_pct)}% por decrecimiento mensual
               </div>
           )}
         </div>
@@ -269,6 +288,20 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           <div className="sb-lbl">Objetivo</div>
           <div className="sb-val">{fmt(objetivo)}</div>
         </div>
+        
+        <div className="ritmo-box" style={{ background: '#fcfcfc', borderLeft: '1px solid #eee', paddingLeft: 12, marginLeft: 6 }}>
+          <div className="sb-lbl">Var. Mensual</div>
+          <div className="sb-val" style={{ color: product.mom_sellout_pct == null || isNaN(product.mom_sellout_pct) ? '#999' : (product.mom_sellout_pct < 0 ? '#b35f1a' : '#1d6b3e'), fontSize: '0.95rem' }}>
+            {product.mom_sellout_pct == null || isNaN(product.mom_sellout_pct) ? 'Sin datos' : `${product.mom_sellout_pct > 0 ? '+' : ''}${product.mom_sellout_pct}%`}
+          </div>
+        </div>
+        <div className="ritmo-box" style={{ background: '#fcfcfc', paddingLeft: 12 }}>
+          <div className="sb-lbl">Var. Interanual</div>
+          <div className="sb-val" style={{ color: '#666', fontSize: '0.95rem' }}>
+            {product.yoy_sellout_pct == null || isNaN(product.yoy_sellout_pct) ? 'Sin datos' : `${product.yoy_sellout_pct > 0 ? '+' : ''}${product.yoy_sellout_pct}%`}
+          </div>
+        </div>
+
       </div>
 
       {/* ── OBSERVACIÓN (siempre visible si existe) ── */}
@@ -356,7 +389,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                     
                     <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
                     <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="Sell Out Año Anterior" stroke="#999" strokeWidth={1} strokeDasharray="3 3" dot={{ r: 2 }} />
+                    <Line type="monotone" dataKey="Sell Out Año Anterior" name="Referencia mismo período año anterior" stroke="#999" strokeWidth={1} strokeDasharray="3 3" dot={{ r: 2 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

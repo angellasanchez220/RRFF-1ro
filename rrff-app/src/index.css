@@ -889,3 +889,19 @@ body {
 .dynamic-status-revision { background: #FFFDE7; color: #f57f17; border: 1px solid #fff9c4; }
 .dynamic-status-bloqueado { background: #ECEFF1; color: #546e7a; border: 1px solid #cfd8dc; text-decoration: line-through; }
 .dynamic-status-sin-analisis { background: #FAFAFA; color: #9e9e9e; border: 1px dashed #bdbdbd; }
+
+.cal-growth {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: right;
+  padding: 4px;
+}
+.cal-growth.pos { color: #16a34a; }
+.cal-growth.neg { color: #dc2626; }
+.cal-growth.zero { color: #9ca3af; }
+.lbl-gr {
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}

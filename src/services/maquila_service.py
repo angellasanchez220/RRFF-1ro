@@ -128,7 +128,8 @@ def build_maquila_families(conn, lookup_dict):
             "ritmo_mensual": float(info.get("ritmo_mensual", 0)),
             "estado": str(info.get("estado") or "").strip().upper(),
             "descontinuado": is_discontinued(info.get("estado")),
-            "no_transformable": no_transformable_map.get(codigo, False)
+            "no_transformable": no_transformable_map.get(codigo, False),
+            "es_maquilable": bool(info.get("es_maquilable", False))
         }
 
     for codigo in todos_skus:
@@ -159,8 +160,9 @@ def build_maquila_families(conn, lookup_dict):
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
             # Ya no ignoramos el stock de los descontinuados, sí se puede usar para cubrir necesidades de la familia
-            stock_bruto += info["stock_act"]
-            transito_bruto += info["cantidad_transito"]
+            if info.get("es_maquilable"):
+                stock_bruto += info["stock_act"]
+                transito_bruto += info["cantidad_transito"]
             
             if nodo_alcanzable != codigo:
                 if not info["no_transformable"]:

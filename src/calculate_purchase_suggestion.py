@@ -17,8 +17,9 @@ def generate_suggestions():
         from src.planner import _build_engine
         engine = _build_engine()
         
-        df_maestro = pd.read_sql("SELECT sku, ump, gancheras FROM dim_productos", engine)
+        df_maestro = pd.read_sql("SELECT sku, ump, gancheras, estado FROM dim_productos", engine)
         ump_dict = {}
+        estado_dict = {}
         for _, row in df_maestro.iterrows():
             sku = str(row['sku']).strip()
             g = pd.to_numeric(row.get('ump'), errors='coerce')
@@ -27,9 +28,11 @@ def generate_suggestions():
             if pd.isna(g) or g <= 0:
                 g = 1 
             ump_dict[sku] = g
+            estado_dict[sku] = str(row.get('estado', '')).strip()
     except Exception as e:
-        print(f"Error loading UMP from DB: {e}")
+        print(f"Error cargando UMP y estado desde DB: {e}")
         ump_dict = {}
+        estado_dict = {}
         
     today = pd.to_datetime('2026-07-13')
     lt_meses = 5.0
@@ -86,6 +89,11 @@ def generate_suggestions():
     for _, row in df_proj.iterrows():
         sku = str(row['sku'])
         estado = row.get('estado_producto', '')
+        
+        estado_bd = estado_dict.get(sku, '')
+        if estado_bd:
+            estado = estado_bd
+            
         bloquea = row.get('bloquea_compra', False)
         falta_stock = row.get('falta_stock_actual', False)
         q_no_calc = row.get('quiebre_no_calculable', False)
@@ -130,6 +138,7 @@ def generate_suggestions():
         motivos = [m.strip() for m in str(res['motivos_revision_manual']).split(';') if m.strip() and m.strip() != 'nan']
         
         if bloquea or str(estado).lower() in ['descontinuado', 'descontinuados', 'inactivo', 'bloqueado', 'bloqueados']:
+            res['bloquea_compra'] = True
             res['compra_automatica_permitida'] = False
             res['accion_recomendada'] = "Compra bloqueada"
             res['estado_alerta'] = "Bloqueado"
