@@ -553,16 +553,17 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         # Recorrer 12 meses para el grafico
         for m, a in meses:
             nombre_mes = _nombre_mes(m).lower()
-            anio_hist = str(a - 1)
-            hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["_ano"] == anio_hist)]
-            mapping = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
             
-            col_name = f"hist_{nombre_mes}_{anio_hist}"
-            df[col_name] = df["sku"].map(mapping).fillna(0)
-            
-            # si esta en los primeros 4 meses, agregarlo a la suma del YoY
-            if (m, a) in meses[0:4]:
-                hist_cols_4m.append(col_name)
+            for offset in [1, 2, 3]:
+                anio_hist_n = str(a - offset)
+                hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["_ano"] == anio_hist_n)]
+                mapping = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
+                col_name = f"hist_{nombre_mes}_{anio_hist_n}"
+                df[col_name] = df["sku"].map(mapping).fillna(0)
+                
+                # si esta en los primeros 4 meses, agregarlo a la suma del YoY usando solo a-1
+                if offset == 1 and (m, a) in meses[0:4]:
+                    hist_cols_4m.append(col_name)
 
         df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
         # La proyeccion copia el año pasado, pero el YoY debe medir ventas recientes vs año pasado

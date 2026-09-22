@@ -149,10 +149,17 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         col_so = f"sellout_{abrev}_{yr_db}"
         col_si = f"sellin_{abrev}_{yr_db}"
         
-        anio_hist = str(int(yr_db) - 1)
+        anio_hist = str(int(yr_label) - 1)
         col_hist = f"hist_{nombre.lower()}_{anio_hist}"
         
-        so_val = _safe(row.get(col_so)) if col_so in cols else 0
+        # Para meses pasados que no tienen columna sellout_ (porque estaban fuera de los 12 meses proy.),
+        # usamos su columna hist_ que contiene el dato real de ese año
+        if col_so not in cols:
+            col_so_fallback = f"hist_{nombre.lower()}_{yr_label}"
+            so_val = _safe(row.get(col_so_fallback)) if col_so_fallback in cols else 0
+        else:
+            so_val = _safe(row.get(col_so))
+            
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
         hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
