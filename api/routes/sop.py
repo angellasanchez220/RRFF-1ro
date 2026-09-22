@@ -160,6 +160,14 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         else:
             so_val = _safe(row.get(col_so))
             
+            # NUEVO: Para el mes en curso, queremos mostrar el dato REAL PARCIAL en vez de la proyeccion.
+            if mes_num == mes_actual and int(yr_label) == today.year:
+                col_hist_actual = f"hist_{nombre.lower()}_{yr_label}"
+                if col_hist_actual in cols:
+                    actual_partial = _safe(row.get(col_hist_actual))
+                    if actual_partial is not None and actual_partial > 0:
+                        so_val = actual_partial
+            
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
         hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
@@ -185,6 +193,19 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "growth_pct": yoy_growth # keep for compatibility with the small calendar label
         })
         prev_so = so_val
+
+    # Trim leading months where Sell Out == 0
+    first_non_zero_idx = -1
+    for i, data in enumerate(chart):
+        if data["Sell Out"] > 0:
+            first_non_zero_idx = i
+            break
+            
+    if first_non_zero_idx > 0:
+        chart = chart[first_non_zero_idx:]
+    elif first_non_zero_idx == -1:
+        # All zeros, maybe keep the last 12 months? or just return as is (emptyish chart)
+        pass
 
     return chart
 

@@ -560,7 +560,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         for m, a in meses:
             nombre_mes = _nombre_mes(m).lower()
             
-            for offset in [1, 2, 3]:
+            for offset in [0, 1, 2, 3]:
                 anio_hist_n = str(a - offset)
                 hist_sub = so_hist[(so_hist["mes"] == nombre_mes) & (so_hist["_ano"] == anio_hist_n)]
                 mapping = hist_sub.set_index("sku")["unidades_sellout"].to_dict()
