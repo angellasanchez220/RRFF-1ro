@@ -18,7 +18,6 @@ const CustomTooltip = ({ active, payload, label }) => {
             {entry.name}: {Number(entry.value).toLocaleString('es-CL')}
           </div>
         ))}
-
         {data.mom_growth_pct != null && (
           <div style={{ marginTop: 4, fontWeight: 'bold', color: data.mom_growth_pct > 0 ? '#1d6b3e' : data.mom_growth_pct < 0 ? '#b35f1a' : '#666' }}>
             Var. mes ant: {data.mom_growth_pct > 0 ? '▲' : data.mom_growth_pct < 0 ? '▼' : ''} {data.mom_growth_pct}%
