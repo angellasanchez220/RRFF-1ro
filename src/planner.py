@@ -480,8 +480,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         import datetime
         proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
         
-        # --- DURACION 4 MESES ---
-        # Leer historial_mensual_sku_validado.csv para los ultimos 4 meses cerrados
+        # --- DURACION 4 MESES Y MOM ---
         hist_mensual = pd.read_csv(proc_dir / "historial_mensual_sku_validado.csv", dtype=str)
         hist_mensual.columns = [c.replace('\ufeff', '').strip() for c in hist_mensual.columns]
         hist_mensual["sku"] = hist_mensual["sku"].astype(str).str.strip()
@@ -508,21 +507,16 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         
         df["ritmo_mensual_4_meses"] = sellout_4_meses_cerrados / 4.0
         
-        # Stock físico matrix es el stock tienda
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
         df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
-        # --- END DURACION 4 MESES ---
         
-        # --- NUEVO: CALCULAMOS MOM (MONTH-OVER-MONTH) ---
-        # M-1 = último mes cerrado, M-2 = mes anterior
-        m_1, a_1 = fechas_4_meses[0]  # El más reciente de los 4 meses cerrados
-        m_2, a_2 = fechas_4_meses[1]  # El segundo más reciente
+        m_1, a_1 = fechas_4_meses[0]
+        m_2, a_2 = fechas_4_meses[1]
         
         sub_m1 = hist_mensual[(hist_mensual["mes"] == m_1) & (hist_mensual["anio"] == a_1)]
         sub_m2 = hist_mensual[(hist_mensual["mes"] == m_2) & (hist_mensual["anio"] == a_2)]
         
-        # Extraemos valores, asegurando que existan en el histórico
         df_m1 = df["sku"].map(sub_m1.set_index("sku")["sellout"])
         df_m2 = df["sku"].map(sub_m2.set_index("sku")["sellout"])
         
@@ -532,9 +526,22 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
             return ((v1 - v2) / v2) * 100.0
             
         df["mom_sellout_pct"] = [calculate_mom(v1, v2) for v1, v2 in zip(df_m1, df_m2)]
-        # --- END MOM ---
+        tiene_historial_mensual = True
 
-        # YoY basado en los próximos 12 meses vs los mismos 12 meses del año anterior (para graficos)
+    except Exception as e:
+        log.warning(f"No se pudo cargar historial_mensual_sku_validado.csv: {e}. Usando estimaciones fallback para MoM y duración.")
+        df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
+        stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
+        stock_central = df["stock_act"].fillna(0)
+        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        df["mom_sellout_pct"] = float("nan")
+        sellout_4_meses_cerrados = pd.Series(0.0, index=df.index)
+        tiene_historial_mensual = False
+
+    try:
+        from pathlib import Path
+        proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
+        # --- LECTURA DE SELLOUT HISTÓRICO PARA GRAFICOS 24 MESES ---
         so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", dtype=str, encoding="utf-8-sig")
         so_hist.columns = so_hist.columns.str.strip()
         so_hist["sku"] = so_hist["sku"].astype(str).str.strip()
@@ -550,7 +557,6 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
         
         hist_cols_4m = []
         
-        # Recorrer 12 meses para el grafico
         for m, a in meses:
             nombre_mes = _nombre_mes(m).lower()
             
@@ -561,34 +567,38 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
                 col_name = f"hist_{nombre_mes}_{anio_hist_n}"
                 df[col_name] = df["sku"].map(mapping).fillna(0)
                 
-                # si esta en los primeros 4 meses, agregarlo a la suma del YoY usando solo a-1
                 if offset == 1 and (m, a) in meses[0:4]:
                     hist_cols_4m.append(col_name)
 
         df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
-        # La proyeccion copia el año pasado, pero el YoY debe medir ventas recientes vs año pasado
-        df["yoy_sellout_pct"] = ((sellout_4_meses_cerrados - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
+        
+        if tiene_historial_mensual:
+            df["yoy_sellout_pct"] = ((sellout_4_meses_cerrados - df["sellout_4m_historico"]) / df["sellout_4m_historico"].replace(0, float("nan")) * 100).round(2)
+        else:
+            FACTOR_TENDENCIA_YOY = 1.08
+            so_2026 = df[cols_so[0]]
+            so_2025 = so_2026 / FACTOR_TENDENCIA_YOY
+            df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
+
         df["sellout_mes_anterior_estimado"] = (df["sellout_4m_historico"] / 4).round(0)
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        log.warning(f"Error calculando YoY con historico: {e}. Usando estimación fallback.")
+        log.warning(f"Error cargando sellout_historico_clean.csv: {e}. El grafico no tendra historia.")
         FACTOR_TENDENCIA_YOY = 1.08
         col_so_base  = cols_so[0]   # primer mes = mes base (Mayo 2026)
         so_2026 = df[col_so_base]
         so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimación año anterior
         df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
-        df["mom_sellout_pct"] = float("nan")
         df["sellout_mes_anterior_estimado"] = so_2025.round(0)
-        df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
-        df["duracion_4_meses"] = (df["stock_act"].fillna(0) + df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
         
         for m, a in meses:
             nombre_mes = _nombre_mes(m).lower()
-            anio_hist = str(a - 1)
-            col_name = f"hist_{nombre_mes}_{anio_hist}"
-            df[col_name] = 0.0
+            for offset in [1, 2, 3]:
+                anio_hist_n = str(a - offset)
+                col_name = f"hist_{nombre_mes}_{anio_hist_n}"
+                df[col_name] = 0.0
 
     # Mes pico Sell-Out: índice del máximo entre las 12 proyecciones
     so_matrix = df[cols_so].values
