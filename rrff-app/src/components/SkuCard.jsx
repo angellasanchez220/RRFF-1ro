@@ -18,6 +18,7 @@ const CustomTooltip = ({ active, payload, label }) => {
             {entry.name}: {Number(entry.value).toLocaleString('es-CL')}
           </div>
         ))}
+
         {data.mom_growth_pct != null && (
           <div style={{ marginTop: 4, fontWeight: 'bold', color: data.mom_growth_pct > 0 ? '#1d6b3e' : data.mom_growth_pct < 0 ? '#b35f1a' : '#666' }}>
             Var. mes ant: {data.mom_growth_pct > 0 ? '▲' : data.mom_growth_pct < 0 ? '▼' : ''} {data.mom_growth_pct}%
@@ -92,7 +93,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
   const rawChartData = product.chart_24m || [];
-  const firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] > 0 || d["Sell In"] > 0));
+  const firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] > 0 || d["Sell In"] > 0 || d["Sell Out Año Anterior"] > 0));
   const chartData = rawChartData.slice(firstDataIndex > -1 ? firstDataIndex : 0);
   
   const allFamilySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
