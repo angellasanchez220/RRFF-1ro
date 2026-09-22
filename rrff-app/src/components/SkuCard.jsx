@@ -92,7 +92,8 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
   const rawChartData = product.chart_24m || [];
-  const chartData = rawChartData.slice(Math.max(0, rawChartData.length - 12));
+  const firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] > 0 || d["Sell In"] > 0));
+  const chartData = rawChartData.slice(firstDataIndex > -1 ? firstDataIndex : 0);
   
   const allFamilySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
   const familySkus = showDiscontinued
