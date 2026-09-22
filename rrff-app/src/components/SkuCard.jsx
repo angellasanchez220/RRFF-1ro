@@ -92,9 +92,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
   const rawChartData = product.chart_24m || [];
-  let firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] || 0) > 0 || (d["Sell In"] || 0) > 0);
-  if (firstDataIndex === -1) firstDataIndex = Math.max(0, rawChartData.length - 12);
-  const chartData = rawChartData.slice(firstDataIndex);
+  const chartData = rawChartData.slice(Math.max(0, rawChartData.length - 12));
   
   const allFamilySkus = Array.isArray(product.familia_skus) ? product.familia_skus : [];
   const familySkus = showDiscontinued
@@ -185,7 +183,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 growth = '0%';
               }
             }
-            if (m.hist_val != null) {
+            if (m.hist_val != null && m.hist_val > 0) {
                growth += ` (${fmt(m.hist_val)})`;
             }
             return (
