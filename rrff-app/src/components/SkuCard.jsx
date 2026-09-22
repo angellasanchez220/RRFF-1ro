@@ -18,9 +18,14 @@ const CustomTooltip = ({ active, payload, label }) => {
             {entry.name}: {Number(entry.value).toLocaleString('es-CL')}
           </div>
         ))}
-        {data.growth_pct != null && (
-          <div style={{ marginTop: 4, fontWeight: 'bold', color: data.growth_pct > 0 ? '#1d6b3e' : data.growth_pct < 0 ? '#b35f1a' : '#666' }}>
-            Var. vs mes ant: {data.growth_pct > 0 ? '▲' : data.growth_pct < 0 ? '▼' : ''} {data.growth_pct}%
+        {data.mom_growth_pct != null && (
+          <div style={{ marginTop: 4, fontWeight: 'bold', color: data.mom_growth_pct > 0 ? '#1d6b3e' : data.mom_growth_pct < 0 ? '#b35f1a' : '#666' }}>
+            Var. mes ant: {data.mom_growth_pct > 0 ? '▲' : data.mom_growth_pct < 0 ? '▼' : ''} {data.mom_growth_pct}%
+          </div>
+        )}
+        {data.yoy_growth_pct != null && (
+          <div style={{ marginTop: 2, fontWeight: 'bold', color: data.yoy_growth_pct > 0 ? '#1d6b3e' : data.yoy_growth_pct < 0 ? '#b35f1a' : '#666' }}>
+            Var. año ant: {data.yoy_growth_pct > 0 ? '▲' : data.yoy_growth_pct < 0 ? '▼' : ''} {data.yoy_growth_pct}%
           </div>
         )}
       </div>
@@ -294,18 +299,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           <div className="sb-val">{fmt(objetivo)}</div>
         </div>
         
-        <div className="ritmo-box" style={{ background: '#fcfcfc', borderLeft: '1px solid #eee', paddingLeft: 12, marginLeft: 6 }}>
-          <div className="sb-lbl">Var. Mensual</div>
-          <div className="sb-val" style={{ color: product.mom_sellout_pct == null || isNaN(product.mom_sellout_pct) ? '#999' : (product.mom_sellout_pct < 0 ? '#b35f1a' : '#1d6b3e'), fontSize: '0.95rem' }}>
-            {product.mom_sellout_pct == null || isNaN(product.mom_sellout_pct) ? 'Sin datos' : `${product.mom_sellout_pct > 0 ? '+' : ''}${product.mom_sellout_pct}%`}
-          </div>
-        </div>
-        <div className="ritmo-box" style={{ background: '#fcfcfc', paddingLeft: 12 }}>
-          <div className="sb-lbl">Var. Interanual</div>
-          <div className="sb-val" style={{ color: '#666', fontSize: '0.95rem' }}>
-            {product.yoy_sellout_pct == null || isNaN(product.yoy_sellout_pct) ? 'Sin datos' : `${product.yoy_sellout_pct > 0 ? '+' : ''}${product.yoy_sellout_pct}%`}
-          </div>
-        </div>
+
 
       </div>
 

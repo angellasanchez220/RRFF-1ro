@@ -156,9 +156,13 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
         hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
-        growth = None
+        mom_growth = None
         if prev_so is not None and prev_so > 0:
-            growth = round(((so_val - prev_so) / prev_so) * 100, 1)
+            mom_growth = round(((so_val - prev_so) / prev_so) * 100, 1)
+
+        yoy_growth = None
+        if hist_val is not None and hist_val > 0:
+            yoy_growth = round(((so_val - hist_val) / hist_val) * 100, 1)
 
         chart.append({
             "name": f"{nombre[:3]} {yr_label}",
@@ -169,7 +173,9 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "Sell Out": so_val,
             "Sell In": si_val,
             "Sell Out Año Anterior": hist_val,
-            "growth_pct": growth
+            "mom_growth_pct": mom_growth,
+            "yoy_growth_pct": yoy_growth,
+            "growth_pct": yoy_growth # keep for compatibility with the small calendar label
         })
         prev_so = so_val
 
