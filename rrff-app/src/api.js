@@ -80,6 +80,13 @@ export async function fetchTransito(sku) {
   return res.json();
 }
 
+export async function fetchHoltWintersForecast(sku) {
+  const res = await fetch(`${BASE}/sop/forecast-holtwinters/${sku}`, { headers: authHeaders() });
+  if (!res.ok) return { available: false, reason: 'error_fetching' };
+  return res.json();
+}
+
+
 export async function fetchObservacion(sku) {
   const res = await fetch(`${BASE}/sop/observacion/${sku}`, { headers: authHeaders() });
   if (!res.ok) return { observacion: '' };

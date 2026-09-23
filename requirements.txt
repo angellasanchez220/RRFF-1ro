@@ -13,3 +13,4 @@ streamlit
 plotly
 schedule
 xlrd>=2.0.1
+statsmodels

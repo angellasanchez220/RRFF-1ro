@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, ComposedChart, Line, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine
 } from 'recharts';
-import { fetchTransito, fetchObservacion, saveObservacion, getPermisos } from '../api';
+import { fetchTransito, fetchObservacion, saveObservacion, fetchHoltWintersForecast, getPermisos } from '../api';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -67,6 +67,8 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const [obsEdit,   setObsEdit]   = useState('');
   const [obsSaving, setObsSaving] = useState(false);
   const [obsSaved,  setObsSaved]  = useState(false);
+  const [hwData,    setHwData]    = useState(null);
+  const [hwLoad,    setHwLoad]    = useState(false);
 
   const alerta    = product.nivel_alerta || 'VERDE';
   const colorInfo = COLORES[alerta] || COLORES.VERDE;
@@ -131,6 +133,17 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           const d = await fetchObservacion(product.sku);
           setObs(d); setObsEdit(d.observacion || '');
         } catch { setObs({ observacion: '' }); }
+      }
+      if (!hwData && !hwLoad && product.sku) {
+        setHwLoad(true);
+        try {
+          const res = await fetchHoltWintersForecast(product.sku);
+          setHwData(res);
+        } catch {
+          setHwData({ available: false, reason: 'error' });
+        } finally {
+          setHwLoad(false);
+        }
       }
     }
   }
@@ -398,6 +411,103 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               </div>
             </div>
           )}
+
+          {/* GRÁFICO SEPARADO: PROYECCIÓN SELL OUT — HOLT-WINTERS */}
+          <div className="exp-block">
+            <div className="exp-title">📈 PROYECCIÓN SELL OUT — HOLT-WINTERS</div>
+            {hwLoad && <div className="exp-loading">Calculando proyección Holt-Winters…</div>}
+            {!hwLoad && hwData && !hwData.available && (
+              <div className="exp-empty" style={{ fontStyle: 'italic', color: '#666', padding: '14px', textAlign: 'center', background: '#FDFDFD', borderRadius: 4, border: '1px dashed #DDD' }}>
+                {hwData.reason === 'internal_gap_detected'
+                  ? 'El historial contiene períodos sin información suficiente para generar la proyección.'
+                  : hwData.reason === 'intermittent_demand'
+                  ? 'La demanda de este producto es demasiado intermitente para aplicar este modelo.'
+                  : 'No existe historial suficiente para generar una proyección confiable.'}
+              </div>
+            )}
+            {!hwLoad && hwData && hwData.available && (() => {
+              const hist = hwData.history || [];
+              const gaps = hwData.gap_estimates || [];
+              const fc = hwData.forecast || [];
+              const hwChartData = [];
+
+              // 1. Historia Real (Línea sólida)
+              hist.forEach((item, idx) => {
+                const isLastHist = idx === hist.length - 1;
+                hwChartData.push({
+                  name: item.month,
+                  'Sell Out Real': item.value,
+                  'Estimación Atraso': (isLastHist && gaps.length > 0) ? item.value : null,
+                  'Proyección Futura': (isLastHist && gaps.length === 0) ? item.value : null
+                });
+              });
+
+              // 2. Meses de Desfase por Atraso de Datos (Línea tenue punteada 3 3)
+              gaps.forEach((item, idx) => {
+                const isLastGap = idx === gaps.length - 1;
+                hwChartData.push({
+                  name: item.month,
+                  'Sell Out Real': null,
+                  'Estimación Atraso': item.value,
+                  'Proyección Futura': isLastGap ? item.value : null
+                });
+              });
+
+              // 3. Forecast Futuro 4 Meses (Línea principal punteada 5 5)
+              fc.forEach((item) => {
+                hwChartData.push({
+                  name: item.month,
+                  'Sell Out Real': null,
+                  'Estimación Atraso': null,
+                  'Proyección Futura': item.value
+                });
+              });
+
+              const confLabel = hwData.confidence === 'high' ? 'Alta' : hwData.confidence === 'medium' ? 'Media' : 'Baja';
+
+              return (
+                <>
+                  <div style={{ height: 210 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={hwChartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                        <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                        
+                        <Line type="monotone" dataKey="Sell Out Real" stroke="#8DC63F" strokeWidth={2} dot={{ r: 3 }} />
+                        {gaps.length > 0 && (
+                          <Line type="monotone" dataKey="Estimación Atraso" stroke="#95A5A6" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 2 }} />
+                        )}
+                        <Line type="monotone" dataKey="Proyección Futura" stroke="#E67E22" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
+                    {hwData.data_status === 'lagging' && (
+                      <div style={{ color: '#b35f1a', fontWeight: 'bold', marginBottom: 4 }}>
+                        ⚠️ Datos desactualizados: último mes cerrado observado {hwData.last_observed_month}
+                      </div>
+                    )}
+                    {hwData.method === 'holt_winters' ? (
+                      <span>
+                        <b>Modelo:</b> Holt-Winters · <b>Histórico:</b> {hwData.historical_months} meses
+                        {hwData.validated
+                          ? ` · <b>WAPE histórico:</b> ${hwData.wape}%`
+                          : ' · <b>WAPE:</b> No validado'}
+                        · <b>Confianza:</b> {confLabel}
+                      </span>
+                    ) : (
+                      <span>
+                        <b>Modelo:</b> Estacionalidad heredada · <b>Referencia:</b> {hwData.reference_level} — <i>{hwData.reference_value}</i> · <b>SKUs de referencia:</b> {hwData.reference_skus} · <b>Confianza:</b> {confLabel}
+                      </span>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
 
           {/* DESGLOSE TRÁNSITO */}
           <div className="exp-block">
