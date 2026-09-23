@@ -59,6 +59,21 @@ function fmtDate(s) {
   return String(s).slice(0, 10);
 }
 
+const MESES_ABREV = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+function fmtMonthLabel(monthStr) {
+  if (!monthStr || typeof monthStr !== 'string') return monthStr || '';
+  const parts = monthStr.split('-');
+  if (parts.length === 2) {
+    const yr = parts[0];
+    const m = parseInt(parts[1], 10);
+    if (m >= 1 && m <= 12) {
+      return `${MESES_ABREV[m]} ${yr}`;
+    }
+  }
+  return monthStr;
+}
+
+
 export default function SkuCard({ product, showDiscontinued = false }) {
   const [expanded,  setExpanded]  = useState(false);
   const [transito,  setTransito]  = useState(null);
@@ -426,44 +441,58 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               </div>
             )}
             {!hwLoad && hwData && hwData.available && (() => {
-              const hist = hwData.history || [];
+              const histAll = hwData.history || [];
+              // Limitar la visualización únicamente a los últimos 24 meses históricos (sin alterar el entrenamiento backend)
+              const hist = histAll.length > 24 ? histAll.slice(histAll.length - 24) : histAll;
               const gaps = hwData.gap_estimates || [];
               const fc = hwData.forecast || [];
               const hwChartData = [];
 
-              // 1. Historia Real (Línea sólida)
+              // 1. Historia Real (Línea sólida verde)
               hist.forEach((item, idx) => {
                 const isLastHist = idx === hist.length - 1;
                 hwChartData.push({
-                  name: item.month,
+                  name: fmtMonthLabel(item.month),
                   'Sell Out Real': item.value,
                   'Estimación Atraso': (isLastHist && gaps.length > 0) ? item.value : null,
                   'Proyección Futura': (isLastHist && gaps.length === 0) ? item.value : null
                 });
               });
 
-              // 2. Meses de Desfase por Atraso de Datos (Línea tenue punteada 3 3)
+              // 2. Meses de Desfase / Mes actual (Línea tenue punteada gris 3 3)
               gaps.forEach((item, idx) => {
                 const isLastGap = idx === gaps.length - 1;
                 hwChartData.push({
-                  name: item.month,
+                  name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': item.value,
                   'Proyección Futura': isLastGap ? item.value : null
                 });
               });
 
-              // 3. Forecast Futuro 4 Meses (Línea principal punteada 5 5)
+              // 3. Forecast Futuro 4 Meses (Línea principal punteada naranja 5 5)
               fc.forEach((item) => {
                 hwChartData.push({
-                  name: item.month,
+                  name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': null,
                   'Proyección Futura': item.value
                 });
               });
 
-              const confLabel = hwData.confidence === 'high' ? 'Alta' : hwData.confidence === 'medium' ? 'Media' : 'Baja';
+              const renderConfidenceBadge = (conf) => {
+                if (conf === 'high' || conf === 'Alta') {
+                  return <strong style={{ color: '#1e8449' }}>Alta</strong>;
+                }
+                if (conf === 'medium' || conf === 'Media') {
+                  return <strong style={{ color: '#d35400' }}>Media</strong>;
+                }
+                return (
+                  <strong style={{ color: '#c0392b', background: '#FDEDEC', padding: '1px 6px', borderRadius: 3, border: '1px solid #FADBD8' }}>
+                    Baja
+                  </strong>
+                );
+              };
 
               return (
                 <>
@@ -487,20 +516,22 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
                     {hwData.data_status === 'lagging' && (
                       <div style={{ color: '#b35f1a', fontWeight: 'bold', marginBottom: 4 }}>
-                        ⚠️ Datos desactualizados: último mes cerrado observado {hwData.last_observed_month}
+                        ⚠️ Datos desactualizados: último mes cerrado observado {fmtMonthLabel(hwData.last_observed_month)}
                       </div>
                     )}
                     {hwData.method === 'holt_winters' ? (
                       <span>
-                        <b>Modelo:</b> Holt-Winters · <b>Histórico:</b> {hwData.historical_months} meses
-                        {hwData.validated
-                          ? ` · <b>WAPE histórico:</b> ${hwData.wape}%`
-                          : ' · <b>WAPE:</b> No validado'}
-                        · <b>Confianza:</b> {confLabel}
+                        <strong>Modelo:</strong> Holt-Winters · <strong>Histórico:</strong> {hwData.historical_months} meses
+                        {hwData.validated ? (
+                          <> · <strong>WAPE histórico:</strong> {hwData.wape}%</>
+                        ) : (
+                          <> · <strong>WAPE:</strong> No validado</>
+                        )}
+                        · <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
                       </span>
                     ) : (
                       <span>
-                        <b>Modelo:</b> Estacionalidad heredada · <b>Referencia:</b> {hwData.reference_level} — <i>{hwData.reference_value}</i> · <b>SKUs de referencia:</b> {hwData.reference_skus} · <b>Confianza:</b> {confLabel}
+                        <strong>Modelo:</strong> Estacionalidad heredada · <strong>Referencia:</strong> {hwData.reference_level} — <em>{hwData.reference_value}</em> · <strong>SKUs de referencia:</strong> {hwData.reference_skus} · <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
                       </span>
                     )}
                   </div>
