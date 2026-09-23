@@ -84,6 +84,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const [obsSaved,  setObsSaved]  = useState(false);
   const [hwData,    setHwData]    = useState(null);
   const [hwLoad,    setHwLoad]    = useState(false);
+  const [showFullHistory, setShowFullHistory] = useState(false);
 
   const alerta    = product.nivel_alerta || 'VERDE';
   const colorInfo = COLORES[alerta] || COLORES.VERDE;
@@ -442,15 +443,17 @@ export default function SkuCard({ product, showDiscontinued = false }) {
             )}
             {!hwLoad && hwData && hwData.available && (() => {
               const histAll = hwData.history || [];
-              // Limitar la visualización únicamente a los últimos 24 meses históricos (sin alterar el entrenamiento backend)
-              const hist = histAll.length > 24 ? histAll.slice(histAll.length - 24) : histAll;
+              // Limitar únicamente la visualización visual a los últimos 24 meses reales por defecto (sin recortar entrenamiento Holt-Winters)
+              const visibleHistory = showFullHistory
+                ? histAll
+                : (histAll.length > 24 ? histAll.slice(histAll.length - 24) : histAll);
               const gaps = hwData.gap_estimates || [];
               const fc = hwData.forecast || [];
               const hwChartData = [];
 
-              // 1. Historia Real (Línea sólida verde)
-              hist.forEach((item, idx) => {
-                const isLastHist = idx === hist.length - 1;
+              // 1. Sell Out Real (verde sólido)
+              visibleHistory.forEach((item, idx) => {
+                const isLastHist = idx === visibleHistory.length - 1;
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': item.value,
@@ -459,7 +462,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 });
               });
 
-              // 2. Meses de Desfase / Mes actual (Línea tenue punteada gris 3 3)
+              // 2. Gap / Mes actual (gris punteado)
               gaps.forEach((item, idx) => {
                 const isLastGap = idx === gaps.length - 1;
                 hwChartData.push({
@@ -470,7 +473,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 });
               });
 
-              // 3. Forecast Futuro 4 Meses (Línea principal punteada naranja 5 5)
+              // 3. Forecast Futuro 4 Meses (naranja punteado)
               fc.forEach((item) => {
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
@@ -482,13 +485,22 @@ export default function SkuCard({ product, showDiscontinued = false }) {
 
               const renderConfidenceBadge = (conf) => {
                 if (conf === 'high' || conf === 'Alta') {
-                  return <strong style={{ color: '#1e8449' }}>Alta</strong>;
+                  return <strong style={{ color: '#1d6b3e' }}>Alta</strong>;
                 }
                 if (conf === 'medium' || conf === 'Media') {
-                  return <strong style={{ color: '#d35400' }}>Media</strong>;
+                  return <strong style={{ color: '#b35f1a' }}>Media</strong>;
                 }
                 return (
-                  <strong style={{ color: '#c0392b', background: '#FDEDEC', padding: '1px 6px', borderRadius: 3, border: '1px solid #FADBD8' }}>
+                  <strong style={{
+                    color: '#c0392b',
+                    background: '#FDE8E8',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid #F8B4B4',
+                    fontWeight: 'bold',
+                    display: 'inline-block',
+                    marginLeft: '2px'
+                  }}>
                     Baja
                   </strong>
                 );
@@ -521,17 +533,34 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                     )}
                     {hwData.method === 'holt_winters' ? (
                       <span>
-                        <strong>Modelo:</strong> Holt-Winters · <strong>Histórico:</strong> {hwData.historical_months} meses
-                        {hwData.validated ? (
-                          <> · <strong>WAPE histórico:</strong> {hwData.wape}%</>
-                        ) : (
-                          <> · <strong>WAPE:</strong> No validado</>
+                        <strong>Modelo:</strong> Holt-Winters
+                        {' · '}
+                        <strong>Histórico:</strong> {hwData.historical_months} meses
+                        {histAll.length > 24 && (
+                          <button
+                            onClick={() => setShowFullHistory(!showFullHistory)}
+                            style={{ background: 'none', border: 'none', color: '#1a6aa8', fontSize: 10, cursor: 'pointer', textDecoration: 'underline', marginLeft: 4, marginRight: 4 }}
+                          >
+                            ({showFullHistory ? 'ver 24m' : `ver ${histAll.length}m`})
+                          </button>
                         )}
-                        · <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
+                        {hwData.validated ? (
+                          <span> · <strong>WAPE histórico:</strong> {hwData.wape}%</span>
+                        ) : (
+                          <span> · <strong>WAPE:</strong> No validado</span>
+                        )}
+                        {' · '}
+                        <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
                       </span>
                     ) : (
                       <span>
-                        <strong>Modelo:</strong> Estacionalidad heredada · <strong>Referencia:</strong> {hwData.reference_level} — <em>{hwData.reference_value}</em> · <strong>SKUs de referencia:</strong> {hwData.reference_skus} · <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
+                        <strong>Modelo:</strong> Estacionalidad heredada
+                        {' · '}
+                        <strong>Referencia:</strong> {hwData.reference_level} — <em>{hwData.reference_value}</em>
+                        {' · '}
+                        <strong>SKUs de referencia:</strong> {hwData.reference_skus}
+                        {' · '}
+                        <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
                       </span>
                     )}
                   </div>
