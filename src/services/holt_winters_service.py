@@ -20,12 +20,15 @@ REGLAS AUDITADAS Y FINALIZADAS:
 
 import logging
 import math
+import warnings
 from datetime import date
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+warnings.filterwarnings("ignore")
 
 log = logging.getLogger("holt_winters_service")
 logging.basicConfig(level=logging.INFO)
@@ -48,8 +51,15 @@ def clear_forecast_cache():
     _FORECAST_CACHE.clear()
 
 
+_CLEANED_SELLOUT_DF_CACHE = None
+
+
 def _get_cleaned_sellout_df() -> pd.DataFrame:
     """Lee sellout_historico_clean.csv y estandariza columnas."""
+    global _CLEANED_SELLOUT_DF_CACHE
+    if _CLEANED_SELLOUT_DF_CACHE is not None:
+        return _CLEANED_SELLOUT_DF_CACHE.copy()
+
     so_path = PROC_DIR / "sellout_historico_clean.csv"
     if not so_path.exists():
         log.warning("No se encontró sellout_historico_clean.csv en %s", so_path)
@@ -74,7 +84,8 @@ def _get_cleaned_sellout_df() -> pd.DataFrame:
     df["unidades_sellout"] = pd.to_numeric(df["unidades_sellout"], errors="coerce").fillna(0)
 
     df = df[(df["sku"] != "") & (df["año"] > 2000) & (df["mes_num"] > 0)]
-    return df
+    _CLEANED_SELLOUT_DF_CACHE = df
+    return df.copy()
 
 
 def _get_calendar_and_observed_periods(df: pd.DataFrame) -> tuple[pd.Period, pd.Period, pd.Period, str]:

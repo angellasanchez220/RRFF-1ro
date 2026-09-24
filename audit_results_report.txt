@@ -1,0 +1,86 @@
+================================================================================
+INICIANDO AUDITORÍA FINAL COMPARTIVA APPLES-TO-APPLES (ULTRA RÁPIDA)...
+================================================================================
+Auditando 178 SKUs con 8 procesos paralelos (Multiprocess)...
+
+Progreso auditoría: 25/178 SKUs procesados...
+Progreso auditoría: 50/178 SKUs procesados...
+Progreso auditoría: 75/178 SKUs procesados...
+Progreso auditoría: 100/178 SKUs procesados...
+Progreso auditoría: 125/178 SKUs procesados...
+Progreso auditoría: 150/178 SKUs procesados...
+Progreso auditoría: 175/178 SKUs procesados...
+Progreso auditoría: 178/178 SKUs procesados...
+
+================================================================================
+RESULTADOS DE LA AUDITORÍA FINAL COMPARTIVA APPLES-TO-APPLES
+================================================================================
+SKUs Totales en Catálogo                        : 178
+SKUs Evaluados out-of-sample (Multi-Horizonte)  : 77
+
+--------------------------------------------------------------------------------
+1. CLASIFICACIÓN Y COBERTURA DEL CATÁLOGO (178 SKUs)
+--------------------------------------------------------------------------------
+  * validated_auto_selection        : 119 SKUs ( 66.9%)
+  * available_unvalidated           :  59 SKUs ( 33.1%)
+  * family_seasonality              :   0 SKUs (  0.0%)
+  * intermittent_demand             :   0 SKUs (  0.0%)
+  * internal_gap_detected           :   0 SKUs (  0.0%)
+  * insufficient_history            :   0 SKUs (  0.0%)
+  * insufficient_family_data        :   0 SKUs (  0.0%)
+  * other                           :   0 SKUs (  0.0%)
+
+  * Cobertura Disponible Endpoint Antiguo (HW) : 77 SKUs
+  * Cobertura Disponible Endpoint Nuevo (Motor): 178 SKUs
+--------------------------------------------------------------------------------
+
+================================================================================
+2. RESUMEN GLOBAL DE PERFORMANCE (APPLES-TO-APPLES PROTOCOL)
+================================================================================
+WAPE Medio — Baseline Holt-Winters            : 83.14%
+WAPE Medio — Nuevo Motor de Selección         : 19.84%
+  --> Reducción global de error medio        : +63.30 pp
+--------------------------------------------------------------------------------
+WAPE Mediano — Baseline Holt-Winters          : 19.70%
+WAPE Mediano — Nuevo Motor de Selección       : 15.10%
+  --> Reducción global de error mediano      : +4.60 pp
+--------------------------------------------------------------------------------
+Portfolio WAPE (Ponderado por Volumen Real)   :
+  * Baseline Holt-Winters Portfolio WAPE      : 28.04%
+  * Nuevo Motor de Selección Portfolio WAPE   : 19.26%
+  --> Reducción de error en volumen portfolio: +8.78 pp
+================================================================================
+
+--------------------------------------------------------------------------------
+3. WAPE POR HORIZONTE DE PREDICCIÓN (h+1 A h+4)
+--------------------------------------------------------------------------------
+  * h+1  : Baseline HW  29.26% vs Nuevo Motor  19.30% (Diferencia:  +9.96 pp)
+  * h+2  : Baseline HW  28.06% vs Nuevo Motor  19.19% (Diferencia:  +8.87 pp)
+  * h+3  : Baseline HW  27.53% vs Nuevo Motor  19.23% (Diferencia:  +8.30 pp)
+  * h+4  : Baseline HW  27.32% vs Nuevo Motor  19.31% (Diferencia:  +8.01 pp)
+  * Overall: Baseline HW  28.04% vs Nuevo Motor  19.26% (Diferencia:  +8.78 pp)
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+4. COMPARACIÓN HEAD-TO-HEAD SKU POR SKU
+--------------------------------------------------------------------------------
+  * SKUs donde Nuevo Motor MEJORA el WAPE : 63 (81.8%)
+  * SKUs donde EMPATAN desempeño          : 10 (13.0%)
+  * SKUs donde Baseline HW era superior   : 4 (5.2%)
+--------------------------------------------------------------------------------
+
+================================================================================
+5. AUDITORÍA DETALLADA DE LOS 4 SKUS DONDE BASELINE HW ERA SUPERIOR
+================================================================================
+  * Degradación <= 1.0 pp (Regla de Tolerancia de Simplicidad) : 4 SKUs
+  * Degradación > 1.0 pp y <= 5.0 pp                          : 0 SKUs
+  * Degradación > 5.0 pp                                        : 0 SKUs
+
+SKU          | WAPE Base  | WAPE Nuevo | Delta (pp) | Modelo Seleccionado      | Ventana 
+----------------------------------------------------------------------------------------
+6330843      |      8.60% |      9.10% |     +0.50 pp | Seasonal Naïve           | full    
+6689795      |     12.90% |     13.40% |     +0.50 pp | Naïve reciente           | full    
+552363X      |     13.10% |     13.40% |     +0.30 pp | Naïve reciente           | full    
+7461011      |     22.30% |     22.60% |     +0.30 pp | Naïve reciente           | full    
+================================================================================
+

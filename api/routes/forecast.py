@@ -8,13 +8,14 @@ Totalmente desacoplado de la lógica S&OP y sugerencia de compra.
 from fastapi import APIRouter, HTTPException
 from api.db import engine
 from src.services.holt_winters_service import get_holt_winters_forecast
+from src.services.forecast_selection_service import get_selected_forecast
 
 router = APIRouter()
 
 @router.get("/forecast-holtwinters/{sku}")
-def get_forecast(sku: str):
+def get_forecast_holtwinters(sku: str):
     """
-    Obtiene la proyección analítica de Sell Out usando Holt-Winters o Estacionalidad de Familia.
+    Obtiene la proyección analítica de Sell Out usando Holt-Winters o Estacionalidad de Familia (Baseline).
     """
     if not sku or not sku.strip():
         raise HTTPException(status_code=400, detail="SKU no proporcionado")
@@ -26,3 +27,21 @@ def get_forecast(sku: str):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando forecast Holt-Winters: {str(exc)}")
+
+
+@router.get("/forecast/{sku}")
+def get_forecast_selected(sku: str):
+    """
+    Obtiene la proyección analítica de Sell Out con el nuevo Motor Autónomo de Selección Dinámica.
+    """
+    if not sku or not sku.strip():
+        raise HTTPException(status_code=400, detail="SKU no proporcionado")
+    
+    try:
+        res = get_selected_forecast(sku.strip(), engine=engine)
+        return res
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando forecast dinámico: {str(exc)}")
+

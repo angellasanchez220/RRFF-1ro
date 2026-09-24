@@ -85,6 +85,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
   const [hwData,    setHwData]    = useState(null);
   const [hwLoad,    setHwLoad]    = useState(false);
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [showHorizonDetails, setShowHorizonDetails] = useState(false);
 
   const alerta    = product.nivel_alerta || 'VERDE';
   const colorInfo = COLORES[alerta] || COLORES.VERDE;
@@ -428,10 +429,10 @@ export default function SkuCard({ product, showDiscontinued = false }) {
             </div>
           )}
 
-          {/* GRÁFICO SEPARADO: PROYECCIÓN SELL OUT — HOLT-WINTERS */}
+          {/* GRÁFICO SEPARADO: PROYECCIÓN SELL OUT */}
           <div className="exp-block">
-            <div className="exp-title">📈 PROYECCIÓN SELL OUT — HOLT-WINTERS</div>
-            {hwLoad && <div className="exp-loading">Calculando proyección Holt-Winters…</div>}
+            <div className="exp-title">📈 PROYECCIÓN SELL OUT</div>
+            {hwLoad && <div className="exp-loading">Calculando proyección sell-out…</div>}
             {!hwLoad && hwData && !hwData.available && (
               <div className="exp-empty" style={{ fontStyle: 'italic', color: '#666', padding: '14px', textAlign: 'center', background: '#FDFDFD', borderRadius: 4, border: '1px dashed #DDD' }}>
                 {hwData.reason === 'internal_gap_detected'
@@ -443,9 +444,9 @@ export default function SkuCard({ product, showDiscontinued = false }) {
             )}
             {!hwLoad && hwData && hwData.available && (() => {
               const histAll = hwData.history || [];
-              // Limitar únicamente la visualización visual a los últimos 24 meses reales por defecto (sin recortar entrenamiento Holt-Winters)
+              // Limitar únicamente la visualización visual: 24m por defecto, máximo 36m al expandir (o todo el disponible si < 36m)
               const visibleHistory = showFullHistory
-                ? histAll
+                ? (histAll.length > 36 ? histAll.slice(histAll.length - 36) : histAll)
                 : (histAll.length > 24 ? histAll.slice(histAll.length - 24) : histAll);
               const gaps = hwData.gap_estimates || [];
               const fc = hwData.forecast || [];
@@ -483,11 +484,48 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 });
               });
 
-              const renderConfidenceBadge = (conf) => {
+              const MODEL_NAME_MAP = {
+                holt_winters: "Holt-Winters",
+                seasonal_naive: "Patrón mismo mes año anterior",
+                naive_recent: "Último período",
+                recent_naive: "Último período",
+                moving_average: "Promedio móvil",
+                weighted_moving_average: "Promedio móvil ponderado",
+                holt: "Tendencia suavizada",
+                holt_ets_non_seasonal: "Tendencia suavizada",
+                simple_exponential_smoothing: "Suavizamiento exponencial",
+                recent_trend: "Tendencia reciente",
+                sarima: "SARIMA",
+                sarima_univariate: "SARIMA",
+                family_seasonality: "Estacionalidad de familia"
+              };
+
+              const modelLabelFriendly = MODEL_NAME_MAP[hwData.method] || MODEL_NAME_MAP[hwData.model_label] || hwData.model_label || hwData.method || 'Modelo no especificado';
+
+              const historicalAvailable = hwData.historical_months_available || hwData.historical_months || 0;
+              const historyUsedText = (!hwData.history_window_months || hwData.history_window_months === 'full' || hwData.history_window_months >= historicalAvailable)
+                ? 'Completo'
+                : `${hwData.history_window_months} meses`;
+
+              const isValidated = hwData.validated === true;
+              const overallWape = hwData.overall_wape != null ? hwData.overall_wape : (hwData.wape != null ? hwData.wape : null);
+              const wapeHorizon = hwData.wape_by_horizon || null;
+              const hasHorizonData = wapeHorizon && (wapeHorizon.h1 != null || wapeHorizon.h2 != null || wapeHorizon.h3 != null || wapeHorizon.h4 != null);
+
+              const renderConfidenceBadge = (conf, valid) => {
+                let displayConf = conf;
                 if (conf === 'high' || conf === 'Alta') {
+                  displayConf = valid ? 'Alta' : 'Media';
+                } else if (conf === 'medium' || conf === 'Media') {
+                  displayConf = 'Media';
+                } else {
+                  displayConf = 'Baja';
+                }
+
+                if (displayConf === 'Alta') {
                   return <strong style={{ color: '#1d6b3e' }}>Alta</strong>;
                 }
-                if (conf === 'medium' || conf === 'Media') {
+                if (displayConf === 'Media') {
                   return <strong style={{ color: '#b35f1a' }}>Media</strong>;
                 }
                 return (
@@ -531,37 +569,55 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                         ⚠️ Datos desactualizados: último mes cerrado observado {fmtMonthLabel(hwData.last_observed_month)}
                       </div>
                     )}
-                    {hwData.method === 'holt_winters' ? (
-                      <span>
-                        <strong>Modelo:</strong> Holt-Winters
-                        {' · '}
-                        <strong>Histórico:</strong> {hwData.historical_months} meses
-                        {histAll.length > 24 && (
-                          <button
-                            onClick={() => setShowFullHistory(!showFullHistory)}
-                            style={{ background: 'none', border: 'none', color: '#1a6aa8', fontSize: 10, cursor: 'pointer', textDecoration: 'underline', marginLeft: 4, marginRight: 4 }}
-                          >
-                            ({showFullHistory ? 'ver 24m' : `ver ${histAll.length}m`})
-                          </button>
-                        )}
-                        {hwData.validated ? (
-                          <span> · <strong>WAPE histórico:</strong> {hwData.wape}%</span>
-                        ) : (
-                          <span> · <strong>WAPE:</strong> No validado</span>
-                        )}
-                        {' · '}
-                        <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
-                      </span>
-                    ) : (
-                      <span>
-                        <strong>Modelo:</strong> Estacionalidad heredada
-                        {' · '}
-                        <strong>Referencia:</strong> {hwData.reference_level} — <em>{hwData.reference_value}</em>
-                        {' · '}
-                        <strong>SKUs de referencia:</strong> {hwData.reference_skus}
-                        {' · '}
-                        <strong>Confianza:</strong> {renderConfidenceBadge(hwData.confidence)}
-                      </span>
+
+                    <span>
+                      <strong>Modelo seleccionado:</strong> {modelLabelFriendly}
+                      {' · '}
+                      <strong>Histórico utilizado:</strong> {historyUsedText}
+                      {histAll.length > 24 && (
+                        <button
+                          onClick={() => setShowFullHistory(!showFullHistory)}
+                          style={{ background: 'none', border: 'none', color: '#1a6aa8', fontSize: 10, cursor: 'pointer', textDecoration: 'underline', marginLeft: 4, marginRight: 4 }}
+                        >
+                          ({showFullHistory ? 'ver últimos 24 meses' : (histAll.length >= 36 ? 'ver 36 meses' : `ver ${histAll.length} meses`)})
+                        </button>
+                      )}
+                      {' · '}
+                      <strong>Histórico disponible:</strong> {historicalAvailable} meses
+                      {' · '}
+                      {overallWape != null ? (
+                        <span>
+                          <strong>WAPE histórico:</strong> {overallWape}%
+                          {hasHorizonData && (
+                            <button
+                              onClick={() => setShowHorizonDetails(!showHorizonDetails)}
+                              style={{ background: 'none', border: 'none', color: '#1a6aa8', fontSize: 11, cursor: 'pointer', marginLeft: 3, textDecoration: 'underline' }}
+                              title="Ver WAPE por horizonte"
+                            >
+                              ℹ️
+                            </button>
+                          )}
+                        </span>
+                      ) : (
+                        <span><strong>WAPE histórico:</strong> No validado</span>
+                      )}
+                      {' · '}
+                      <strong>Confiabilidad histórica:</strong> {renderConfidenceBadge(hwData.confidence, isValidated)}
+                      {!isValidated && (
+                        <span style={{ display: 'inline-block', marginLeft: 6, color: '#d97706', fontSize: 10, fontWeight: '500' }}>
+                          (Proyección con historial limitado)
+                        </span>
+                      )}
+                    </span>
+
+                    {showHorizonDetails && hasHorizonData && (
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed #DDD', fontSize: 10, color: '#555', display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                        <span><strong>Error histórico por horizonte:</strong></span>
+                        {wapeHorizon.h1 != null && <span>+1 mes: <strong>{wapeHorizon.h1}%</strong></span>}
+                        {wapeHorizon.h2 != null && <span>+2 meses: <strong>{wapeHorizon.h2}%</strong></span>}
+                        {wapeHorizon.h3 != null && <span>+3 meses: <strong>{wapeHorizon.h3}%</strong></span>}
+                        {wapeHorizon.h4 != null && <span>+4 meses: <strong>{wapeHorizon.h4}%</strong></span>}
+                      </div>
                     )}
                   </div>
                 </>
