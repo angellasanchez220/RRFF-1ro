@@ -254,11 +254,11 @@ export default function SkuDetailModal({ skuData, onClose }) {
           </div>
         )}
 
-        {/* Familia de Reemplazo */}
+        {/* Hermanos de Reemplazo */}
         {familia_skus && familia_skus.length > 1 && (
           <div style={{ padding: '20px', borderTop: '1px solid #eee', background: '#fff' }}>
             <h4 style={{ margin: '0 0 10px 0', color: '#1d6b3e', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📦 Familia de SKU (Reemplazo)
+              📦 Hermanos de SKU (Reemplazo)
             </h4>
             <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
@@ -289,7 +289,7 @@ export default function SkuDetailModal({ skuData, onClose }) {
             
             <div style={{ marginTop: '15px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, background: '#e8f5e9', padding: '10px 15px', borderRadius: '6px', border: '1px solid #c8e6c9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.95rem', color: '#2e7d32', fontWeight: 'bold' }}>Stock bruto familia:</span>
+                <span style={{ fontSize: '0.95rem', color: '#2e7d32', fontWeight: 'bold' }}>Stock bruto hermanos:</span>
                 <span style={{ fontSize: '1.2rem', color: '#1b5e20', fontWeight: '900' }}>
                   {Number(stock_bruto_familia || 0).toLocaleString('es-CL')} uds
                 </span>

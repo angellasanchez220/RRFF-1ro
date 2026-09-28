@@ -167,7 +167,7 @@ export default function Compras() {
           'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
           'Es Maquilable?': esMaquilable,
-          'Familia (Componentes)': familiaStr,
+          'Hermanos (Componentes)': familiaStr,
           'Stock Físico': s.stock_act || 0,
           'Ventas (4 sem)': s.total_4_sem_verificado || 0,
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
@@ -190,7 +190,7 @@ export default function Compras() {
         'Stock Físico': s.stock_act || 0,
         'Ventas (4 sem)': s.total_4_sem_verificado || 0,
         'Observación Original': s.observacion || '',
-        'Detalle Familia': familiaStr,
+        'Detalle Hermanos': familiaStr,
         'Extracción (Uds)': s.extraido || '?'
       };
     });

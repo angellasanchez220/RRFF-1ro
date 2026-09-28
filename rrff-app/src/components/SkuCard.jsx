@@ -185,7 +185,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
         <span className="ch-desc">{product.nombre_producto || '—'}</span>
         {condicion && <span className={`ch-badge ${esNuevo ? 'nuevo' : ''}`}>{condicion}</span>}
         {esNuevo && <span className="ch-badge nuevo">PRODUCTO NUEVO</span>}
-        {isMaquilable && <span className="ch-badge maquila-badge" title={`Familia: ${familyName}`}>🏭 Maquila</span>}
+        {isMaquilable && <span className="ch-badge maquila-badge" title={`Hermanos: ${familyName}`}>🏭 Maquila</span>}
         <span className="ch-item"><b>Formato</b> {product.formato || '—'}</span>
         <span className="ch-item"><b>U/E</b> {ueDisplay}</span>
         <span className="expand-chevron">{expanded ? '▾' : '▸'}</span>
@@ -297,7 +297,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
           <div className="mb-val green">{fmt(sug)} <small>unidades</small></div>
           <div className="mb-sub">
             {usesFamilyStockForPurchase
-              ? `Calculada con ${fmt(stockUsedForPurchase)} uds de la familia`
+              ? `Calculada con ${fmt(stockUsedForPurchase)} uds de los hermanos`
               : (ump > 0 ? `${Math.ceil(sug / ump)} cajas` : '')}
           </div>
           {product.descuento_aplicado_por_decrecimiento && product.mom_sellout_pct != null && (
@@ -344,24 +344,24 @@ export default function SkuCard({ product, showDiscontinued = false }) {
       {expanded && (
         <div className="expanded-section">
 
-          {/* FAMILIA ACTIVA Y STOCK USADO PARA LA COMPRA */}
+          {/* HERMANOS ACTIVOS Y STOCK USADO PARA LA COMPRA */}
           {isFamilyMember && (
             <div className="exp-block family-stock-summary">
               <div className="family-stock-header">
-                <span className="family-stock-title">🏭 Familia activa: {familyName}</span>
+                <span className="family-stock-title">🏭 Hermanos activos: {familyName}</span>
                 <span className="family-stock-total">
-                  Stock total familia: <strong>{fmt(familyStock)} unidades</strong>
+                  Stock total hermanos: <strong>{fmt(familyStock)} unidades</strong>
                 </span>
               </div>
               <div className="family-stock-calculation-note">
                 {usesFamilyStockForPurchase ? (
                   <>
                     Para calcular la sugerencia, el stock individual de <b>{fmt(stockFemaco)} uds</b>
-                    {' '}se reemplaza por el total familiar de <b>{fmt(stockUsedForPurchase)} uds</b>
+                    {' '}se reemplaza por el total de hermanos de <b>{fmt(stockUsedForPurchase)} uds</b>
                     {' '}({fmt(familyAdditionalStock)} uds aportadas por los otros integrantes).
                   </>
                 ) : (
-                  <>La familia está identificada, pero falta recalcular la planificación para aplicar su stock a la sugerencia.</>
+                  <>Los hermanos están identificados, pero falta recalcular la planificación para aplicar su stock a la sugerencia.</>
                 )}
               </div>
               <div className="family-stock-members">
@@ -392,14 +392,14 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                   );
                 })}
                 
-                {/* Total Familia Bottom Center */}
+                 {/* Total Hermanos Bottom Center */}
                 <div className="family-stock-member" style={{justifyContent: 'center', fontWeight: 'bold', borderTop: '2px solid #ccc', marginTop: '10px', paddingTop: '10px'}}>
                    <span className="family-member-stock" style={{ textAlign: 'center', width: '100%' }}>
                      {(() => {
                        const transformableSkus = familySkus.filter(m => !m.no_transformable);
                        const totalVts = transformableSkus.reduce((sum, m) => sum + Number(m.ritmo_mensual || 0), 0);
                        const duracion = totalVts > 0 ? (Number(familyStock) / totalVts).toFixed(1) + ' m' : '∞';
-                       return `Total Familia: ${fmt(familyStock)} uds | Vts: ${fmt(totalVts)} | Dur: ${duracion}`;
+                       return `Total Hermanos: ${fmt(familyStock)} uds | Vts: ${fmt(totalVts)} | Dur: ${duracion}`;
                      })()}
                    </span>
                 </div>
@@ -474,7 +474,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 });
               });
 
-              // 3. Forecast Futuro 4 Meses (naranja punteado)
+              // 3. Forecast Futuro 4 Meses (azul punteado)
               fc.forEach((item) => {
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
@@ -497,7 +497,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                 recent_trend: "Tendencia reciente",
                 sarima: "SARIMA",
                 sarima_univariate: "SARIMA",
-                family_seasonality: "Estacionalidad de familia"
+                family_seasonality: "Estacionalidad de hermanos"
               };
 
               const modelLabelFriendly = MODEL_NAME_MAP[hwData.method] || MODEL_NAME_MAP[hwData.model_label] || hwData.model_label || hwData.method || 'Modelo no especificado';
@@ -559,7 +559,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                         {gaps.length > 0 && (
                           <Line type="monotone" dataKey="Estimación Atraso" stroke="#95A5A6" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 2 }} />
                         )}
-                        <Line type="monotone" dataKey="Proyección Futura" stroke="#E67E22" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Proyección Futura" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
@@ -680,7 +680,7 @@ export default function SkuCard({ product, showDiscontinued = false }) {
               </div>
               <div className="sd-row" style={{ color: '#E65100' }}>
                 <span>
-                  6. {usesFamilyStockForPurchase ? 'Stock total de familia descontado' : 'Stock actual físico descontado'}
+                  6. {usesFamilyStockForPurchase ? 'Stock total de hermanos descontado' : 'Stock actual físico descontado'}
                   {usesFamilyStockForPurchase && <small> (stock individual {fmt(stockFemaco)} + otros {fmt(familyAdditionalStock)})</small>}
                 </span>
                 <span>- {fmt(stockUsedForPurchase)} unidades</span>

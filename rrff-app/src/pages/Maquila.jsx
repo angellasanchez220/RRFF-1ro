@@ -148,7 +148,7 @@ export default function FamiliasReemplazo() {
               style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'recetas' ? '#1976d2' : '#888', borderBottom: activeTab === 'recetas' ? '3px solid #1976d2' : 'none' }}
               onClick={() => setActiveTab('recetas')}
             >
-              Familias de Reemplazo
+              Hermanos de Reemplazo
             </h2>
             <h2 
               style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'ordenes' ? '#1976d2' : '#888', borderBottom: activeTab === 'ordenes' ? '3px solid #1976d2' : 'none' }}
@@ -163,7 +163,7 @@ export default function FamiliasReemplazo() {
           {activeTab === 'recetas' && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h1 style={{ margin: 0 }}>Familias</h1>
+                <h1 style={{ margin: 0 }}>Hermanos</h1>
                 {view === 'list' && (
               <button 
                 className="btn-primary" 
@@ -174,7 +174,7 @@ export default function FamiliasReemplazo() {
                   setView('form');
                 }}
               >
-                + Nueva Familia
+                + Nuevos Hermanos
               </button>
             )}
             {view !== 'list' && (
@@ -205,7 +205,7 @@ export default function FamiliasReemplazo() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #eee' }}>
-                    <th style={{ padding: '10px' }}>Nombre Familia</th>
+                    <th style={{ padding: '10px' }}>Nombre Hermanos</th>
                     <th style={{ padding: '10px' }}>Miembros</th>
                     <th style={{ padding: '10px' }}>Estado</th>
                     <th style={{ padding: '10px' }}>Acciones</th>
@@ -244,17 +244,17 @@ export default function FamiliasReemplazo() {
           {/* ── FORM VIEW ── */}
           {view === 'form' && (
             <form onSubmit={handleSaveForm} className="card" style={{ padding: '20px' }}>
-              <h2>{currentFamiliaId ? 'Editar Familia' : 'Nueva Familia de Reemplazo'}</h2>
+              <h2>{currentFamiliaId ? 'Editar Hermanos' : 'Nuevos Hermanos de Reemplazo'}</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Nombre / Descripción de la Familia *</label>
+                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px' }}>Nombre / Descripción de Hermanos *</label>
                   <input 
                     type="text" 
                     value={formData.nombre_familia} 
                     onChange={e => setFormData({...formData, nombre_familia: e.target.value})}
                     style={{ width: '100%', padding: '8px' }}
-                    placeholder="Ej. Familia Tornillo X"
+                    placeholder="Ej. Hermanos Tornillo X"
                     required 
                   />
                 </div>
@@ -265,7 +265,7 @@ export default function FamiliasReemplazo() {
                       checked={formData.activa} 
                       onChange={e => setFormData({...formData, activa: e.target.checked})} 
                     />
-                    Familia Activa
+                    Hermanos Activos
                   </label>
                 </div>
               </div>
@@ -324,7 +324,7 @@ export default function FamiliasReemplazo() {
 
               <div>
                 <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '10px 20px', fontSize: '1.1em' }}>
-                  {loading ? 'Guardando...' : 'Guardar Familia'}
+                  {loading ? 'Guardando...' : 'Guardar Hermanos'}
                 </button>
               </div>
             </form>
