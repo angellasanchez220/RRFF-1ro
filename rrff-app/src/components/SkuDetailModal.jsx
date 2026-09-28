@@ -316,20 +316,61 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                       </tr>
                       {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
                         <tr style={{ background: '#f9f9f9' }}>
-                          <td colSpan={5} style={{ padding: '10px 15px', borderBottom: '1px solid #ddd', borderLeft: '4px solid #2196f3' }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>Dashboard Básico: {fullSiblingData.sku}</div>
-                            <div style={{ height: 140 }}>
-                              <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
-                                  <XAxis dataKey="name" tick={{ fontSize: 9 }} />
-                                  <YAxis tick={{ fontSize: 9 }} />
-                                  <Tooltip content={<CustomTooltip />} />
-                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                                  <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
-                                  <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
-                                </ComposedChart>
-                              </ResponsiveContainer>
+                          <td colSpan={5} style={{ padding: '15px', borderBottom: '1px solid #ddd', borderLeft: '4px solid #2196f3' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
+                            <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                              <div style={{ flex: '1 1 300px', height: 160 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                                    <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                                    <YAxis tick={{ fontSize: 9 }} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                    <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
+                                    <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
+                                  </ComposedChart>
+                                </ResponsiveContainer>
+                              </div>
+                              
+                              {fullSiblingData.calendario && (
+                                <div style={{ flex: '2 1 500px', overflowX: 'auto' }}>
+                                  <div className="cal-grid" style={{ minWidth: '600px', display: 'flex', border: '1px solid #EBEBEB', borderRadius: '4px', background: '#fff' }}>
+                                    <div className="cal-label-col" style={{ display: 'flex', flexDirection: 'column', padding: '8px', background: '#f5f5f5', borderRight: '1px solid #EBEBEB', fontSize: '0.75rem', fontWeight: 'bold', justifyContent: 'space-around' }}>
+                                      <span className="lbl-so">Sell Out</span>
+                                      <span className="lbl-si">Sell In</span>
+                                      <span className="lbl-gr">Crecimiento</span>
+                                    </div>
+                                    {fullSiblingData.calendario.map((m, i) => {
+                                      let growth = '-';
+                                      let gClass = 'zero';
+                                      if (m.growth_pct != null) {
+                                        const diff = m.growth_pct;
+                                        if (diff > 0) {
+                                          growth = `↑ ${diff.toFixed(0)}%`;
+                                          gClass = 'pos';
+                                        } else if (diff < 0) {
+                                          growth = `↓ ${Math.abs(diff).toFixed(0)}%`;
+                                          gClass = 'neg';
+                                        } else {
+                                          growth = '0%';
+                                        }
+                                      }
+                                      if (m.hist_val != null && m.hist_val > 0) {
+                                        growth += ` (${m.hist_val.toLocaleString('es-CL')})`;
+                                      }
+                                      return (
+                                      <div className="cal-col" key={i} style={{ flex: 1, borderRight: i < 11 ? '1px solid #EBEBEB' : 'none', padding: '4px', textAlign: 'center', fontSize: '0.75rem' }}>
+                                        <div className={`cal-mes`} style={{ fontWeight: 'bold', borderBottom: '1px solid #eee', marginBottom: '4px', paddingBottom: '2px', color: m.es_real ? '#1d6b3e' : '#666' }}>{m.label}</div>
+                                        <div className={`cal-so`} style={{ color: m.sell_out === 0 ? '#ccc' : '#4caf50', fontWeight: 'bold' }}>{m.sell_out == null ? '—' : Number(m.sell_out).toLocaleString('es-CL')}</div>
+                                        <div className={`cal-si`} style={{ color: m.sell_in === 0 ? '#ccc' : '#2196f3', fontWeight: 'bold' }}>{m.sell_in == null ? '—' : Number(m.sell_in).toLocaleString('es-CL')}</div>
+                                        <div className={`cal-growth`} style={{ color: gClass === 'pos' ? '#2e7d32' : gClass === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growth}</div>
+                                      </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>

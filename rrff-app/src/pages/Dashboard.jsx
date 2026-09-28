@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [fNiveles, setFNiveles] = useState(new Set());
   const [fMaquila, setFMaquila] = useState('');
   const [fEstado,  setFEstado]  = useState('ACTIVOS');
+  const [fCrecimiento, setFCrecimiento] = useState('ALL');
 
   const loadData = async () => {
     setLoading(true); setError('');
@@ -80,10 +81,11 @@ export default function Dashboard() {
   function clearFilters() {
     setFCat(''); setFSub(''); setFFmt(''); setFSku('');
     setFSearch(''); setFNiveles(new Set()); setFMaquila(''); setFEstado('ACTIVOS');
+    setFCrecimiento('ALL');
   }
 
   const hasFilters = !!(fCat || fSub || fFmt || fSku || fSearch || fMaquila ||
-    fEstado !== 'ACTIVOS' || fNiveles.size > 0);
+    fEstado !== 'ACTIVOS' || fNiveles.size > 0 || fCrecimiento !== 'ALL');
 
   const estadoData = useMemo(() => {
     if (fEstado === 'TODOS') return allData;
@@ -136,9 +138,27 @@ export default function Dashboard() {
       if (fMaquila === 'NO' && esMaquila) return false;
       if (search && !`${d.sku} ${d.nombre_producto} ${d.codigo_femaco}`.toLowerCase().includes(search)) return false;
       if (fNiveles.size > 0 && !fNiveles.has(d.nivel_alerta)) return false;
+      
+      if (fCrecimiento !== 'ALL') {
+        const cal = d.calendario || [];
+        const realMonths = cal.filter(m => m.es_real && m.growth_pct != null).slice(-2);
+        if (fCrecimiento === 'NEG_2M') {
+          if (realMonths.length < 2 || realMonths.some(m => m.growth_pct >= 0)) return false;
+        }
+        if (fCrecimiento === 'HIGH_50_2M') {
+          if (realMonths.length < 2 || realMonths.some(m => m.growth_pct <= 50)) return false;
+        }
+        if (fCrecimiento === 'ANOMALIES') {
+          if (realMonths.length < 2) return false;
+          const isNeg = realMonths.every(m => m.growth_pct < 0);
+          const isHigh = realMonths.every(m => m.growth_pct > 50);
+          if (!isNeg && !isHigh) return false;
+        }
+      }
+
       return true;
     });
-  }, [estadoData, fCat, fSub, fFmt, fSku, fSearch, fMaquila, fNiveles]);
+  }, [estadoData, fCat, fSub, fFmt, fSku, fSearch, fMaquila, fNiveles, fCrecimiento]);
 
   const alertCounts = useMemo(() => {
     const counts = {};
@@ -210,6 +230,14 @@ export default function Dashboard() {
               <option value="ACTIVOS">Solo vigentes</option>
               <option value="DESCONTINUADOS">Solo descontinuados</option>
               <option value="TODOS">Vigentes y descontinuados</option>
+            </select>
+
+            <label>Crecimiento (Últimos 2 meses reales)</label>
+            <select value={fCrecimiento} onChange={e => setFCrecimiento(e.target.value)}>
+              <option value="ALL">Todos</option>
+              <option value="ANOMALIES">Anomalías (&lt;0 o &gt;50%)</option>
+              <option value="NEG_2M">Crecimiento Negativo (2M)</option>
+              <option value="HIGH_50_2M">Crecimiento Alto (&gt;50% 2M)</option>
             </select>
           </div>
         </div>
