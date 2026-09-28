@@ -74,8 +74,9 @@ function fmtMonthLabel(monthStr) {
 }
 
 
-export default function SkuCard({ product, showDiscontinued = false }) {
+export default function SkuCard({ product, showDiscontinued = false, allProducts = [] }) {
   const [expanded,  setExpanded]  = useState(false);
+  const [expandedSiblingSku, setExpandedSiblingSku] = useState(null);
   const [transito,  setTransito]  = useState(null);
   const [trLoad,    setTrLoad]    = useState(false);
   const [obs,       setObs]       = useState(null);
@@ -371,23 +372,55 @@ export default function SkuCard({ product, showDiscontinued = false }) {
                   const durMeses = ritmo > 0 ? stockTotal / ritmo : 999;
                   const durStr = durMeses >= 999 ? '∞' : `${durMeses.toFixed(1)} m`;
 
+                  const isExpanded = expandedSiblingSku === (member.codigo_femaco || member.sku);
+                  const fullSiblingData = isExpanded ? allProducts.find(p => String(p.codigo_femaco) === String(member.codigo_femaco) || String(p.sku) === String(member.sku)) : null;
+
                   return (
-                    <div
-                      className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
-                      key={member.codigo_femaco || member.sku}
-                      title={member.nombre_producto || member.sku}
-                    >
-                      <span className="family-member-id">
-                        {String(member.codigo_femaco) === String(product.codigo_femaco) && <span aria-label="Producto actual">● </span>}
-                        CÓD. {member.codigo_femaco || '—'}
-                      </span>
-                      <span className="family-member-stock" style={{ minWidth: 200, textAlign: 'right' }}>
-                        {fmt(member.stock_act)} uds | Vts: {fmt(ritmo)} | Dur: {durStr}
-                      </span>
-                      <span className="family-member-name">
-                        SKU {member.sku || '—'} · {member.nombre_producto || 'Sin nombre'}
-                      </span>
-                      {member.no_transformable && <span className="family-member-locked">No transformable</span>}
+                    <div key={member.codigo_femaco || member.sku}>
+                      <div
+                        className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
+                        title={member.nombre_producto || member.sku}
+                        onClick={() => {
+                          setExpandedSiblingSku(isExpanded ? null : (member.codigo_femaco || member.sku));
+                        }}
+                        style={{ cursor: 'pointer', border: isExpanded ? '2px solid #2196f3' : '' }}
+                      >
+                        <span className="family-member-id">
+                          {String(member.codigo_femaco) === String(product.codigo_femaco) && <span aria-label="Producto actual">● </span>}
+                          CÓD. {member.codigo_femaco || '—'}
+                        </span>
+                        <span className="family-member-stock" style={{ minWidth: 200, textAlign: 'right' }}>
+                          {fmt(member.stock_act)} uds | Vts: {fmt(ritmo)} | Dur: {durStr}
+                        </span>
+                        <span className="family-member-name">
+                          SKU {member.sku || '—'} · {member.nombre_producto || 'Sin nombre'}
+                        </span>
+                        {member.no_transformable && <span className="family-member-locked">No transformable</span>}
+                      </div>
+
+                      {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
+                        <div style={{ padding: '10px 15px', background: '#f5f5f5', borderLeft: '4px solid #2196f3', marginBottom: '10px', marginLeft: '10px', borderRadius: '0 4px 4px 0' }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
+                          <div style={{ height: 140 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                                <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                                <YAxis tick={{ fontSize: 9 }} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
+                                <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                      {isExpanded && (!fullSiblingData || !fullSiblingData.chart_24m) && (
+                        <div style={{ padding: '10px', background: '#fff3e0', color: '#e65100', fontSize: '0.8rem', marginLeft: '10px', marginBottom: '10px', borderRadius: 4 }}>
+                          ⚠️ Datos del gráfico no encontrados para este hermano.
+                        </div>
+                      )}
                     </div>
                   );
                 })}

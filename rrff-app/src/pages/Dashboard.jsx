@@ -326,6 +326,7 @@ export default function Dashboard() {
             key={p.sku || p.codigo_femaco}
             product={p}
             showDiscontinued={fEstado !== 'ACTIVOS'}
+            allProducts={allData}
           />
         ))}
       </main>

@@ -83,9 +83,12 @@ def _get_mes_map():
 
     result = []
     for mes_num, nombre, abrev in MESES:
-        if mes_num <= mes_actual:
-            # Meses pasados y en curso del año actual -> en BD tienen año yr+1, etiqueta yr
+        if mes_num < mes_actual:
+            # Meses pasados del año actual -> en BD tienen año yr+1, etiqueta yr
             result.append((mes_num, nombre, abrev, yr + 1, yr))
+        elif mes_num == mes_actual:
+            # Mes actual -> en BD tiene año yr, etiqueta yr
+            result.append((mes_num, nombre, abrev, yr, yr))
         else:
             # Meses del año pasado -> en BD tienen año yr, etiqueta yr-1
             result.append((mes_num, nombre, abrev, yr, yr - 1))

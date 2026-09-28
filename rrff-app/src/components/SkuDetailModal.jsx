@@ -1,6 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
+import {
+  ResponsiveContainer, ComposedChart, Line, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend
+} from 'recharts';
 
-export default function SkuDetailModal({ skuData, onClose }) {
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div style={{ background: '#fff', border: '1px solid #ccc', padding: '8px 12px', borderRadius: 6, fontSize: 11, boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{label}</div>
+        {payload.map((entry, index) => (
+          <div key={index} style={{ color: entry.color, margin: '2px 0' }}>
+            {entry.name}: {Number(entry.value).toLocaleString('es-CL')}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
+  const [expandedSiblingSku, setExpandedSiblingSku] = useState(null);
+
   if (!skuData) return null;
 
   const {
@@ -271,19 +294,56 @@ export default function SkuDetailModal({ skuData, onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {familia_skus.map((comp, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{comp.sku}</td>
-                    <td style={{ padding: '8px' }}>{comp.nombre_producto}</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.stock_act).toLocaleString('es-CL')}</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.ritmo_mensual).toLocaleString('es-CL')}</td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                      {comp.no_transformable 
-                        ? <span style={{ background: '#f8d7da', color: '#721c24', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>No transformable</span> 
-                        : <span style={{ background: '#d4edda', color: '#155724', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>Sí</span>}
-                    </td>
-                  </tr>
-                ))}
+                {familia_skus.map((comp, idx) => {
+                  const isExpanded = expandedSiblingSku === (comp.codigo_femaco || comp.sku);
+                  const fullSiblingData = isExpanded ? allProducts.find(p => String(p.codigo_femaco) === String(comp.codigo_femaco) || String(p.sku) === String(comp.sku)) : null;
+
+                  return (
+                    <React.Fragment key={idx}>
+                      <tr 
+                        style={{ borderBottom: '1px solid #eee', cursor: 'pointer', background: isExpanded ? '#f0f7ff' : 'transparent' }}
+                        onClick={() => setExpandedSiblingSku(isExpanded ? null : (comp.codigo_femaco || comp.sku))}
+                      >
+                        <td style={{ padding: '8px', fontWeight: 'bold' }}>{comp.sku}</td>
+                        <td style={{ padding: '8px' }}>{comp.nombre_producto}</td>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.stock_act).toLocaleString('es-CL')}</td>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>{Number(comp.ritmo_mensual).toLocaleString('es-CL')}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                          {comp.no_transformable 
+                            ? <span style={{ background: '#f8d7da', color: '#721c24', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>No transformable</span> 
+                            : <span style={{ background: '#d4edda', color: '#155724', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>Sí</span>}
+                        </td>
+                      </tr>
+                      {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
+                        <tr style={{ background: '#f9f9f9' }}>
+                          <td colSpan={5} style={{ padding: '10px 15px', borderBottom: '1px solid #ddd', borderLeft: '4px solid #2196f3' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>Dashboard Básico: {fullSiblingData.sku}</div>
+                            <div style={{ height: 140 }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                                  <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                                  <YAxis tick={{ fontSize: 9 }} />
+                                  <Tooltip content={<CustomTooltip />} />
+                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                  <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
+                                  <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
+                                </ComposedChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {isExpanded && (!fullSiblingData || !fullSiblingData.chart_24m) && (
+                        <tr>
+                          <td colSpan={5} style={{ padding: '10px', background: '#fff3e0', color: '#e65100', fontSize: '0.8rem', textAlign: 'center' }}>
+                            ⚠️ Datos del gráfico no encontrados para este hermano.
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
             

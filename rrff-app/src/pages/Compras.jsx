@@ -37,6 +37,7 @@ export default function Compras() {
   const [filterAlert, setFilterAlert] = useState('ALL');
   const [filterTransit, setFilterTransit] = useState('ALL');
   const [filterComparacion, setFilterComparacion] = useState('ALL');
+  const [filterCrecimiento, setFilterCrecimiento] = useState('ALL');
   const [selectedSku, setSelectedSku] = useState(null);
 
   const LEAD_TIME_DAYS = 60; // Días de tránsito (margen)
@@ -77,6 +78,27 @@ export default function Compras() {
     } else if (filterComparacion === 'SIN_ANALISIS') {
       filteredData = filteredData.filter(s => s.recomendacion_coincide === 'No comparable por falta de datos' || !s.recomendacion_coincide);
     }
+  }
+  if (filterCrecimiento !== 'ALL') {
+    filteredData = filteredData.filter(s => {
+      const chart = s.chart_24m;
+      if (!chart || chart.length < 2) return false;
+      const last = chart[chart.length - 1];
+      const prev = chart[chart.length - 2];
+      const m1 = last.mom_growth_pct || 0;
+      const m2 = prev.mom_growth_pct || 0;
+
+      if (filterCrecimiento === 'NEG_2M') {
+        return m1 < 0 && m2 < 0;
+      }
+      if (filterCrecimiento === 'HIGH_50_2M') {
+        return m1 > 50 && m2 > 50;
+      }
+      if (filterCrecimiento === 'ANOMALIES') {
+        return (m1 < 0 && m2 < 0) || (m1 > 50 && m2 > 50);
+      }
+      return true;
+    });
   }
 
   // ── 1. PROCESAR SUGERENCIAS AUTOMÁTICAS ──
@@ -326,6 +348,15 @@ export default function Compras() {
                   <option value="SOLO_LEGACY">Solo Oficial (Legacy) compra</option>
                   <option value="SOLO_DINAMICA">Solo Dinámico compra</option>
                   <option value="SIN_ANALISIS">Sin análisis dinámico</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Crecimiento 2M</label>
+                <select value={filterCrecimiento} onChange={e => setFilterCrecimiento(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}>
+                  <option value="ALL">Todos</option>
+                  <option value="ANOMALIES">Anomalías (Negativo o &gt;50%)</option>
+                  <option value="NEG_2M">Crecimiento Negativo (2M)</option>
+                  <option value="HIGH_50_2M">Crecimiento &gt;50% (2M)</option>
                 </select>
               </div>
             </div>
@@ -593,7 +624,7 @@ export default function Compras() {
           </div>
         )}
       </main>
-      {selectedSku && <SkuDetailModal skuData={selectedSku} onClose={() => setSelectedSku(null)} />}
+      {selectedSku && <SkuDetailModal skuData={selectedSku} onClose={() => setSelectedSku(null)} allProducts={data} />}
     </div>
   );
 }
