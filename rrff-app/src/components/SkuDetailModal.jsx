@@ -318,10 +318,10 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                         <tr style={{ background: '#f9f9f9' }}>
                           <td colSpan={5} style={{ padding: '15px', borderBottom: '1px solid #ddd', borderLeft: '4px solid #2196f3' }}>
                             <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                              <div style={{ height: 200 }}>
+                            <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                              <div style={{ flex: '1 1 300px', height: 160 }}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                                  <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
                                     <XAxis dataKey="name" tick={{ fontSize: 9 }} />
                                     <YAxis tick={{ fontSize: 9 }} />
@@ -334,7 +334,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                               </div>
                               
                               {fullSiblingData.calendario && (
-                                <div className="cal-wrap">
+                                <div style={{ flex: '2 1 500px', overflowX: 'auto' }}>
                                   <div className="cal-grid" style={{ minWidth: '600px', display: 'flex', border: '1px solid #EBEBEB', borderRadius: '4px', background: '#fff' }}>
                                     <div className="cal-label-col" style={{ display: 'flex', flexDirection: 'column', padding: '8px', background: '#f5f5f5', borderRight: '1px solid #EBEBEB', fontSize: '0.75rem', fontWeight: 'bold', justifyContent: 'space-around' }}>
                                       <span className="lbl-so">Sell Out</span>

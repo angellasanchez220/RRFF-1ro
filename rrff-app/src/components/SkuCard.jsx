@@ -401,10 +401,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                       {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
                         <div style={{ padding: '15px', background: '#fcfcfc', borderLeft: '4px solid #2196f3', marginBottom: '10px', marginLeft: '10px', borderRadius: '0 4px 4px 0', borderTop: '1px solid #eee', borderRight: '1px solid #eee', borderBottom: '1px solid #eee' }}>
                           <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <div style={{ height: 200 }}>
+                          <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                            <div style={{ flex: '1 1 300px', height: 160 }}>
                               <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                                <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
                                   <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
                                   <XAxis dataKey="name" tick={{ fontSize: 9 }} />
                                   <YAxis tick={{ fontSize: 9 }} />
@@ -417,8 +417,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                             </div>
                             
                             {fullSiblingData.calendario && (
-                              <div className="cal-wrap">
-                                <div className="cal-grid">
+                              <div style={{ flex: '2 1 500px', overflowX: 'auto' }}>
+                                <div className="cal-grid" style={{ minWidth: '600px' }}>
                                   <div className="cal-label-col">
                                     <span className="lbl-so">Sell Out</span>
                                     <span className="lbl-si">Sell In</span>
