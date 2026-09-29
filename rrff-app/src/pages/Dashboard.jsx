@@ -140,8 +140,12 @@ export default function Dashboard() {
       if (fNiveles.size > 0 && !fNiveles.has(d.nivel_alerta)) return false;
       
       if (fCrecimiento !== 'ALL') {
-        const cal = d.calendario || [];
-        const realMonths = cal.filter(m => m.es_real && m.growth_pct != null).slice(-2);
+        const chart = d.chart_24m || [];
+        // chart_24m is strictly chronological, ending in the current (partial) month.
+        // We exclude the last element (current month) to only look at closed months.
+        const closedMonths = chart.slice(0, -1);
+        const realMonths = closedMonths.filter(m => m.growth_pct != null).slice(-2);
+        
         if (fCrecimiento === 'NEG_2M') {
           if (realMonths.length < 2 || realMonths.some(m => m.growth_pct >= 0)) return false;
         }
