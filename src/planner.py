@@ -1049,6 +1049,10 @@ def run_planning(archivos_proc=None) -> dict:
 
     # Paso 4: YoY y picos
     log.info("--- [4.4] Inteligencia comparativa YoY y picos ---")
+    
+    from pathlib import Path
+    PROC_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
+    
     si_hist_path = PROC_DIR / "sellin_historico_clean.csv"
     if si_hist_path.exists():
         df_si_hist = pd.read_csv(si_hist_path, sep=";")
