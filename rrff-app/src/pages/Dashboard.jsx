@@ -158,6 +158,10 @@ export default function Dashboard() {
           const isHigh = realMonths.every(m => m.growth_pct > 50);
           if (!isNeg && !isHigh) return false;
         }
+        if (fCrecimiento === 'POS_3M') {
+          const realMonths3 = closedMonths.filter(m => m.growth_pct != null).slice(-3);
+          if (realMonths3.length < 3 || realMonths3.some(m => m.growth_pct <= 0)) return false;
+        }
       }
 
       return true;
@@ -242,6 +246,7 @@ export default function Dashboard() {
               <option value="ANOMALIES">Anomalías (&lt;0 o &gt;50%)</option>
               <option value="NEG_2M">Crecimiento Negativo (2M)</option>
               <option value="HIGH_50_2M">Crecimiento Alto (&gt;50% 2M)</option>
+              <option value="POS_3M">Crecimiento Positivo (3M)</option>
             </select>
           </div>
         </div>
