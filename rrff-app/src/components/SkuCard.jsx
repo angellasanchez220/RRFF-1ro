@@ -376,7 +376,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   const fullSiblingData = isExpanded ? allProducts.find(p => String(p.codigo_femaco) === String(member.codigo_femaco) || String(p.sku) === String(member.sku)) : null;
 
                   return (
-                    <div key={member.codigo_femaco || member.sku} style={isExpanded ? { gridColumn: '1 / -1' } : {}}>
+                    <div key={member.codigo_femaco || member.sku}>
                       <div
                         className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
                         title={member.nombre_producto || member.sku}
@@ -397,71 +397,6 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                         </span>
                         {member.no_transformable && <span className="family-member-locked">No transformable</span>}
                       </div>
-
-                      {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
-                        <div style={{ padding: '15px', background: '#fcfcfc', borderLeft: '4px solid #2196f3', marginBottom: '10px', marginLeft: '10px', borderRadius: '0 4px 4px 0', borderTop: '1px solid #eee', borderRight: '1px solid #eee', borderBottom: '1px solid #eee' }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
-                          <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
-                            <div style={{ flex: '1 1 300px', height: 160 }}>
-                              <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
-                                  <XAxis dataKey="name" tick={{ fontSize: 9 }} />
-                                  <YAxis tick={{ fontSize: 9 }} />
-                                  <Tooltip content={<CustomTooltip />} />
-                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                                  <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
-                                  <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
-                                </ComposedChart>
-                              </ResponsiveContainer>
-                            </div>
-                            
-                            {fullSiblingData.calendario && (
-                              <div style={{ flex: '2 1 500px', overflowX: 'auto' }}>
-                                <div className="cal-grid" style={{ minWidth: '600px' }}>
-                                  <div className="cal-label-col">
-                                    <span className="lbl-so">Sell Out</span>
-                                    <span className="lbl-si">Sell In</span>
-                                    <span className="lbl-gr">Crecimiento</span>
-                                  </div>
-                                  {fullSiblingData.calendario.map((m, i) => {
-                                    let growth = '-';
-                                    let gClass = 'zero';
-                                    if (m.growth_pct != null) {
-                                      const diff = m.growth_pct;
-                                      if (diff > 0) {
-                                        growth = `↑ ${diff.toFixed(0)}%`;
-                                        gClass = 'pos';
-                                      } else if (diff < 0) {
-                                        growth = `↓ ${Math.abs(diff).toFixed(0)}%`;
-                                        gClass = 'neg';
-                                      } else {
-                                        growth = '0%';
-                                      }
-                                    }
-                                    if (m.hist_val != null && m.hist_val > 0) {
-                                       growth += ` (${fmt(m.hist_val)})`;
-                                    }
-                                    return (
-                                    <div className="cal-col" key={i}>
-                                      <div className={`cal-mes ${m.es_real ? 'real' : ''}`}>{m.label}</div>
-                                      <div className={`cal-so ${m.sell_out === 0 ? 'zero' : ''}`}>{fmt(m.sell_out)}</div>
-                                      <div className={`cal-si ${m.sell_in === 0 ? 'zero' : ''}`}>{fmt(m.sell_in)}</div>
-                                      <div className={`cal-growth ${gClass}`}>{growth}</div>
-                                    </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {isExpanded && (!fullSiblingData || !fullSiblingData.chart_24m) && (
-                        <div style={{ padding: '10px', background: '#fff3e0', color: '#e65100', fontSize: '0.8rem', marginLeft: '10px', marginBottom: '10px', borderRadius: 4 }}>
-                          ⚠️ Datos del gráfico no encontrados para este hermano.
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -478,6 +413,82 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                    </span>
                 </div>
               </div>
+              
+              {/* Contenedor del Dashboard Expandido debajo de la cuadrícula para no romper el layout */}
+              {(() => {
+                if (!expandedSiblingSku) return null;
+                const activeMember = familySkus.find(m => (m.codigo_femaco || m.sku) === expandedSiblingSku);
+                if (!activeMember) return null;
+                const fullSiblingData = allProducts.find(p => String(p.codigo_femaco) === String(activeMember.codigo_femaco) || String(p.sku) === String(activeMember.sku));
+                
+                return (
+                  <div style={{ marginTop: '10px' }}>
+                    {fullSiblingData && fullSiblingData.chart_24m ? (
+                      <div style={{ padding: '15px', background: '#fcfcfc', borderLeft: '4px solid #2196f3', borderRadius: '4px', border: '1px solid #eee', borderLeftWidth: '4px' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
+                        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                          <div style={{ flex: '1 1 300px', height: 160 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={fullSiblingData.chart_24m.slice(-12)} margin={{ top: 5, right: 16, bottom: 0, left: -20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                                <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                                <YAxis tick={{ fontSize: 9 }} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
+                                <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 2 }} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                          
+                          {fullSiblingData.calendario && (
+                            <div style={{ flex: '2 1 500px', overflowX: 'auto' }}>
+                              <div className="cal-grid" style={{ minWidth: '600px' }}>
+                                <div className="cal-label-col">
+                                  <span className="lbl-so">Sell Out</span>
+                                  <span className="lbl-si">Sell In</span>
+                                  <span className="lbl-gr">Crecimiento</span>
+                                </div>
+                                {fullSiblingData.calendario.map((m, i) => {
+                                  let growth = '-';
+                                  let gClass = 'zero';
+                                  if (m.growth_pct != null) {
+                                    const diff = m.growth_pct;
+                                    if (diff > 0) {
+                                      growth = `↑ ${diff.toFixed(0)}%`;
+                                      gClass = 'pos';
+                                    } else if (diff < 0) {
+                                      growth = `↓ ${Math.abs(diff).toFixed(0)}%`;
+                                      gClass = 'neg';
+                                    } else {
+                                      growth = '0%';
+                                    }
+                                  }
+                                  if (m.hist_val != null && m.hist_val > 0) {
+                                     growth += ` (${fmt(m.hist_val)})`;
+                                  }
+                                  return (
+                                  <div className="cal-col" key={i}>
+                                    <div className={`cal-mes ${m.es_real ? 'real' : ''}`}>{m.label}</div>
+                                    <div className={`cal-so ${m.sell_out === 0 ? 'zero' : ''}`}>{fmt(m.sell_out)}</div>
+                                    <div className={`cal-si ${m.sell_in === 0 ? 'zero' : ''}`}>{fmt(m.sell_in)}</div>
+                                    <div className={`cal-growth ${gClass}`}>{growth}</div>
+                                  </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ padding: '15px', background: '#fcfcfc', borderLeft: '4px solid #f44336', borderRadius: '4px', border: '1px solid #eee', borderLeftWidth: '4px' }}>
+                        <div style={{ color: '#d32f2f', fontWeight: 'bold' }}>No se encontraron datos históricos suficientes para el hermano seleccionado.</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
