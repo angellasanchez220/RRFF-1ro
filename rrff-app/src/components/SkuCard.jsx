@@ -376,7 +376,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   const fullSiblingData = isExpanded ? allProducts.find(p => String(p.codigo_femaco) === String(member.codigo_femaco) || String(p.sku) === String(member.sku)) : null;
 
                   return (
-                    <div key={member.codigo_femaco || member.sku}>
+                    <div key={member.codigo_femaco || member.sku} style={isExpanded ? { gridColumn: '1 / -1' } : {}}>
                       <div
                         className={`family-stock-member ${String(member.codigo_femaco) === String(product.codigo_femaco) ? 'current' : ''}`}
                         title={member.nombre_producto || member.sku}
