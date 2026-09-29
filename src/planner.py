@@ -448,7 +448,7 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
 # Paso 4 — Inteligencia Comparativa: YoY y Picos
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
+def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFrame) -> pd.DataFrame:
     """
     YoY (Year-over-Year):
       Compara el Sell-Out proyectado del mes actual (Mayo 2026) contra el
@@ -570,6 +570,15 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
                 if offset == 1 and (m, a) in meses[0:4]:
                     hist_cols_4m.append(col_name)
 
+        for m, a in meses:
+            nombre_mes = _nombre_mes(m).lower()
+            for offset in [0, 1, 2, 3]:
+                anio_hist_n = str(a - offset)
+                hist_sub = df_si_hist[(df_si_hist["mes"] == nombre_mes) & (df_si_hist["_ano"] == anio_hist_n)]
+                mapping = hist_sub.set_index("sku")["unidades_sellin"].to_dict()
+                col_name = f"hist_sellin_{nombre_mes}_{anio_hist_n}"
+                df[col_name] = df["sku"].map(mapping).fillna(0)
+
         df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
         
         if tiene_historial_mensual:
@@ -598,6 +607,13 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list) -> pd.DataFrame:
             for offset in [1, 2, 3]:
                 anio_hist_n = str(a - offset)
                 col_name = f"hist_{nombre_mes}_{anio_hist_n}"
+                df[col_name] = 0.0
+
+        for m, a in meses:
+            nombre_mes = _nombre_mes(m).lower()
+            for offset in [0, 1, 2, 3]:
+                anio_hist_n = str(a - offset)
+                col_name = f"hist_sellin_{nombre_mes}_{anio_hist_n}"
                 df[col_name] = 0.0
 
     # Mes pico Sell-Out: índice del máximo entre las 12 proyecciones
@@ -1033,7 +1049,16 @@ def run_planning(archivos_proc=None) -> dict:
 
     # Paso 4: YoY y picos
     log.info("--- [4.4] Inteligencia comparativa YoY y picos ---")
-    df = _calcular_yoy_y_picos(df, meses)
+    si_hist_path = PROC_DIR / "sellin_historico_clean.csv"
+    if si_hist_path.exists():
+        df_si_hist = pd.read_csv(si_hist_path, sep=";")
+        df_si_hist["sku"] = df_si_hist["sku"].astype(str).str.strip()
+        df_si_hist["mes"] = df_si_hist["mes"].astype(str).str.strip().str.lower()
+        df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
+        df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist["unidades_sellin"], errors="coerce").fillna(0)
+    else:
+        df_si_hist = pd.DataFrame()
+    df = _calcular_yoy_y_picos(df, meses, df_si_hist)
 
     # Paso 5: Ajuste UMP
     log.info("--- [4.5] Sell-In ajustado por UMP ---")

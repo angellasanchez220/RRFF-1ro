@@ -169,6 +169,14 @@ def _build_chart_24m(cols: list, row: dict) -> list:
                         so_val = actual_partial
             
         si_val = _safe(row.get(col_si)) if col_si in cols else 0
+        
+        # NUEVO: Para el mes en curso de Sell-In, mostramos dato real parcial
+        if mes_num == mes_actual and int(yr_label) == today.year:
+            col_si_hist_actual = f"hist_sellin_{nombre.lower()}_{yr_label}"
+            if col_si_hist_actual in cols:
+                actual_partial_si = _safe(row.get(col_si_hist_actual))
+                if actual_partial_si is not None and actual_partial_si > 0:
+                    si_val = actual_partial_si
         hist_val = _safe(row.get(col_hist)) if col_hist in cols else 0
 
         mom_growth = None
