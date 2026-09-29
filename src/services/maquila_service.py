@@ -115,12 +115,22 @@ def build_maquila_families(conn, lookup_dict):
     
     # sku_componente conserva su nombre histórico en la tabla, pero para las
     # familias FAM-* contiene el código interno (codigo_femaco).
+    # Actualización: indexamos también por SKU para tolerar cuando 
+    # la BD trae el SKU real en lugar del código interno.
     lookup_normalizado = {str(k).strip().upper(): v for k, v in lookup_dict.items()}
+    for k, v in lookup_dict.items():
+        sku_val = str(v.get("sku") or "").strip().upper()
+        if sku_val and sku_val not in lookup_normalizado:
+            # Guardamos el código interno original para usarlo más adelante
+            v_copy = dict(v)
+            v_copy["_codigo_femaco_orig"] = k
+            lookup_normalizado[sku_val] = v_copy
 
     def get_info(codigo):
         info = lookup_normalizado.get(codigo, {})
+        real_codigo = info.get("_codigo_femaco_orig", codigo)
         return {
-            "codigo_femaco": codigo,
+            "codigo_femaco": real_codigo,
             "sku": str(info.get("sku") or "").strip(),
             "nombre_producto": info.get("nombre_producto", "Desconocido"),
             "stock_act": float(info.get("stock_act", 0)),
@@ -159,7 +169,6 @@ def build_maquila_families(conn, lookup_dict):
                 
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
-            # Ya no ignoramos el stock de los descontinuados, sí se puede usar para cubrir necesidades de la familia
             if not info["no_transformable"]:
                 stock_bruto += info["stock_act"]
                 transito_bruto += info["cantidad_transito"]
@@ -177,8 +186,8 @@ def build_maquila_families(conn, lookup_dict):
         ]
         nombres_familia = sorted({f["nombre"] for f in familias_conectadas})
         familia_ids = sorted({f["id"] for f in familias_conectadas})
-            
-        resultado[codigo] = {
+        
+        res_data = {
             "familia_skus": familia_list,
             "stock_bruto_familia": stock_bruto,
             "transito_bruto_familia": transito_bruto,
@@ -191,4 +200,10 @@ def build_maquila_families(conn, lookup_dict):
             "cantidad_miembros": len(familia_list),
         }
         
+        # Indexar tanto por el código de iteración como por el código interno real
+        resultado[codigo] = res_data
+        real_codigo = get_info(codigo)["codigo_femaco"]
+        if real_codigo != codigo:
+            resultado[real_codigo] = res_data
+            
     return resultado
