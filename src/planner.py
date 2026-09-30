@@ -574,8 +574,11 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
             nombre_mes = _nombre_mes(m).lower()
             for offset in [0, 1, 2, 3]:
                 anio_hist_n = str(a - offset)
-                hist_sub = df_si_hist[(df_si_hist["mes"] == nombre_mes) & (df_si_hist["_ano"] == anio_hist_n)]
-                mapping = hist_sub.set_index("sku")["unidades_sellin"].to_dict()
+                if not df_si_hist.empty:
+                    hist_sub = df_si_hist[(df_si_hist["mes"] == nombre_mes) & (df_si_hist["_ano"] == anio_hist_n)]
+                    mapping = hist_sub.set_index("sku")["unidades_sellin"].to_dict()
+                else:
+                    mapping = {}
                 col_name = f"hist_sellin_{nombre_mes}_{anio_hist_n}"
                 df[col_name] = df["sku"].map(mapping).fillna(0)
 
@@ -1056,9 +1059,17 @@ def run_planning(archivos_proc=None) -> dict:
     si_hist_path = PROC_DIR / "sellin_historico_clean.csv"
     if si_hist_path.exists():
         df_si_hist = pd.read_csv(si_hist_path, sep=";")
+        
+        # Rename año to _ano
+        for col in df_si_hist.columns:
+            if col.lower().startswith("a") and col.lower().endswith("o"):
+                df_si_hist.rename(columns={col: "_ano"}, inplace=True)
+                break
+                
         df_si_hist["sku"] = df_si_hist["sku"].astype(str).str.strip()
         df_si_hist["mes"] = df_si_hist["mes"].astype(str).str.strip().str.lower()
-        df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
+        if "_ano" in df_si_hist.columns:
+            df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
         df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist["unidades_sellin"], errors="coerce").fillna(0)
     else:
         df_si_hist = pd.DataFrame()
