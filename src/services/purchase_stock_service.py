@@ -39,7 +39,13 @@ def aplicar_stock_familia_para_sugerencia(
     ):
         familia = familias_map.get(codigo_femaco, {})
         miembros = familia.get("familia_skus") or []
-        es_familia_activa = len(miembros) > 1
+        
+        # Check if the current product is marked as non-transformable
+        current_info = next((m for m in miembros if str(m.get("codigo_femaco", "")).upper() == codigo_femaco or str(m.get("sku", "")).upper() == codigo_femaco), {})
+        no_transformable = current_info.get("no_transformable", False)
+        
+        # If it is no_transformable, it behaves independently and doesn't use the family stock
+        es_familia_activa = len(miembros) > 1 and not no_transformable
 
         if es_familia_activa:
             try:
