@@ -818,16 +818,25 @@ def _run_extract_task():
     """Tarea larga en segundo plano para evitar timeout de 100s de Render."""
     set_task_status("extract", "running", "Extrayendo datos de Matrix...")
     try:
-        subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), check=True, timeout=900)
+        set_task_status("extract", "running", "Extrayendo datos de Matrix...")
+        res = subprocess.run([sys.executable, "src/extractor.py"], cwd=str(ROOT), capture_output=True, text=True, timeout=900)
+        if res.returncode != 0: raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+        
         set_task_status("extract", "running", "Transformando datos...")
-        subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), check=True, timeout=120)
+        res = subprocess.run([sys.executable, "src/transformer.py"], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
+        if res.returncode != 0: raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+        
         set_task_status("extract", "running", "Cargando en BD...")
-        subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), check=True, timeout=120)
+        res = subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
+        if res.returncode != 0: raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+        
         set_task_status("extract", "running", "Calculando S&OP...")
-        subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), check=True, timeout=120)
+        res = subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
+        if res.returncode != 0: raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
+        
         set_task_status("extract", "done", "Sincronización de Matrix completada con éxito.")
     except subprocess.CalledProcessError as e:
-        msg = f"Error crítico en pipeline (fail-fast) - Etapa fallida: {e.cmd}"
+        msg = f"Error crítico en pipeline (fail-fast) - Etapa fallida: {e.cmd}\n\n[DETALLES DEL ERROR]:\n{e.stderr[-1000:] if e.stderr else 'Sin salida de error.'}"
         print(msg)
         set_task_status("extract", "error", msg)
     except Exception as e:

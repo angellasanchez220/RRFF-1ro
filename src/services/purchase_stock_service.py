@@ -25,6 +25,7 @@ def aplicar_stock_familia_para_sugerencia(
 
     stocks_familia = []
     transitos_familia = []
+    ritmos_familia_adicional = []
     usa_familia = []
     cantidades_miembros = []
     nombres_familia = []
@@ -47,15 +48,20 @@ def aplicar_stock_familia_para_sugerencia(
                 
                 transito_reemplazable = float(familia.get("transito_reemplazable_adicional", 0))
                 transito_calculo = float(transito_sku) + transito_reemplazable
+                
+                ritmo_reemplazable = float(familia.get("ritmo_reemplazable_adicional", 0))
             except (TypeError, ValueError):
                 stock_calculo = float(stock_sku)
                 transito_calculo = float(transito_sku)
+                ritmo_reemplazable = 0.0
         else:
             stock_calculo = float(stock_sku)
             transito_calculo = float(transito_sku)
+            ritmo_reemplazable = 0.0
 
         stocks_familia.append(stock_calculo)
         transitos_familia.append(transito_calculo)
+        ritmos_familia_adicional.append(ritmo_reemplazable)
         usa_familia.append(es_familia_activa)
         cantidades_miembros.append(len(miembros) if es_familia_activa else 1)
         nombres_familia.append(familia.get("nombre_familia", "") if es_familia_activa else "")
@@ -64,6 +70,7 @@ def aplicar_stock_familia_para_sugerencia(
     resultado["sug_stock_familia"] = stocks_familia
     resultado["sug_stock_actual"] = stocks_familia
     resultado["sug_transito_actual"] = transitos_familia
+    resultado["sug_ritmo_reemplazable_adicional_4_sem"] = ritmos_familia_adicional
     resultado["sug_usa_stock_familia"] = usa_familia
     resultado["sug_cantidad_miembros_familia"] = cantidades_miembros
     resultado["sug_nombre_familia"] = nombres_familia

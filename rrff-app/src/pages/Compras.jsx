@@ -192,6 +192,7 @@ export default function Compras() {
           'Hermanos (Componentes)': familiaStr,
           'Stock Físico': s.stock_act || 0,
           'Ventas (4 sem)': s.total_4_sem_verificado || 0,
+          'Duración (meses)': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
         });
       });

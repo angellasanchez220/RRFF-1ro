@@ -162,6 +162,7 @@ def build_maquila_families(conn, lookup_dict):
         reemplazos_validos = []
         stock_reemplazable = 0.0
         transito_reemplazable = 0.0
+        ritmo_reemplazable = 0.0
         
         for nodo_alcanzable in sorted(list(visitados)):
             if nodo_alcanzable.startswith("FAM-"):
@@ -178,6 +179,7 @@ def build_maquila_families(conn, lookup_dict):
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
                     transito_reemplazable += info["cantidad_transito"]
+                    ritmo_reemplazable += info["ritmo_mensual"]
 
         familias_conectadas = [
             familia_meta[nodo]
@@ -194,6 +196,7 @@ def build_maquila_families(conn, lookup_dict):
             "reemplazos_validos": reemplazos_validos,
             "stock_reemplazable_adicional": stock_reemplazable,
             "transito_reemplazable_adicional": transito_reemplazable,
+            "ritmo_reemplazable_adicional": ritmo_reemplazable,
             "familia_ids": familia_ids,
             "nombres_familia": nombres_familia,
             "nombre_familia": " / ".join(nombres_familia),

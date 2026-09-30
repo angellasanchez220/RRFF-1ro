@@ -774,6 +774,17 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     # para decidir la compra es la suma de todos los integrantes de la familia.
     # El stock individual se conserva en stock_act para inventario y alertas.
     df = _integrar_stock_familia_en_sugerencia(df, engine)
+    
+    # 5.1 Agregar ritmo de familia (si aplica) al ritmo mensual
+    # sug_ritmo_reemplazable_adicional_4_sem está en escala de 4 semanas, lo pasamos a escala mensual ( / 4.0 * 4.33)
+    ritmo_adicional_4_sem = df.get("sug_ritmo_reemplazable_adicional_4_sem", pd.Series(0, index=df.index)).fillna(0)
+    ritmo_adicional_mensual = (ritmo_adicional_4_sem / 4.0) * 4.33
+    df["sug_ritmo_mensual"] = (df["sug_ritmo_mensual"] + ritmo_adicional_mensual).round(0)
+    
+    # 5.2 Recalcular target de uds con el ritmo mensual consolidado
+    df["sug_target_uds"] = (df["sug_ritmo_mensual"] * df["sug_target_meses"]).round(0)
+    df["stock_objetivo"] = df["sug_target_uds"]
+
     df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
     df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
     
