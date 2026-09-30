@@ -788,8 +788,9 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
     df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
     
-    # Inventario disponible = stock central (sug_stock_actual) + stock_tienda + ETA
-    inv_disponible = df["sug_stock_actual"] + df["stock_tienda"] + df["sug_cantidad_transito"]
+    # Inventario disponible = stock central (sug_stock_actual) + ETA
+    # (El stock_tienda es solo informativo y NO debe usarse para el cálculo de compras)
+    inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
     
     # 6. Sugerencia Neta Bruta
     sug_neta = df["sug_target_uds"] - inv_disponible
