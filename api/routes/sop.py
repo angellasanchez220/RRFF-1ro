@@ -202,7 +202,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         })
         prev_so = so_val
 
-    # Trim leading months where Sell Out == 0
+    # Trim leading months where Sell Out == 0, but ALWAYS keep at least 12 months
     first_non_zero_idx = -1
     for i, data in enumerate(chart):
         if data["Sell Out"] > 0:
@@ -210,10 +210,11 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             break
             
     if first_non_zero_idx > 0:
+        if len(chart) - first_non_zero_idx < 12:
+            first_non_zero_idx = max(0, len(chart) - 12)
         chart = chart[first_non_zero_idx:]
     elif first_non_zero_idx == -1:
-        # All zeros, maybe keep the last 12 months? or just return as is (emptyish chart)
-        pass
+        chart = chart[-12:]
 
     return chart
 
@@ -507,6 +508,10 @@ def get_sop(include_discontinued: bool = False):
         
         if codigo_str in familias_map:
             familia = familias_map[codigo_str]
+        elif sku_str in familias_map:
+            familia = familias_map[sku_str]
+        
+        if (codigo_str in familias_map) or (sku_str in familias_map):
 
             # En el modelo actual los registros FAM-* son nodos internos y los
             # códigos internos viven en receta_maquila_componentes. Por eso no basta

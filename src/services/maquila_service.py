@@ -6,7 +6,7 @@ def is_discontinued(value):
     """Normaliza los estados que el planner trata como descontinuados."""
     if pd.isna(value) or not value or str(value).strip() == "":
         return True
-    return str(value).strip().upper() not in {"MIX", "ACTIVO", "NUEVO", "LANZAMIENTO"}
+    return str(value).strip().upper() not in {"MIX", "ACTIVO", "ACTIVOS", "NUEVO", "LANZAMIENTO"}
 
 
 def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):

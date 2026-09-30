@@ -248,17 +248,25 @@ async def upload_inventario(
     except Exception as e:
         raise HTTPException(400, f"Error leyendo Excel: {e}")
 
-    if df is None or len(df.columns) <= 156:
-        raise HTTPException(400, "No se pudo leer el archivo de inventario o no tiene suficientes columnas (hasta la FA).")
+    if df is None:
+        raise HTTPException(400, "No se pudo leer el archivo de inventario.")
 
-    # Extraer columnas según reglas del usuario (B=1, FA=156)
+    # Extraer columnas: buscar por nombre o usar índices por defecto
     try:
-        col_sku = df.iloc[:, 1]
-        col_stock = df.iloc[:, 156]
+        sku_cols = [c for c in df.columns if "SKU" in str(c).upper() or "CÓD" in str(c).upper()]
+        col_sku = df[sku_cols[0]] if sku_cols else df.iloc[:, 1]
+
+        stock_cols = [c for c in df.columns if "STOCK ACT" in str(c).upper()]
+        if stock_cols:
+            col_stock = df[stock_cols[0]]
+        elif len(df.columns) > 156:
+            col_stock = df.iloc[:, 156]
+        else:
+            raise ValueError("No se encontró columna 'STOCK ACT' ni columna FA (156).")
         
         sub = pd.DataFrame({"sku": col_sku, "stock_act": col_stock})
     except Exception as e:
-        raise HTTPException(400, f"Error extrayendo columnas B, FA: {e}")
+        raise HTTPException(400, f"Error extrayendo columnas: {e}")
 
     sub["sku"]       = sub["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     sub["stock_act"] = pd.to_numeric(sub["stock_act"], errors="coerce").fillna(0)
