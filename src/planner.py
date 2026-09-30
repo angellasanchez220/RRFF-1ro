@@ -1056,28 +1056,38 @@ def run_planning(archivos_proc=None) -> dict:
     from pathlib import Path
     PROC_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
     
-    si_hist_path = PROC_DIR / "sellin_historico_clean.csv"
-    if si_hist_path.exists():
-        df_si_hist = pd.read_csv(si_hist_path, sep=";")
-        
-        # Rename año to _ano
-        for col in df_si_hist.columns:
-            c = col.strip().lower()
-            if c.startswith("a") and c.endswith("o"):
-                df_si_hist.rename(columns={col: "_ano"}, inplace=True)
-                break
+    try:
+        si_hist_path = PROC_DIR / "sellin_historico_clean.csv"
+        if si_hist_path.exists():
+            df_si_hist = pd.read_csv(si_hist_path, sep=";")
+            
+            # Rename año to _ano
+            for col in df_si_hist.columns:
+                c = col.strip().lower()
+                if c.startswith("a") and c.endswith("o"):
+                    df_si_hist.rename(columns={col: "_ano"}, inplace=True)
+                    break
+                    
+            if "sku" in df_si_hist.columns:
+                df_si_hist["sku"] = df_si_hist["sku"].astype(str).str.strip()
+            if "mes" in df_si_hist.columns:
+                df_si_hist["mes"] = df_si_hist["mes"].astype(str).str.strip().str.lower()
                 
-        df_si_hist["sku"] = df_si_hist["sku"].astype(str).str.strip()
-        df_si_hist["mes"] = df_si_hist["mes"].astype(str).str.strip().str.lower()
-        if "_ano" in df_si_hist.columns:
-            df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
-            df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist.get("unidades_sellin", 0), errors="coerce").fillna(0)
+            if "_ano" in df_si_hist.columns:
+                df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
+                df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist.get("unidades_sellin", 0), errors="coerce").fillna(0)
+            else:
+                log.warning(f"Columna año no encontrada en sellin_historico_clean.csv. Columnas: {df_si_hist.columns.tolist()}")
+                df_si_hist = pd.DataFrame()
         else:
-            log.warning("Columna año no encontrada en sellin_historico_clean.csv")
             df_si_hist = pd.DataFrame()
-    else:
-        df_si_hist = pd.DataFrame()
-    df = _calcular_yoy_y_picos(df, meses, df_si_hist)
+        
+        df = _calcular_yoy_y_picos(df, meses, df_si_hist)
+    except Exception as local_err:
+        import traceback
+        traceback.print_exc()
+        raise local_err
+
 
     # Paso 5: Ajuste UMP
     log.info("--- [4.5] Sell-In ajustado por UMP ---")
