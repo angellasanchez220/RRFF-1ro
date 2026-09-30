@@ -546,6 +546,21 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 sumX2 += idx * idx;
               });
               let m = 0, b = 0;
+              // Mock for Tendencia Estacional
+              // Compute seasonal indices based on history averages
+              const monthlyAverages = Array(12).fill(0);
+              const monthlyCounts = Array(12).fill(0);
+              visibleHistory.forEach(item => {
+                 let mo = parseInt(item.month.split('-')[1], 10) - 1; // 0-11
+                 monthlyAverages[mo] += item.value;
+                 monthlyCounts[mo] += 1;
+              });
+              const globalAvg = sumY / (n || 1);
+              const seasonalIndices = monthlyAverages.map((sum, i) => {
+                 const avg = monthlyCounts[i] > 0 ? sum / monthlyCounts[i] : globalAvg;
+                 return globalAvg > 0 ? avg / globalAvg : 1;
+              });
+
               if (n > 1) {
                 const denominator = n * sumX2 - sumX * sumX;
                 if (denominator !== 0) {
@@ -563,12 +578,15 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               // 1. Sell Out Real (verde sólido)
               visibleHistory.forEach((item, idx) => {
                 const isLastHist = idx === visibleHistory.length - 1;
+                let mo = parseInt(item.month.split('-')[1], 10) - 1;
+                let trend = m * globalIdx + b;
+                let seasonalForecast = Math.max(0, Math.round(trend * (seasonalIndices[mo] || 1)));
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': item.value,
                   'Estimación Atraso': (isLastHist && gaps.length > 0) ? item.value : null,
                   'Proyección Futura': (isLastHist && gaps.length === 0) ? item.value : null,
-                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
+                  'Tendencia Estacional': seasonalForecast
                 });
                 globalIdx++;
               });
@@ -576,24 +594,30 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               // 2. Gap / Mes actual (gris punteado)
               gaps.forEach((item, idx) => {
                 const isLastGap = idx === gaps.length - 1;
+                let mo = parseInt(item.month.split('-')[1], 10) - 1;
+                let trend = m * globalIdx + b;
+                let seasonalForecast = Math.max(0, Math.round(trend * (seasonalIndices[mo] || 1)));
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': item.value,
                   'Proyección Futura': isLastGap ? item.value : null,
-                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
+                  'Tendencia Estacional': seasonalForecast
                 });
                 globalIdx++;
               });
 
               // 3. Forecast Futuro 4 Meses (azul punteado)
               fc.forEach((item) => {
+                let mo = parseInt(item.month.split('-')[1], 10) - 1;
+                let trend = m * globalIdx + b;
+                let seasonalForecast = Math.max(0, Math.round(trend * (seasonalIndices[mo] || 1)));
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': null,
                   'Proyección Futura': item.value,
-                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
+                  'Tendencia Estacional': seasonalForecast
                 });
                 globalIdx++;
               });
@@ -674,7 +698,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                           <Line type="monotone" dataKey="Estimación Atraso" stroke="#95A5A6" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 2 }} />
                         )}
                         <Line type="monotone" dataKey="Proyección Futura" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
-                        <Line type="linear" dataKey="Proyección Lineal" stroke="#9C27B0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                        <Line type="linear" dataKey="Tendencia Estacional" stroke="#9C27B0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
