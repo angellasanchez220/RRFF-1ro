@@ -1062,7 +1062,8 @@ def run_planning(archivos_proc=None) -> dict:
         
         # Rename año to _ano
         for col in df_si_hist.columns:
-            if col.lower().startswith("a") and col.lower().endswith("o"):
+            c = col.strip().lower()
+            if c.startswith("a") and c.endswith("o"):
                 df_si_hist.rename(columns={col: "_ano"}, inplace=True)
                 break
                 
@@ -1070,7 +1071,10 @@ def run_planning(archivos_proc=None) -> dict:
         df_si_hist["mes"] = df_si_hist["mes"].astype(str).str.strip().str.lower()
         if "_ano" in df_si_hist.columns:
             df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
-        df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist["unidades_sellin"], errors="coerce").fillna(0)
+            df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist.get("unidades_sellin", 0), errors="coerce").fillna(0)
+        else:
+            log.warning("Columna año no encontrada en sellin_historico_clean.csv")
+            df_si_hist = pd.DataFrame()
     else:
         df_si_hist = pd.DataFrame()
     df = _calcular_yoy_y_picos(df, meses, df_si_hist)
