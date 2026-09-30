@@ -537,6 +537,29 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               const fc = hwData.forecast || [];
               const hwChartData = [];
 
+              const n = visibleHistory.length;
+              let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+              visibleHistory.forEach((item, idx) => {
+                sumX += idx;
+                sumY += item.value;
+                sumXY += idx * item.value;
+                sumX2 += idx * idx;
+              });
+              let m = 0, b = 0;
+              if (n > 1) {
+                const denominator = n * sumX2 - sumX * sumX;
+                if (denominator !== 0) {
+                   m = (n * sumXY - sumX * sumY) / denominator;
+                   b = (sumY - m * sumX) / n;
+                } else {
+                   b = sumY / n;
+                }
+              } else if (n === 1) {
+                b = sumY;
+              }
+
+              let globalIdx = 0;
+
               // 1. Sell Out Real (verde sólido)
               visibleHistory.forEach((item, idx) => {
                 const isLastHist = idx === visibleHistory.length - 1;
@@ -544,8 +567,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': item.value,
                   'Estimación Atraso': (isLastHist && gaps.length > 0) ? item.value : null,
-                  'Proyección Futura': (isLastHist && gaps.length === 0) ? item.value : null
+                  'Proyección Futura': (isLastHist && gaps.length === 0) ? item.value : null,
+                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
                 });
+                globalIdx++;
               });
 
               // 2. Gap / Mes actual (gris punteado)
@@ -555,8 +580,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': item.value,
-                  'Proyección Futura': isLastGap ? item.value : null
+                  'Proyección Futura': isLastGap ? item.value : null,
+                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
                 });
+                globalIdx++;
               });
 
               // 3. Forecast Futuro 4 Meses (azul punteado)
@@ -565,8 +592,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': null,
-                  'Proyección Futura': item.value
+                  'Proyección Futura': item.value,
+                  'Proyección Lineal': Math.max(0, Math.round(m * globalIdx + b))
                 });
+                globalIdx++;
               });
 
               const MODEL_NAME_MAP = {
@@ -645,6 +674,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                           <Line type="monotone" dataKey="Estimación Atraso" stroke="#95A5A6" strokeWidth={1.5} strokeDasharray="3 3" dot={{ r: 2 }} />
                         )}
                         <Line type="monotone" dataKey="Proyección Futura" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="linear" dataKey="Proyección Lineal" stroke="#9C27B0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
