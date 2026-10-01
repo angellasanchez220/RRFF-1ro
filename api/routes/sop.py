@@ -439,7 +439,7 @@ def get_sop(include_discontinued: bool = False):
 
     # Duración a mostrar en el dashboard
     df["duracion_meses"] = df["duracion_fisica_solo"]
-    df.loc[df["nivel_alerta"] == "MORADO", "duracion_meses"] = dur_total
+    df["duracion_transito_solo"] = (df["cantidad_transito"] / ritmo_mensual).fillna(999)
 
     # Diccionario de explicaciones de excepciones
     EXPLICACIONES = {

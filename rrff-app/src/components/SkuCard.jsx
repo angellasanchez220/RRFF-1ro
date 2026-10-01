@@ -105,6 +105,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
 
   const durFisica   = product.duracion_fisica_solo ?? 0;
   const durFisicaStr = durFisica >= 999 ? '∞' : `${Number(durFisica).toFixed(1)} m`;
+  
+  const durTransito = product.duracion_transito_solo ?? 0;
+  const durTransitoStr = durTransito >= 999 ? '∞' : `${Number(durTransito).toFixed(1)} m`;
+  
   const sug         = product.sugerencia_compra_inmediata_uds ?? 0;
   const cajas       = ump > 0 ? Math.floor(stockFemaco / ump) : 0;
   const hcCajas     = ump > 0 && stockHC ? Math.floor(stockHC / ump) : null;
@@ -263,34 +267,22 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
         <div className="metric-box">
           <div className="mb-lbl">🚢 Tránsito Total</div>
           <div className="mb-val">{fmt(cantTr)} <small>unidades</small></div>
-          <div className="mb-sub">ETA: {eta}</div>
+          <div className="mb-sub">
+            ETA: {eta} {cantTr > 0 && <span style={{marginLeft: '8px', color: '#666'}}>| {durTransitoStr}</span>}
+          </div>
         </div>
 
         <div className="alert-box" style={{ background: colorInfo.bg }}>
           <div className="mb-lbl">Duración &amp; Estado</div>
-          {alerta === 'MORADO' ? (
-            <>
-              {/* Gran número: Duración física */}
-              <div className="mb-val">{durFisicaStr} <small style={{fontSize:'0.7rem', fontWeight:400}}>físico</small></div>
-              <div className="mb-nivel">
-                {/* Texto abajo: Duración total c/tránsito */}
-                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', marginBottom: 2 }}>{durStr} <small>total c/tránsito</small></div>
-                <span className="semaforo-dot">{colorInfo.label}</span> {alerta}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mb-val">{durStr} <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 semanas</small></div>
-              {product.duracion_4_meses != null && (
-                <div style={{ fontSize: '0.85rem', marginTop: 2, color: '#333' }}>
-                  {Number(product.duracion_4_meses).toFixed(1)} meses <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 meses</small>
-                </div>
-              )}
-              <div className="mb-nivel" style={{marginTop: 4}}>
-                <span className="semaforo-dot">{colorInfo.label}</span> {alerta}
-              </div>
-            </>
+          <div className="mb-val">{durStr} <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 semanas</small></div>
+          {product.duracion_4_meses != null && (
+            <div style={{ fontSize: '0.85rem', marginTop: 2, color: '#333' }}>
+              {Number(product.duracion_4_meses).toFixed(1)} meses <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 meses</small>
+            </div>
           )}
+          <div className="mb-nivel" style={{marginTop: 4}}>
+            <span className="semaforo-dot">{colorInfo.label}</span> {alerta}
+          </div>
         </div>
 
         <div className="metric-box sug">
