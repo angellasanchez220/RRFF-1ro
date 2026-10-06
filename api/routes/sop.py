@@ -119,7 +119,8 @@ def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
             "growth_so_pct": item.get("growth_so_pct"),
             "growth_si_pct": item.get("growth_si_pct"),
             "mom_growth_si_pct": item.get("mom_growth_si_pct"),
-            "hist_val":  item.get("Sell Out Año Anterior", 0)
+            "hist_val":  item.get("Sell Out Año Anterior", 0),
+            "hist_si_val": item.get("hist_si_val", 0)
         })
     return result
 
@@ -215,7 +216,8 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "growth_pct": yoy_growth, # keep for compatibility with the small calendar label
             "growth_so_pct": yoy_growth,
             "growth_si_pct": yoy_growth_si if yoy_growth_si is not None else mom_growth_si,
-            "mom_growth_si_pct": mom_growth_si
+            "mom_growth_si_pct": mom_growth_si,
+            "hist_si_val": prev_si_hist
         })
         prev_so = so_val
         prev_si = si_val

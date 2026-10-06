@@ -225,13 +225,16 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             if (valSI != null) {
               if (valSI > 0) {
                 growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
-                gClassSI = 'pos-si';
+                gClassSI = 'pos';
               } else if (valSI < 0) {
                 growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
-                gClassSI = 'neg-si';
+                gClassSI = 'neg';
               } else {
                 growthSI = '0%';
               }
+            }
+            if (m.hist_si_val != null && m.hist_si_val > 0) {
+               growthSI += ` (${fmt(m.hist_si_val)})`;
             }
 
             return (
@@ -491,13 +494,16 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                   if (valSI != null) {
                                     if (valSI > 0) {
                                       growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
-                                      gClassSI = 'pos-si';
+                                      gClassSI = 'pos';
                                     } else if (valSI < 0) {
                                       growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
-                                      gClassSI = 'neg-si';
+                                      gClassSI = 'neg';
                                     } else {
                                       growthSI = '0%';
                                     }
+                                  }
+                                  if (m.hist_si_val != null && m.hist_si_val > 0) {
+                                     growthSI += ` (${fmt(m.hist_si_val)})`;
                                   }
 
                                   return (

@@ -366,13 +366,16 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                       if (valSI != null) {
                                         if (valSI > 0) {
                                           growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
-                                          gClassSI = 'pos-si';
+                                          gClassSI = 'pos';
                                         } else if (valSI < 0) {
                                           growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
-                                          gClassSI = 'neg-si';
+                                          gClassSI = 'neg';
                                         } else {
                                           growthSI = '0%';
                                         }
+                                      }
+                                      if (m.hist_si_val != null && m.hist_si_val > 0) {
+                                         growthSI += ` (${m.hist_si_val.toLocaleString('es-CL')})`;
                                       }
 
                                       return (
@@ -381,7 +384,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                         <div className={`cal-so`} style={{ color: m.sell_out === 0 ? '#ccc' : '#4caf50', fontWeight: 'bold' }}>{m.sell_out == null ? '—' : Number(m.sell_out).toLocaleString('es-CL')}</div>
                                         <div className={`cal-si`} style={{ color: m.sell_in === 0 ? '#ccc' : '#2196f3', fontWeight: 'bold' }}>{m.sell_in == null ? '—' : Number(m.sell_in).toLocaleString('es-CL')}</div>
                                         <div className={`cal-growth`} style={{ color: gClass === 'pos' ? '#2e7d32' : gClass === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growth}</div>
-                                        <div className={`cal-growth`} style={{ color: gClassSI === 'pos-si' ? '#0288D1' : gClassSI === 'neg-si' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growthSI}</div>
+                                        <div className={`cal-growth`} style={{ color: gClassSI === 'pos' ? '#2e7d32' : gClassSI === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growthSI}</div>
                                       </div>
                                       );
                                     })}
