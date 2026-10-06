@@ -696,8 +696,8 @@ def _transform_stock_historico() -> pd.DataFrame:
     # Ordenar cronologicamente para poder tomar el "last"
     df_daily = df_daily.sort_values("fecha_carga")
     
-    # Quedarse con el ultimo registro de cada mes para cada SKU
-    df_monthly = df_daily.drop_duplicates(subset=["sku", "ano", "mes"], keep="last")
+    # Quedarse con el stock máximo registrado en cualquier día de ese mes para cada SKU
+    df_monthly = df_daily.groupby(["sku", "ano", "mes"])["stock_fisico"].max().reset_index()
     
     # Formatear
     df_monthly = df_monthly.rename(columns={"ano": "año"})
