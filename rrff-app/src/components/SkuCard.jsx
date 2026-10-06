@@ -808,87 +808,105 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           <div className="exp-block">
             <div className="exp-title">📈 PROYECCIÓN SELL IN & RELACIÓN</div>
             {(() => {
-              if (!chartData || chartData.length === 0) return <div className="exp-empty">No hay historial suficiente de Sell In.</div>;
+              if (!chartData || chartData.length < 3) return <div className="exp-empty">No hay historial suficiente para calcular la elasticidad.</div>;
               
-              const nSI = chartData.length;
-              let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-              chartData.forEach((item, idx) => {
-                const val = item["Sell In"] || 0;
-                sumX += idx;
-                sumY += val;
-                sumXY += idx * val;
-                sumX2 += idx * idx;
-              });
-              const denominator = nSI * sumX2 - sumX * sumX;
-              let m = 0, b = 0;
-              if (nSI > 1) {
-                if (denominator !== 0) {
-                   m = (nSI * sumXY - sumX * sumY) / denominator;
-                   b = (sumY - m * sumX) / nSI;
-                } else {
-                   b = sumY / nSI;
+              // 1. Calculate historical elasticity (Transfer Factor)
+              let sumE = 0;
+              let countE = 0;
+              
+              for (let i = 2; i < chartData.length; i++) {
+                const so_curr = chartData[i]["Sell Out"] || 0;
+                const so_prev = chartData[i-1]["Sell Out"] || 0;
+                const si_prev = chartData[i-1]["Sell In"] || 0;
+                const si_prev2 = chartData[i-2]["Sell In"] || 0;
+              
+                if (so_prev > 0 && si_prev2 > 0) {
+                  const gSO = (so_curr - so_prev) / so_prev;
+                  const gSI = (si_prev - si_prev2) / si_prev2;
+              
+                  // Only consider months where Sell In changed by more than 5%
+                  if (Math.abs(gSI) > 0.05) {
+                    const e = gSO / gSI;
+                    if (e >= -5 && e <= 5) {
+                      sumE += e;
+                      countE++;
+                    }
+                  }
                 }
-              } else if (nSI === 1) {
-                b = sumY;
               }
-
-              const siChartData = [];
-              chartData.forEach((item, idx) => {
-                let trend = m * idx + b;
-                siChartData.push({
+              
+              let elasticity = 1.0;
+              if (countE > 0) {
+                elasticity = sumE / countE;
+                if (elasticity <= 0.1) elasticity = 0.5; // fallback conservador
+              }
+              
+              // 2. Generate Chart Data
+              const fc = (hwData && hwData.available) ? (hwData.forecast || []) : [];
+              const relationChartData = [];
+              
+              const histContext = chartData.slice(-6); // Mostrar últimos 6 meses de contexto
+              histContext.forEach(item => {
+                relationChartData.push({
                   name: item.name,
-                  'Sell In Real': item["Sell In"] || 0,
-                  'Proyección Futura': null,
-                  'Tendencia Lineal': Math.max(0, Math.round(trend))
+                  'Sell Out Histórico': item["Sell Out"],
+                  'Sell In Histórico': item["Sell In"],
+                  'Sell Out Proyectado': null,
+                  'Sell In Requerido': null
                 });
               });
               
-              for (let i = 1; i <= 4; i++) {
-                let futureIdx = nSI - 1 + i;
-                let trend = m * futureIdx + b;
-                siChartData.push({
-                   name: `+${i} Mes`,
-                   'Sell In Real': null,
-                   'Proyección Futura': Math.max(0, Math.round(trend)),
-                   'Tendencia Lineal': Math.max(0, Math.round(trend))
+              let lastSO = chartData[chartData.length - 1]["Sell Out"] || 1;
+              let lastSI = chartData[chartData.length - 1]["Sell In"] || 1;
+              if (lastSI === 0) lastSI = 1;
+              if (lastSO === 0) lastSO = 1;
+              
+              fc.forEach(item => {
+                const projectedSO = item.value;
+                const targetGSO = (projectedSO - lastSO) / lastSO;
+                
+                const targetGSI = targetGSO / elasticity;
+                let requiredSI = lastSI * (1 + targetGSI);
+                if (requiredSI < 0) requiredSI = 0;
+              
+                relationChartData.push({
+                  name: fmtMonthLabel(item.month),
+                  'Sell Out Histórico': null,
+                  'Sell In Histórico': null,
+                  'Sell Out Proyectado': projectedSO,
+                  'Sell In Requerido': Math.round(requiredSI)
                 });
-              }
+              
+                lastSO = projectedSO;
+                lastSI = requiredSI;
+              });
 
-              const lastCal = calendario.slice(-1)[0] || {};
-              const cSO = lastCal.growth_pct ?? 0;
-              const cSI = lastCal.growth_si_pct ?? lastCal.mom_growth_si_pct ?? 0;
-              let relacionText = '';
-              if (cSO > 0 && cSI > 0) relacionText = 'Crecimiento alineado al alza.';
-              else if (cSO < 0 && cSI < 0) relacionText = 'Caída alineada a la baja.';
-              else if (cSO > 0 && cSI <= 0) relacionText = 'Divergencia: Ventas crecen pero Compras caen (posible riesgo de quiebre).';
-              else if (cSO < 0 && cSI >= 0) relacionText = 'Divergencia: Ventas caen pero Compras suben (posible sobrestock futuro).';
-              else relacionText = 'Estabilidad o sin cambios significativos.';
+              const elastText = countE === 0 
+                ? "Relación base 1:1 (sin datos históricos suficientes con variaciones significativas)." 
+                : `Por cada 10% de aumento en Sell In, el Sell Out sube históricamente un ${(elasticity * 10).toFixed(1)}% al mes siguiente.`;
 
               return (
                 <>
                   <div style={{ height: 210 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={siChartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                      <ComposedChart data={relationChartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
                         <XAxis dataKey="name" tick={{ fontSize: 9 }} />
                         <YAxis tick={{ fontSize: 10 }} />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                         
-                        <Line type="monotone" dataKey="Sell In Real" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="Proyección Futura" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
-                        <Line type="linear" dataKey="Tendencia Lineal" stroke="#9C27B0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                        <Line type="monotone" dataKey="Sell Out Histórico" stroke="#8DC63F" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Sell In Histórico" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
+                        
+                        <Line type="monotone" dataKey="Sell Out Proyectado" stroke="#8DC63F" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Sell In Requerido" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
-                    <strong>Relación (Último mes):</strong> {relacionText}
-                    <span style={{ display: 'inline-block', marginLeft: 12, color: cSO >= 0 ? '#1d6b3e' : '#c62828' }}>
-                      <strong>Cre. Sell Out:</strong> {cSO > 0 ? '↑' : cSO < 0 ? '↓' : ''} {Math.abs(cSO).toFixed(1)}%
-                    </span>
-                    <span style={{ display: 'inline-block', marginLeft: 12, color: cSI >= 0 ? '#1d6b3e' : '#c62828' }}>
-                      <strong>Cre. Sell In:</strong> {cSI > 0 ? '↑' : cSI < 0 ? '↓' : ''} {Math.abs(cSI).toFixed(1)}%
-                    </span>
+                    <strong>Elasticidad Histórica:</strong> {elastText}
+                    {fc.length === 0 && <span style={{color: '#d97706', display: 'block', marginTop: 4}}>* No hay proyección de Sell Out disponible para estimar el Sell In requerido.</span>}
                   </div>
                 </>
               );
