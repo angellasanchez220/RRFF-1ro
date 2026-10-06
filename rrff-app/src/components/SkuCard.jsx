@@ -812,37 +812,25 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               <div className="exp-empty">No hay proyección base para estimar el Sell In requerido.</div>
             )}
             {!hwLoad && hwData && hwData.available && (() => {
-              if (!chartData || chartData.length < 3) return <div className="exp-empty">No hay historial suficiente para calcular la elasticidad.</div>;
+              if (!chartData || chartData.length < 3) return <div className="exp-empty">No hay historial suficiente para proyectar la relación.</div>;
               
-              // 1. Calculate historical elasticity (Transfer Factor)
-              let sumE = 0;
-              let countE = 0;
+              // 1. Calcular Factor de Reposición Volumétrico (Ratio histórico)
+              // Excluimos el último mes porque suele ser el mes en curso (incompleto) y distorsiona el cálculo.
+              let totalSI = 0;
+              let totalSO = 0;
+              const completedMonths = chartData.slice(0, chartData.length - 1);
               
-              for (let i = 2; i < chartData.length; i++) {
-                const so_curr = chartData[i]["Sell Out"] || 0;
-                const so_prev = chartData[i-1]["Sell Out"] || 0;
-                const si_prev = chartData[i-1]["Sell In"] || 0;
-                const si_prev2 = chartData[i-2]["Sell In"] || 0;
+              completedMonths.forEach(item => {
+                totalSI += item["Sell In"] || 0;
+                totalSO += item["Sell Out"] || 0;
+              });
               
-                if (so_prev > 0 && si_prev2 > 0) {
-                  const gSO = (so_curr - so_prev) / so_prev;
-                  const gSI = (si_prev - si_prev2) / si_prev2;
-              
-                  // Only consider months where Sell In changed by more than 5%
-                  if (Math.abs(gSI) > 0.05) {
-                    const e = gSO / gSI;
-                    if (e >= -5 && e <= 5) {
-                      sumE += e;
-                      countE++;
-                    }
-                  }
-                }
-              }
-              
-              let elasticity = 1.0;
-              if (countE > 0) {
-                elasticity = sumE / countE;
-                if (elasticity <= 0.1) elasticity = 0.5; // fallback conservador
+              let ratio = 1.0;
+              if (totalSO > 0) {
+                ratio = totalSI / totalSO;
+                // Limitamos el ratio a bandas lógicas para evitar excesos
+                if (ratio < 0.2) ratio = 0.2;
+                if (ratio > 5.0) ratio = 5.0;
               }
               
               // 2. Generate Chart Data
@@ -861,18 +849,9 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 });
               });
               
-              let lastSO = chartData[chartData.length - 1]["Sell Out"] || 1;
-              let lastSI = chartData[chartData.length - 1]["Sell In"] || 1;
-              if (lastSI === 0) lastSI = 1;
-              if (lastSO === 0) lastSO = 1;
-              
               fc.forEach(item => {
                 const projectedSO = item.value;
-                const targetGSO = (projectedSO - lastSO) / lastSO;
-                
-                const targetGSI = targetGSO / elasticity;
-                let requiredSI = lastSI * (1 + targetGSI);
-                if (requiredSI < 0) requiredSI = 0;
+                let requiredSI = projectedSO * ratio;
               
                 relationChartData.push({
                   name: fmtMonthLabel(item.month),
@@ -881,14 +860,9 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   'Sell Out Proyectado': projectedSO,
                   'Sell In Requerido': Math.round(requiredSI)
                 });
-              
-                lastSO = projectedSO;
-                lastSI = requiredSI;
               });
 
-              const elastText = countE === 0 
-                ? "Relación base 1:1 (sin datos históricos suficientes con variaciones significativas)." 
-                : `Por cada 10% de aumento en Sell In, el Sell Out sube históricamente un ${(elasticity * 10).toFixed(1)}% al mes siguiente.`;
+              const elastText = `Factor de Reposición: Históricamente se compran ${(ratio * 100).toFixed(0)} unidades (Sell In) por cada 100 unidades vendidas (Sell Out).`;
 
               return (
                 <>
@@ -910,7 +884,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                     </ResponsiveContainer>
                   </div>
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
-                    <strong>Elasticidad Histórica:</strong> {elastText}
+                    <strong>Relación Volumétrica:</strong> {elastText}
                   </div>
                 </>
               );
