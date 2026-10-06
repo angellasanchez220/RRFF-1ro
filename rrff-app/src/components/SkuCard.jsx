@@ -807,7 +807,11 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           {/* GRÁFICO SEPARADO: PROYECCIÓN SELL IN & RELACIÓN */}
           <div className="exp-block">
             <div className="exp-title">📈 PROYECCIÓN SELL IN & RELACIÓN</div>
-            {(() => {
+            {hwLoad && <div className="exp-loading">Calculando elasticidad requerida…</div>}
+            {!hwLoad && hwData && !hwData.available && (
+              <div className="exp-empty">No hay proyección base para estimar el Sell In requerido.</div>
+            )}
+            {!hwLoad && hwData && hwData.available && (() => {
               if (!chartData || chartData.length < 3) return <div className="exp-empty">No hay historial suficiente para calcular la elasticidad.</div>;
               
               // 1. Calculate historical elasticity (Transfer Factor)
@@ -842,17 +846,18 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               }
               
               // 2. Generate Chart Data
-              const fc = (hwData && hwData.available) ? (hwData.forecast || []) : [];
+              const fc = hwData.forecast || [];
               const relationChartData = [];
               
-              const histContext = chartData.slice(-6); // Mostrar últimos 6 meses de contexto
-              histContext.forEach(item => {
+              const histContext = chartData.slice(-12); // Mostrar últimos 12 meses de contexto
+              histContext.forEach((item, idx) => {
+                const isLast = idx === histContext.length - 1;
                 relationChartData.push({
                   name: item.name,
                   'Sell Out Histórico': item["Sell Out"],
                   'Sell In Histórico': item["Sell In"],
-                  'Sell Out Proyectado': null,
-                  'Sell In Requerido': null
+                  'Sell Out Proyectado': (isLast && fc.length > 0) ? item["Sell Out"] : null,
+                  'Sell In Requerido': (isLast && fc.length > 0) ? item["Sell In"] : null
                 });
               });
               
@@ -906,7 +911,6 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                   </div>
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
                     <strong>Elasticidad Histórica:</strong> {elastText}
-                    {fc.length === 0 && <span style={{color: '#d97706', display: 'block', marginTop: 4}}>* No hay proyección de Sell Out disponible para estimar el Sell In requerido.</span>}
                   </div>
                 </>
               );
