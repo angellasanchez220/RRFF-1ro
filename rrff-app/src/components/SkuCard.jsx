@@ -113,7 +113,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const calendario  = product.calendario || [];
   const sumSellOut = calendario.reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
   const sumSellIn  = calendario.reduce((acc, m) => acc + (Number(m.sell_in) || 0), 0);
-  const latestYearStr = calendario.length > 0 ? String(calendario[calendario.length - 1].label).slice(-4) : new Date().getFullYear().toString();
+  const allYears = calendario.map(m => parseInt(String(m.label).slice(-4)) || 0);
+  const latestYearStr = allYears.length > 0 ? Math.max(...allYears).toString() : new Date().getFullYear().toString();
   const sumYtdSellOut = calendario.filter(m => String(m.label).endsWith(latestYearStr)).reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
   const sumYtdSellIn  = calendario.filter(m => String(m.label).endsWith(latestYearStr)).reduce((acc, m) => acc + (Number(m.sell_in) || 0), 0);
   const rawChartData = product.chart_24m || [];
@@ -291,7 +292,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             <b>12M:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumSellIn)}</span>
           </div>
           <div className="mb-val" style={{fontSize: '0.8rem', color: '#333', marginTop: '4px'}}>
-            <b>YTD:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumYtdSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumYtdSellIn)}</span>
+            <b>YTD {latestYearStr}:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumYtdSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumYtdSellIn)}</span>
           </div>
         </div>
 
