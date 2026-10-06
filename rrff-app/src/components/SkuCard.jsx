@@ -814,26 +814,6 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             {!hwLoad && hwData && hwData.available && (() => {
               if (!chartData || chartData.length < 3) return <div className="exp-empty">No hay historial suficiente para proyectar la relación.</div>;
               
-              // 1. Calcular Factor de Reposición Volumétrico (Ratio histórico)
-              // Excluimos el último mes porque suele ser el mes en curso (incompleto) y distorsiona el cálculo.
-              let totalSI = 0;
-              let totalSO = 0;
-              const completedMonths = chartData.slice(0, chartData.length - 1);
-              
-              completedMonths.forEach(item => {
-                totalSI += item["Sell In"] || 0;
-                totalSO += item["Sell Out"] || 0;
-              });
-              
-              let ratio = 1.0;
-              if (totalSO > 0) {
-                ratio = totalSI / totalSO;
-                // Limitamos el ratio a bandas lógicas para evitar excesos
-                if (ratio < 0.2) ratio = 0.2;
-                if (ratio > 5.0) ratio = 5.0;
-              }
-              
-              // 2. Generate Chart Data
               const fc = hwData.forecast || [];
               const relationChartData = [];
               
@@ -849,9 +829,22 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 });
               });
               
+              // Planificación S&OP a 4 meses: Evitar sobrestock y estabilizar inventario
+              const stockTarget = product.sug_target_uds ?? 0;
+              const stockActual = stockUsedForPurchase ?? 0;
+              const tr = transito ? transito.reduce((acc, curr) => acc + curr.cantidad, 0) : (product.sug_cantidad_transito ?? 0);
+              const currentInv = stockActual + tr;
+              
+              // Calculamos la brecha inicial hacia el stock objetivo y la dividimos en 4 cuotas
+              const initialGap = stockTarget - currentInv;
+              const monthlyGap = initialGap / 4;
+              
               fc.forEach(item => {
                 const projectedSO = item.value;
-                let requiredSI = projectedSO * ratio;
+                
+                // Requerimiento = Venderemos X + Cuota de estabilización de inventario
+                let requiredSI = projectedSO + monthlyGap;
+                if (requiredSI < 0) requiredSI = 0; // Si estamos muy sobrestockeados, no compramos nada
               
                 relationChartData.push({
                   name: fmtMonthLabel(item.month),
@@ -862,7 +855,12 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 });
               });
 
-              const elastText = `Factor de Reposición: Históricamente se compran ${(ratio * 100).toFixed(0)} unidades (Sell In) por cada 100 unidades vendidas (Sell Out).`;
+              let gapText = '';
+              if (initialGap > 0) gapText = `+${Math.round(monthlyGap)} uds/mes para cubrir déficit`;
+              else if (initialGap < 0) gapText = `${Math.round(monthlyGap)} uds/mes para quemar sobrestock`;
+              else gapText = 'Inventario en nivel óptimo';
+
+              const elastText = `Plan de Reposición S&OP: Se estima comprar exactamente lo que se proyecta vender, ajustado suavemente (${gapText}) para alcanzar el Target Stock sin generar sobrestock.`;
 
               return (
                 <>
@@ -884,7 +882,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                     </ResponsiveContainer>
                   </div>
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
-                    <strong>Relación Volumétrica:</strong> {elastText}
+                    <strong>Relación S&OP:</strong> {elastText}
                   </div>
                 </>
               );
