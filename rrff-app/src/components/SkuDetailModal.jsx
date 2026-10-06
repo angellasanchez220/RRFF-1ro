@@ -339,7 +339,8 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                     <div className="cal-label-col" style={{ display: 'flex', flexDirection: 'column', padding: '8px', background: '#f5f5f5', borderRight: '1px solid #EBEBEB', fontSize: '0.75rem', fontWeight: 'bold', justifyContent: 'space-around' }}>
                                       <span className="lbl-so">Sell Out</span>
                                       <span className="lbl-si">Sell In</span>
-                                      <span className="lbl-gr">Crecimiento</span>
+                                      <span className="lbl-gr">Cre. Sell Out</span>
+                                      <span className="lbl-gr" style={{ color: '#0288D1' }}>Cre. Sell In</span>
                                     </div>
                                     {fullSiblingData.calendario.map((m, i) => {
                                       let growth = '-';
@@ -359,12 +360,28 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                       if (m.hist_val != null && m.hist_val > 0) {
                                         growth += ` (${m.hist_val.toLocaleString('es-CL')})`;
                                       }
+                                      let growthSI = '-';
+                                      let gClassSI = 'zero';
+                                      const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
+                                      if (valSI != null) {
+                                        if (valSI > 0) {
+                                          growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
+                                          gClassSI = 'pos-si';
+                                        } else if (valSI < 0) {
+                                          growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
+                                          gClassSI = 'neg-si';
+                                        } else {
+                                          growthSI = '0%';
+                                        }
+                                      }
+
                                       return (
                                       <div className="cal-col" key={i} style={{ flex: 1, borderRight: i < 11 ? '1px solid #EBEBEB' : 'none', padding: '4px', textAlign: 'center', fontSize: '0.75rem' }}>
                                         <div className={`cal-mes`} style={{ fontWeight: 'bold', borderBottom: '1px solid #eee', marginBottom: '4px', paddingBottom: '2px', color: m.es_real ? '#1d6b3e' : '#666' }}>{m.label}</div>
                                         <div className={`cal-so`} style={{ color: m.sell_out === 0 ? '#ccc' : '#4caf50', fontWeight: 'bold' }}>{m.sell_out == null ? '—' : Number(m.sell_out).toLocaleString('es-CL')}</div>
                                         <div className={`cal-si`} style={{ color: m.sell_in === 0 ? '#ccc' : '#2196f3', fontWeight: 'bold' }}>{m.sell_in == null ? '—' : Number(m.sell_in).toLocaleString('es-CL')}</div>
                                         <div className={`cal-growth`} style={{ color: gClass === 'pos' ? '#2e7d32' : gClass === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growth}</div>
+                                        <div className={`cal-growth`} style={{ color: gClassSI === 'pos-si' ? '#0288D1' : gClassSI === 'neg-si' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growthSI}</div>
                                       </div>
                                       );
                                     })}

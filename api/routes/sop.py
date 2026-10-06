@@ -116,6 +116,9 @@ def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
             "sell_out":  item["Sell Out"],
             "sell_in":   item["Sell In"],
             "growth_pct": item.get("growth_pct"),
+            "growth_so_pct": item.get("growth_so_pct"),
+            "growth_si_pct": item.get("growth_si_pct"),
+            "mom_growth_si_pct": item.get("mom_growth_si_pct"),
             "hist_val":  item.get("Sell Out Año Anterior", 0)
         })
     return result
@@ -145,6 +148,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
     historial = [uno_mas_atras] + recientes_prev + pasados_prev + recientes + pasados
 
     prev_so = None
+    prev_si = None
     for mes_num, nombre, abrev, yr_db, yr_label in historial:
         col_so = f"sellout_{abrev}_{yr_db}"
         col_si = f"sellin_{abrev}_{yr_db}"
@@ -183,9 +187,19 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         if prev_so is not None and prev_so > 0:
             mom_growth = round(((so_val - prev_so) / prev_so) * 100, 1)
 
+        mom_growth_si = None
+        if prev_si is not None and prev_si > 0:
+            mom_growth_si = round(((si_val - prev_si) / prev_si) * 100, 1)
+
         yoy_growth = None
         if hist_val is not None and hist_val > 0:
             yoy_growth = round(((so_val - hist_val) / hist_val) * 100, 1)
+
+        col_hist_si = f"hist_sellin_{nombre.lower()}_{anio_hist}"
+        prev_si_hist = _safe(row.get(col_hist_si)) if col_hist_si in cols else 0
+        yoy_growth_si = None
+        if prev_si_hist is not None and prev_si_hist > 0:
+            yoy_growth_si = round(((si_val - prev_si_hist) / prev_si_hist) * 100, 1)
 
         chart.append({
             "name": f"{nombre[:3]} {yr_label}",
@@ -198,9 +212,13 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "Sell Out Año Anterior": hist_val,
             "mom_growth_pct": mom_growth,
             "yoy_growth_pct": yoy_growth,
-            "growth_pct": yoy_growth # keep for compatibility with the small calendar label
+            "growth_pct": yoy_growth, # keep for compatibility with the small calendar label
+            "growth_so_pct": yoy_growth,
+            "growth_si_pct": yoy_growth_si if yoy_growth_si is not None else mom_growth_si,
+            "mom_growth_si_pct": mom_growth_si
         })
         prev_so = so_val
+        prev_si = si_val
 
     # Trim leading months where Sell Out == 0, but ALWAYS keep at least 12 months
     first_non_zero_idx = -1

@@ -198,7 +198,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           <div className="cal-label-col">
             <span className="lbl-so">Sell Out</span>
             <span className="lbl-si">Sell In</span>
-            <span className="lbl-gr">Crecimiento</span>
+            <span className="lbl-gr">Cre. Sell Out</span>
+            <span className="lbl-gr" style={{ color: '#0288D1' }}>Cre. Sell In</span>
           </div>
           {calendario.map((m, i) => {
             let growth = '-';
@@ -218,12 +219,28 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             if (m.hist_val != null && m.hist_val > 0) {
                growth += ` (${fmt(m.hist_val)})`;
             }
+            let growthSI = '-';
+            let gClassSI = 'zero';
+            const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
+            if (valSI != null) {
+              if (valSI > 0) {
+                growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
+                gClassSI = 'pos-si';
+              } else if (valSI < 0) {
+                growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
+                gClassSI = 'neg-si';
+              } else {
+                growthSI = '0%';
+              }
+            }
+
             return (
             <div className="cal-col" key={i}>
               <div className={`cal-mes ${m.es_real ? 'real' : ''}`}>{m.label}</div>
               <div className={`cal-so ${m.sell_out === 0 ? 'zero' : ''}`}>{fmt(m.sell_out)}</div>
               <div className={`cal-si ${m.sell_in === 0 ? 'zero' : ''}`}>{fmt(m.sell_in)}</div>
               <div className={`cal-growth ${gClass}`}>{growth}</div>
+              <div className={`cal-growth ${gClassSI}`}>{growthSI}</div>
             </div>
             );
           })}
@@ -447,7 +464,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                 <div className="cal-label-col">
                                   <span className="lbl-so">Sell Out</span>
                                   <span className="lbl-si">Sell In</span>
-                                  <span className="lbl-gr">Crecimiento</span>
+                                  <span className="lbl-gr">Cre. Sell Out</span>
+                                  <span className="lbl-gr" style={{ color: '#0288D1' }}>Cre. Sell In</span>
                                 </div>
                                 {fullSiblingData.calendario.map((m, i) => {
                                   let growth = '-';
@@ -467,12 +485,28 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                   if (m.hist_val != null && m.hist_val > 0) {
                                      growth += ` (${fmt(m.hist_val)})`;
                                   }
+                                  let growthSI = '-';
+                                  let gClassSI = 'zero';
+                                  const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
+                                  if (valSI != null) {
+                                    if (valSI > 0) {
+                                      growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
+                                      gClassSI = 'pos-si';
+                                    } else if (valSI < 0) {
+                                      growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
+                                      gClassSI = 'neg-si';
+                                    } else {
+                                      growthSI = '0%';
+                                    }
+                                  }
+
                                   return (
                                   <div className="cal-col" key={i}>
                                     <div className={`cal-mes ${m.es_real ? 'real' : ''}`}>{m.label}</div>
                                     <div className={`cal-so ${m.sell_out === 0 ? 'zero' : ''}`}>{fmt(m.sell_out)}</div>
                                     <div className={`cal-si ${m.sell_in === 0 ? 'zero' : ''}`}>{fmt(m.sell_in)}</div>
                                     <div className={`cal-growth ${gClass}`}>{growth}</div>
+                                    <div className={`cal-growth ${gClassSI}`}>{growthSI}</div>
                                   </div>
                                   );
                                 })}
