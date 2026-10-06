@@ -289,10 +289,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
         <div className="metric-box">
           <div className="mb-lbl" style={{marginBottom: '4px'}}>📊 Acumulados</div>
           <div className="mb-val" style={{fontSize: '0.8rem', color: '#333'}}>
-            <b>12M:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumSellIn)}</span>
+            <b>12M:</b> <span style={{color: 'var(--rojo)'}}>SO {fmt(sumSellOut)}</span> · <span style={{color: 'var(--azul)'}}>SI {fmt(sumSellIn)}</span>
           </div>
           <div className="mb-val" style={{fontSize: '0.8rem', color: '#333', marginTop: '4px'}}>
-            <b>YTD {latestYearStr}:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumYtdSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumYtdSellIn)}</span>
+            <b>YTD {latestYearStr}:</b> <span style={{color: 'var(--rojo)'}}>SO {fmt(sumYtdSellOut)}</span> · <span style={{color: 'var(--azul)'}}>SI {fmt(sumYtdSellIn)}</span>
           </div>
         </div>
 
