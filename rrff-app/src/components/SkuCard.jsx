@@ -804,6 +804,97 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             })()}
           </div>
 
+          {/* GRÁFICO SEPARADO: PROYECCIÓN SELL IN & RELACIÓN */}
+          <div className="exp-block">
+            <div className="exp-title">📈 PROYECCIÓN SELL IN & RELACIÓN</div>
+            {(() => {
+              if (!chartData || chartData.length === 0) return <div className="exp-empty">No hay historial suficiente de Sell In.</div>;
+              
+              const nSI = chartData.length;
+              let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+              chartData.forEach((item, idx) => {
+                const val = item["Sell In"] || 0;
+                sumX += idx;
+                sumY += val;
+                sumXY += idx * val;
+                sumX2 += idx * idx;
+              });
+              const denominator = nSI * sumX2 - sumX * sumX;
+              let m = 0, b = 0;
+              if (nSI > 1) {
+                if (denominator !== 0) {
+                   m = (nSI * sumXY - sumX * sumY) / denominator;
+                   b = (sumY - m * sumX) / nSI;
+                } else {
+                   b = sumY / nSI;
+                }
+              } else if (nSI === 1) {
+                b = sumY;
+              }
+
+              const siChartData = [];
+              chartData.forEach((item, idx) => {
+                let trend = m * idx + b;
+                siChartData.push({
+                  name: item.name,
+                  'Sell In Real': item["Sell In"] || 0,
+                  'Proyección Futura': null,
+                  'Tendencia Lineal': Math.max(0, Math.round(trend))
+                });
+              });
+              
+              for (let i = 1; i <= 4; i++) {
+                let futureIdx = nSI - 1 + i;
+                let trend = m * futureIdx + b;
+                siChartData.push({
+                   name: `+${i} Mes`,
+                   'Sell In Real': null,
+                   'Proyección Futura': Math.max(0, Math.round(trend)),
+                   'Tendencia Lineal': Math.max(0, Math.round(trend))
+                });
+              }
+
+              const lastCal = calendario.slice(-1)[0] || {};
+              const cSO = lastCal.growth_pct ?? 0;
+              const cSI = lastCal.growth_si_pct ?? lastCal.mom_growth_si_pct ?? 0;
+              let relacionText = '';
+              if (cSO > 0 && cSI > 0) relacionText = 'Crecimiento alineado al alza.';
+              else if (cSO < 0 && cSI < 0) relacionText = 'Caída alineada a la baja.';
+              else if (cSO > 0 && cSI <= 0) relacionText = 'Divergencia: Ventas crecen pero Compras caen (posible riesgo de quiebre).';
+              else if (cSO < 0 && cSI >= 0) relacionText = 'Divergencia: Ventas caen pero Compras suben (posible sobrestock futuro).';
+              else relacionText = 'Estabilidad o sin cambios significativos.';
+
+              return (
+                <>
+                  <div style={{ height: 210 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={siChartData} margin={{ top: 5, right: 16, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#EBEBEB" />
+                        <XAxis dataKey="name" tick={{ fontSize: 9 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                        
+                        <Line type="monotone" dataKey="Sell In Real" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Proyección Futura" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="linear" dataKey="Tendencia Lineal" stroke="#9C27B0" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
+                    <strong>Relación (Último mes):</strong> {relacionText}
+                    <span style={{ display: 'inline-block', marginLeft: 12, color: cSO >= 0 ? '#1d6b3e' : '#c62828' }}>
+                      <strong>Cre. Sell Out:</strong> {cSO > 0 ? '↑' : cSO < 0 ? '↓' : ''} {Math.abs(cSO).toFixed(1)}%
+                    </span>
+                    <span style={{ display: 'inline-block', marginLeft: 12, color: cSI >= 0 ? '#1d6b3e' : '#c62828' }}>
+                      <strong>Cre. Sell In:</strong> {cSI > 0 ? '↑' : cSI < 0 ? '↓' : ''} {Math.abs(cSI).toFixed(1)}%
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
           {/* DESGLOSE TRÁNSITO */}
           <div className="exp-block">
             <div className="exp-title">🚢 Desglose de OCs en Tránsito</div>
