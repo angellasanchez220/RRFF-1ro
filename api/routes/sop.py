@@ -201,6 +201,9 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         yoy_growth_si = None
         if prev_si_hist is not None and prev_si_hist > 0:
             yoy_growth_si = round(((si_val - prev_si_hist) / prev_si_hist) * 100, 1)
+            
+        col_hist_stock_actual = f"hist_stock_{nombre.lower()}_{yr_label}"
+        stock_historico = _safe(row.get(col_hist_stock_actual)) if col_hist_stock_actual in cols else 0
 
         chart.append({
             "name": f"{nombre[:3]} {yr_label}",
@@ -210,6 +213,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "yr_label": yr_label,
             "Sell Out": so_val,
             "Sell In": si_val,
+            "Stock Tienda": stock_historico,
             "Sell Out Año Anterior": hist_val,
             "mom_growth_pct": mom_growth,
             "yoy_growth_pct": yoy_growth,

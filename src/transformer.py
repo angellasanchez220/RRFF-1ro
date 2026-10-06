@@ -646,6 +646,66 @@ def _transform_sellin_historico() -> pd.DataFrame:
                  check["unidades_sellin"].values[0])
     return df_grouped
 
+def _transform_stock_historico() -> pd.DataFrame:
+    """
+    Stock Historico — columnas por indice (estructura confirmada):
+      0 (idx 0) = Fecha Carga (YYYY-MM-DD)
+      1 (idx 1) = SKU
+     17 (idx17) = Stock Fisico
+    Agrupa por SKU+Ano+Mes sumando Stock Fisico (para colapsar locales en un mismo dia)
+    y luego se queda con el ultimo stock reportado de cada mes.
+    """
+    path = RAW_DIR / "estado_inventario_hc.csv"
+    if not path.exists():
+        log.warning("Archivo no encontrado: %s", path.name)
+        return None
+
+    log.info("Leyendo Stock Historico: %s", path)
+    df = pd.read_csv(
+        path, sep=";", encoding="utf-8-sig", dtype=str,
+        usecols=[0, 1, 17],
+        quotechar='"', on_bad_lines="skip"
+    )
+    df.columns = ["fecha_carga", "sku", "stock_fisico"]
+    
+    # Limpiar SKU
+    df["sku"] = df["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+
+    # Limpiar Stock Fisico
+    df["stock_fisico"] = pd.to_numeric(
+        df["stock_fisico"].astype(str).str.replace(",", ".", regex=False).str.replace(r"[^\d.-]", "", regex=True),
+        errors="coerce"
+    ).fillna(0).astype(int)
+    
+    # Fecha Carga
+    df["fecha_carga"] = pd.to_datetime(df["fecha_carga"], format="%Y-%m-%d", errors="coerce")
+    df = df.dropna(subset=["fecha_carga", "sku"])
+    df = df[df["sku"] != ""]
+    df = df[df["sku"] != "nan"]
+
+    # Agrupar por fecha y sku (sumar stock entre distintos locales ese mismo dia)
+    df_daily = df.groupby(["fecha_carga", "sku"])["stock_fisico"].sum().reset_index()
+    
+    # Extraer ano y mes texto
+    meses_es = {1:"enero", 2:"febrero", 3:"marzo", 4:"abril", 5:"mayo", 6:"junio",
+                7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"}
+    
+    df_daily["ano"] = df_daily["fecha_carga"].dt.year.astype(str)
+    df_daily["mes"] = df_daily["fecha_carga"].dt.month.map(meses_es)
+    
+    # Ordenar cronologicamente para poder tomar el "last"
+    df_daily = df_daily.sort_values("fecha_carga")
+    
+    # Quedarse con el ultimo registro de cada mes para cada SKU
+    df_monthly = df_daily.drop_duplicates(subset=["sku", "ano", "mes"], keep="last")
+    
+    # Formatear
+    df_monthly = df_monthly.rename(columns={"ano": "año"})
+    df_monthly = df_monthly[["sku", "año", "mes", "stock_fisico"]]
+    
+    log.info("  Stock Historico agrupado: %d combinaciones sku/ano/mes (fin de mes)", len(df_monthly))
+    return df_monthly
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Función principal exportada
 # ──────────────────────────────────────────────────────────────────────────────
@@ -837,6 +897,21 @@ def run_transformation(archivos_raw=None):
     except Exception as exc:
         log.error("Error en Sell In Historico: %s", exc)
         resultados["sellin_historico_clean.csv"] = None
+
+    # -- 2i: Stock Historico
+    log.info("--- [2i] Procesando: Stock Historico ---")
+    try:
+        df_stk = _transform_stock_historico()
+        if df_stk is not None:
+            dest = PROC_DIR / "stock_historico_clean.csv"
+            df_stk.to_csv(dest, index=False, encoding="utf-8-sig", sep=";")
+            log.info("Guardado: %s  (%d bytes)", dest, dest.stat().st_size)
+            resultados["stock_historico_clean.csv"] = dest
+        else:
+            resultados["stock_historico_clean.csv"] = None
+    except Exception as exc:
+        log.error("Error en Stock Historico: %s", exc)
+        resultados["stock_historico_clean.csv"] = None
 
     # -- Resumen final
     log.info("=" * 60)

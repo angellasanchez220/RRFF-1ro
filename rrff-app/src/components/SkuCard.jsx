@@ -547,6 +547,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                     
                     <Area type="monotone" dataKey="Sell Out" fill="#8DC63F" stroke="#8DC63F" fillOpacity={0.3} />
                     <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Stock Tienda" stroke="#9C27B0" strokeWidth={2} dot={{ r: 3 }} />
                     <Line type="monotone" dataKey="Sell Out Año Anterior" name="Referencia mismo período año anterior" stroke="#999" strokeWidth={1} strokeDasharray="3 3" dot={{ r: 2 }} />
                   </ComposedChart>
                 </ResponsiveContainer>

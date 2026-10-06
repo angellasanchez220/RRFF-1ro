@@ -582,6 +582,29 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
                 col_name = f"hist_sellin_{nombre_mes}_{anio_hist_n}"
                 df[col_name] = df["sku"].map(mapping).fillna(0)
 
+        # LECTURA DE STOCK HISTORICO
+        try:
+            stk_hist_path = proc_dir / "stock_historico_clean.csv"
+            if stk_hist_path.exists():
+                stk_hist = pd.read_csv(stk_hist_path, sep=";", dtype=str, encoding="utf-8-sig")
+                stk_hist.columns = stk_hist.columns.str.strip()
+                stk_hist["sku"] = stk_hist["sku"].astype(str).str.strip()
+                stk_hist["_ano"] = stk_hist["año"].astype(str).str.strip()
+                stk_hist["mes"] = stk_hist["mes"].astype(str).str.strip().str.lower()
+                stk_hist["stock_fisico"] = pd.to_numeric(stk_hist["stock_fisico"], errors="coerce").fillna(0)
+
+                for m, a in meses:
+                    nombre_mes = _nombre_mes(m).lower()
+                    for offset in [0, 1, 2, 3]:
+                        anio_hist_n = str(a - offset)
+                        hist_sub = stk_hist[(stk_hist["mes"] == nombre_mes) & (stk_hist["_ano"] == anio_hist_n)]
+                        mapping = hist_sub.set_index("sku")["stock_fisico"].to_dict()
+                        col_name = f"hist_stock_{nombre_mes}_{anio_hist_n}"
+                        df[col_name] = df["sku"].map(mapping).fillna(0)
+        except Exception as e:
+            log.warning(f"No se pudo cargar stock_historico_clean.csv: {e}")
+
+
         df["sellout_4m_historico"] = df[hist_cols_4m].sum(axis=1)
         
         if tiene_historial_mensual:
