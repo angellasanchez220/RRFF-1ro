@@ -113,6 +113,9 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const calendario  = product.calendario || [];
   const sumSellOut = calendario.reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
   const sumSellIn  = calendario.reduce((acc, m) => acc + (Number(m.sell_in) || 0), 0);
+  const latestYearStr = calendario.length > 0 ? String(calendario[calendario.length - 1].label).slice(-4) : new Date().getFullYear().toString();
+  const sumYtdSellOut = calendario.filter(m => String(m.label).endsWith(latestYearStr)).reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
+  const sumYtdSellIn  = calendario.filter(m => String(m.label).endsWith(latestYearStr)).reduce((acc, m) => acc + (Number(m.sell_in) || 0), 0);
   const rawChartData = product.chart_24m || [];
   const firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] > 0 || d["Sell In"] > 0 || d["Sell Out Año Anterior"] > 0));
   const chartData = rawChartData.slice(firstDataIndex > -1 ? firstDataIndex : 0);
@@ -283,9 +286,13 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
         )}
 
         <div className="metric-box">
-          <div className="mb-lbl">📊 Total 12 Meses</div>
-          <div className="mb-val" style={{fontSize: '1rem', color: '#0288D1'}}>SO: {fmt(sumSellOut)}</div>
-          <div className="mb-val" style={{fontSize: '1rem', color: '#b35f1a'}}>SI: {fmt(sumSellIn)}</div>
+          <div className="mb-lbl" style={{marginBottom: '4px'}}>📊 Acumulados</div>
+          <div className="mb-val" style={{fontSize: '0.8rem', color: '#333'}}>
+            <b>12M:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumSellIn)}</span>
+          </div>
+          <div className="mb-val" style={{fontSize: '0.8rem', color: '#333', marginTop: '4px'}}>
+            <b>YTD:</b> <span style={{color: '#0288D1'}}>SO {fmt(sumYtdSellOut)}</span> · <span style={{color: '#b35f1a'}}>SI {fmt(sumYtdSellIn)}</span>
+          </div>
         </div>
 
         <div className="metric-box">
