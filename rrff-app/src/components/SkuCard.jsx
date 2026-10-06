@@ -846,38 +846,48 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 });
               });
               
-              // Planificación S&OP a 4 meses: Evitar sobrestock y estabilizar inventario
-              const stockTarget = product.sug_target_uds ?? 0;
-              const stockActual = stockUsedForPurchase ?? 0;
-              const tr = transito ? transito.reduce((acc, curr) => acc + curr.cantidad, 0) : (product.sug_cantidad_transito ?? 0);
-              const currentInv = stockActual + tr;
-              
-              // Calculamos la brecha inicial hacia el stock objetivo y la dividimos en 4 cuotas
-              const initialGap = stockTarget - currentInv;
-              const monthlyGap = initialGap / 4;
+              const sumHistSO = histContext.reduce((acc, curr) => acc + (curr["Sell Out"] || 0), 0);
+              const sumHistSI = histContext.reduce((acc, curr) => acc + (curr["Sell In"] || 0), 0);
+              let reqRatio = 1;
+              if (sumHistSO > 0) {
+                 reqRatio = sumHistSI / sumHistSO;
+                 if (reqRatio > 2.5) reqRatio = 2.5; 
+                 if (reqRatio < 0.2) reqRatio = 0.2;
+              }
+
+              let simStoreStock = product.stock_fisico_matrix ?? product.stock_hc ?? 0;
+              const MAX_STORE_COVERAGE = 2; // meses maximos de stock sano en tienda
               
               fc.forEach(item => {
                 const projectedSO = item.value;
+                const maxStoreStock = projectedSO * MAX_STORE_COVERAGE;
                 
-                // Requerimiento = Venderemos X + Cuota de estabilización de inventario
-                let requiredSI = projectedSO + monthlyGap;
-                if (requiredSI < 0) requiredSI = 0; // Si estamos muy sobrestockeados, no compramos nada
+                // 1. Requerimiento base según correlación histórica
+                let baseSI = projectedSO * reqRatio;
+                
+                // 2. Freno de sobrestock: (Stock Actual + Nuevo SI) - SO Proyectado <= Max Sano
+                const limitSI = maxStoreStock - simStoreStock + projectedSO;
+                
+                let requiredSI = baseSI;
+                if (requiredSI > limitSI) {
+                   requiredSI = Math.max(0, limitSI);
+                }
+                
+                simStoreStock = simStoreStock + requiredSI - projectedSO;
+                if (simStoreStock < 0) simStoreStock = 0;
               
                 relationChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Histórico': null,
                   'Sell In Histórico': null,
                   'Sell Out Proyectado': projectedSO,
-                  'Sell In Requerido': Math.round(requiredSI)
+                  'Sell In Requerido': Math.round(requiredSI),
+                  'Stock Tienda Sim.': Math.round(simStoreStock)
                 });
               });
 
-              let gapText = '';
-              if (initialGap > 0) gapText = `+${Math.round(monthlyGap)} uds/mes para cubrir déficit`;
-              else if (initialGap < 0) gapText = `${Math.round(monthlyGap)} uds/mes para quemar sobrestock`;
-              else gapText = 'Inventario en nivel óptimo';
-
-              const elastText = `Plan de Reposición S&OP: Se estima comprar exactamente lo que se proyecta vender, ajustado suavemente (${gapText}) para alcanzar el Target Stock sin generar sobrestock.`;
+              const ratioDisplay = reqRatio.toFixed(2);
+              const elastText = `Basado en el historial, para vender 1 unidad se requiere cargar ${ratioDisplay} uds (Ratio Sell In / Sell Out). Se limitó la carga para asegurar que el Stock Tienda no supere los ${MAX_STORE_COVERAGE} meses de cobertura proyectada.`;
 
               return (
                 <>
@@ -895,6 +905,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                         
                         <Line type="monotone" dataKey="Sell Out Proyectado" stroke="#8DC63F" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
                         <Line type="monotone" dataKey="Sell In Requerido" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Stock Tienda Sim." stroke="#8E44AD" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
