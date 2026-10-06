@@ -111,6 +111,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const condicion   = product.condicion || product.estado || '';
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
+  const sumSellOut = calendario.reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
+  const sumSellIn  = calendario.reduce((acc, m) => acc + (Number(m.sell_in) || 0), 0);
   const rawChartData = product.chart_24m || [];
   const firstDataIndex = rawChartData.findIndex(d => (d["Sell Out"] > 0 || d["Sell In"] > 0 || d["Sell Out Año Anterior"] > 0));
   const chartData = rawChartData.slice(firstDataIndex > -1 ? firstDataIndex : 0);
@@ -279,6 +281,12 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             <div className="mb-val" style={{fontSize: '1rem', color: '#3A86C8'}}>{fmt(stockFemaco)} <small>unidades</small></div>
           </div>
         )}
+
+        <div className="metric-box">
+          <div className="mb-lbl">📊 Total 12 Meses</div>
+          <div className="mb-val" style={{fontSize: '1rem', color: '#0288D1'}}>SO: {fmt(sumSellOut)}</div>
+          <div className="mb-val" style={{fontSize: '1rem', color: '#b35f1a'}}>SI: {fmt(sumSellIn)}</div>
+        </div>
 
         <div className="metric-box">
           <div className="mb-lbl">🚢 Tránsito Total</div>
