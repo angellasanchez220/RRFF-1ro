@@ -196,9 +196,9 @@ export default function Compras() {
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
           'Hermanos (Componentes)': familiaStr,
-          'Stock Físico': s.stock_act || 0,
-          'Ventas (4 sem)': s.total_4_sem_verificado || 0,
-          'Duración (meses)': Number(s.duracion_fisica_solo || 0).toFixed(1),
+          'Ventas 4 sem': s.total_4_sem_verificado || 0,
+          'Stock': s.stock_act || 0,
+          'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
         });
       });
@@ -220,8 +220,9 @@ export default function Compras() {
         'Es Maquilable': esMaquilable,
         'Stock Total Familia Maquila': stockFamilia,
         'U/E': s.ump || '',
-        'Stock Físico': s.stock_act || 0,
-        'Ventas (4 sem)': s.total_4_sem_verificado || 0,
+        'Ventas 4 sem': s.total_4_sem_verificado || 0,
+        'Stock': s.stock_act || 0,
+        'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
         'Observación Original': s.observacion || '',
         'Detalle Hermanos': familiaStr,
         'Extracción (Uds)': s.extraido || '?'
@@ -255,7 +256,9 @@ export default function Compras() {
           'Grupo': group.label,
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
-          'Stock Físico': s.stock_act || 0,
+          'Ventas 4 sem': s.total_4_sem_verificado || 0,
+          'Stock': s.stock_act || 0,
+          'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': sugerido,
           'Sugerido Dinámico (Uds)': dinamico,
           'Diferencia (Dinámico - Sugerido)': diferencia
