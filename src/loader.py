@@ -292,9 +292,14 @@ def _upsert_dim_productos(df: pd.DataFrame, engine) -> int:
                 vals[col] = row[col] if col in df.columns and pd.notna(row.get(col)) else None
 
             # Construir SET dinámico solo con columnas que existen
-            set_parts = ", ".join(
-                f"{col} = EXCLUDED.{col}" for col in CATALOG_COLS if col in df.columns
-            )
+            set_parts_list = []
+            for col in CATALOG_COLS:
+                if col in df.columns:
+                    if col == "estado":
+                        set_parts_list.append("estado = COALESCE(NULLIF(dim_productos.condicion, ''), EXCLUDED.estado)")
+                    else:
+                        set_parts_list.append(f"{col} = EXCLUDED.{col}")
+            set_parts = ", ".join(set_parts_list)
 
             sql = f"""
                 INSERT INTO dim_productos (sku, {', '.join(c for c in CATALOG_COLS if c in df.columns)}, stock_act)

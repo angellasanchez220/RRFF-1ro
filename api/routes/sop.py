@@ -30,6 +30,18 @@ from src.services.maquila_service import (
 
 router = APIRouter()
 
+def _is_blocked(value):
+    if not value or pd.isna(value):
+        return False
+    return "BLOQUEAD" in str(value).strip().upper()
+
+def _is_discontinued(value):
+    if not value or pd.isna(value):
+        return False
+    val = str(value).strip().upper()
+    return "DESCONTINUAD" in val or "INACTIV" in val
+
+
 # Calendario fijo: Enero a Diciembre
 MESES = [
     (1,  "Enero",      "ene"),
@@ -337,9 +349,20 @@ def get_sop(include_discontinued: bool = False):
     """Retorna S&OP; los descontinuados solo se incluyen bajo petición explícita."""
     with engine.connect() as conn:
         try:
-            df_sop = pd.read_sql(text("SELECT * FROM planificacion_sop ORDER BY sku"), conn)
+            df_sop = pd.read_sql(text("""
+                SELECT p.*,
+                       COALESCE(NULLIF(TRIM(d.condicion), ''), NULLIF(TRIM(d.estado), ''), p.estado) AS estado_maestra,
+                       COALESCE(NULLIF(TRIM(d.condicion), ''), NULLIF(TRIM(d.estado), ''), p.estado) AS condicion_maestra
+                FROM planificacion_sop p
+                LEFT JOIN dim_productos d ON p.sku = d.sku
+                ORDER BY p.sku
+            """), conn)
+            if "estado_maestra" in df_sop.columns:
+                df_sop["estado"] = df_sop["estado_maestra"].fillna(df_sop["estado"])
+                df_sop["condicion"] = df_sop["condicion_maestra"].fillna(df_sop["estado"])
+                df_sop = df_sop.drop(columns=["estado_maestra", "condicion_maestra"])
         except Exception:
-            return []  # Base de datos vacia
+            return {"data": [], "total": 0}  # Base de datos vacia
 
         # Semanas correctas desde fact_ventas
         try:
@@ -470,6 +493,7 @@ def get_sop(include_discontinued: bool = False):
         "DATOS_INCOMPLETOS": "Faltan datos críticos (ej. nombre) o producto mal definido. Sugerencia de compra bloqueada.",
         "STOCK_NEGATIVO": "Stock físico negativo. Validar inventario físico antes de emitir compra.",
         "PRODUCTO_DESCONTINUADO": "Producto descontinuado. Compra automática bloqueada.",
+        "PRODUCTO_BLOQUEADO": "Producto bloqueado en maestra. Compra automática bloqueada.",
         "SIN_UMP": "Existe necesidad de compra, pero falta Unidad Mínima de Pedido.",
         "SIN_ETA_TRANSITO": "Tránsito sin ETA: no se considera como mitigación de quiebre inmediato.",
         "SIN_VENTAS_SUFICIENTES": "Sin historial suficiente para proyectar demanda de manera confiable.",
@@ -571,8 +595,10 @@ def get_sop(include_discontinued: bool = False):
     if not include_discontinued:
         records = [
             record for record in records
-            if not is_discontinued(record.get("estado"))
+            if not _is_discontinued(record.get("estado"))
+            and not _is_blocked(record.get("estado"))
             and "PRODUCTO_DESCONTINUADO" not in (record.get("excepciones") or [])
+            and "PRODUCTO_BLOQUEADO" not in (record.get("excepciones") or [])
         ]
 
     return {"data": records, "total": len(records)}
@@ -582,11 +608,14 @@ def get_sop(include_discontinued: bool = False):
 def get_categories():
     with engine.connect() as conn:
         df = pd.read_sql(
-            text("SELECT DISTINCT categoria, subcategoria, formato "
-                 "FROM planificacion_sop "
-                 "WHERE UPPER(TRIM(COALESCE(estado, ''))) "
-                 "IN ('MIX', 'ACTIVO', 'NUEVO', 'LANZAMIENTO') "
-                 "ORDER BY categoria, subcategoria, formato NULLS LAST"),
+            text("""
+                SELECT DISTINCT p.categoria, p.subcategoria, p.formato
+                FROM planificacion_sop p
+                LEFT JOIN dim_productos d ON p.sku = d.sku
+                WHERE UPPER(TRIM(COALESCE(d.condicion, p.estado, '')))
+                      NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                ORDER BY p.categoria, p.subcategoria, p.formato NULLS LAST
+            """),
             conn
         )
     tree = {}

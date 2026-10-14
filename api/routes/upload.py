@@ -73,7 +73,14 @@ async def upload_maestro(
         raise HTTPException(500, f"Error al guardar el archivo: {e}")
 
     try:
-        df = pd.read_excel(io.BytesIO(contents), header=1, dtype=str)
+        df_raw = pd.read_excel(io.BytesIO(contents), header=None, dtype=str)
+        header_row = 0
+        if len(df_raw) > 1:
+            row0_str = " ".join([str(x).upper() for x in df_raw.iloc[0].values])
+            row1_str = " ".join([str(x).upper() for x in df_raw.iloc[1].values])
+            if "PRODUCTO" not in row0_str and "SKU" not in row0_str and ("PRODUCTO" in row1_str or "SKU" in row1_str):
+                header_row = 1
+        df = pd.read_excel(io.BytesIO(contents), header=header_row, dtype=str)
     except Exception as e:
         raise HTTPException(400, f"Error al leer el Excel: {e}")
 
@@ -105,7 +112,19 @@ async def upload_maestro(
     sub = sub.fillna("")
     sub["sku"]          = sub["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     sub["codigo_femaco"] = sub["codigo_femaco"].astype(str).str.strip()
-    sub["condicion"]    = sub["condicion"].astype(str).str.strip()
+    
+    # Normalizar condición a las 3 categorías canónicas de la maestra
+    def _norm_cond(val):
+        s = str(val or "").strip().upper()
+        if "BLOQUEAD" in s:
+            return "BLOQUEADOS"
+        if "DESCONTINUAD" in s or "INACTIV" in s:
+            return "DESCONTINUADOS"
+        if s in ("ACTIVO", "ACTIVOS", "MIX", "NUEVO", "LANZAMIENTO"):
+            return "ACTIVOS"
+        return s or "ACTIVOS"
+
+    sub["condicion"]    = sub["condicion"].apply(_norm_cond)
     sub["es_nuevo"]     = sub["sku"].apply(lambda x: x in ("", "nan", "None"))
     sub = sub[sub["codigo_femaco"].notna() & (sub["codigo_femaco"] != "") & (sub["codigo_femaco"] != "nan")]
     sub = sub.reset_index(drop=True)

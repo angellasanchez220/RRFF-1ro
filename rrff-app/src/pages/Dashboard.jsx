@@ -6,11 +6,22 @@ import SkuCard from '../components/SkuCard';
 const NIVELES = ['ROJO','NARANJA','AMARILLO','AZUL','MORADO','VERDE'];
 const EMOJI = { ROJO:'🔴', NARANJA:'🟠', AMARILLO:'🟡', AZUL:'🔵', MORADO:'🟣', VERDE:'🟢' };
 
+function isBloqueado(product) {
+  const estado = String(product.condicion || product.estado || '').trim().toUpperCase();
+  return estado.includes('BLOQUEAD') ||
+    (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_BLOQUEADO'));
+}
+
 function isDiscontinued(product) {
-  const estado = String(product.estado || '').trim().toUpperCase();
-  return estado === 'DESCONTINUADO' || estado === 'INACTIVO' || estado === 'BLOQUEADO' || estado === 'BLOQUEADOS' ||
+  const estado = String(product.condicion || product.estado || '').trim().toUpperCase();
+  return (estado.includes('DESCONTINUAD') || estado.includes('INACTIV')) ||
     (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_DESCONTINUADO'));
 }
+
+function isActivo(product) {
+  return !isDiscontinued(product) && !isBloqueado(product);
+}
+
 
 export default function Dashboard() {
   const [allData,   setAllData]   = useState([]);
@@ -89,9 +100,21 @@ export default function Dashboard() {
 
   const estadoData = useMemo(() => {
     if (fEstado === 'TODOS') return allData;
+    if (fEstado === 'BLOQUEADOS') return allData.filter(isBloqueado);
     if (fEstado === 'DESCONTINUADOS') return allData.filter(isDiscontinued);
-    return allData.filter(d => !isDiscontinued(d));
+    if (fEstado === 'ACTIVOS') return allData.filter(isActivo);
+    return allData;
   }, [allData, fEstado]);
+
+  const countsByEstado = useMemo(() => {
+    let activos = 0, descontinuados = 0, bloqueados = 0;
+    allData.forEach(p => {
+      if (isBloqueado(p)) bloqueados++;
+      else if (isDiscontinued(p)) descontinuados++;
+      else activos++;
+    });
+    return { activos, descontinuados, bloqueados, total: allData.length };
+  }, [allData]);
 
   // ── Opciones derivadas del dataset ───────────────────────────────────────────
   const cats = useMemo(() =>
@@ -235,9 +258,10 @@ export default function Dashboard() {
 
             <label>Estado del producto</label>
             <select value={fEstado} onChange={e => { setFEstado(e.target.value); setFSku(''); }}>
-              <option value="ACTIVOS">Solo vigentes</option>
-              <option value="DESCONTINUADOS">Solo descontinuados</option>
-              <option value="TODOS">Vigentes y descontinuados</option>
+              <option value="ACTIVOS">Solo activos ({countsByEstado.activos})</option>
+              <option value="DESCONTINUADOS">Solo descontinuados ({countsByEstado.descontinuados})</option>
+              <option value="BLOQUEADOS">Solo bloqueados ({countsByEstado.bloqueados})</option>
+              <option value="TODOS">Todos ({countsByEstado.total})</option>
             </select>
 
             <label>Crecimiento (Últimos 2 meses reales)</label>

@@ -228,12 +228,34 @@ def _reset_sku_only():
     st.session_state["_sku_val"] = "TODOS"
 
 # Inicializar estado de selección
+if "_est_val" not in st.session_state: st.session_state["_est_val"] = "ACTIVOS"
 if "_cat_val" not in st.session_state: st.session_state["_cat_val"] = "TODAS"
 if "_sub_val" not in st.session_state: st.session_state["_sub_val"] = "TODAS"
 if "_sku_val" not in st.session_state: st.session_state["_sku_val"] = "TODOS"
 
+# 0. ESTADO DEL PRODUCTO (Maestra)
+estados_opts = ["ACTIVOS", "DESCONTINUADOS", "BLOQUEADOS", "TODOS"]
+est_prev = st.session_state["_est_val"]
+sel_est = st.sidebar.selectbox("0. Estado", options=estados_opts, index=estados_opts.index(st.session_state["_est_val"]))
+
+if sel_est != est_prev:
+    st.session_state["_est_val"] = sel_est
+    st.session_state["_cat_val"] = "TODAS"
+    st.session_state["_sub_val"] = "TODAS"
+    st.session_state["_sku_val"] = "TODOS"
+    st.rerun()
+
+if sel_est == "BLOQUEADOS":
+    df_base = df[df['estado'].fillna('').astype(str).str.upper().str.contains('BLOQUEAD')]
+elif sel_est == "DESCONTINUADOS":
+    df_base = df[df['estado'].fillna('').astype(str).str.upper().str.contains('DESCONTINUAD|INACTIV')]
+elif sel_est == "ACTIVOS":
+    df_base = df[~df['estado'].fillna('').astype(str).str.upper().str.contains('BLOQUEAD|DESCONTINUAD|INACTIV')]
+else:
+    df_base = df
+
 # 1. CATEGORÍA
-categorias = ["TODAS"] + sorted(df['categoria'].dropna().unique().tolist())
+categorias = ["TODAS"] + sorted(df_base['categoria'].dropna().unique().tolist())
 
 # Validar que el valor guardado sigue siendo válido
 if st.session_state["_cat_val"] not in categorias:
@@ -251,7 +273,7 @@ if sel_cat != cat_prev:    # La categoría cambió → resetear hijos
     st.session_state["_sku_val"] = "TODOS"
     st.rerun()
 
-df_cat = df if sel_cat == "TODAS" else df[df['categoria'] == sel_cat]
+df_cat = df_base if sel_cat == "TODAS" else df_base[df_base['categoria'] == sel_cat]
 
 # 2. SUBCATEGORÍA — sólo opciones válidas para la categoría
 subcats = ["TODAS"] + sorted(df_cat['subcategoria'].dropna().unique().tolist())

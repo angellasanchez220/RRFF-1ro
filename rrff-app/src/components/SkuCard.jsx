@@ -107,8 +107,12 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const durFisicaStr = durFisica >= 999 ? '∞' : `${Number(durFisica).toFixed(1)} m`;
   const sug         = product.sugerencia_compra_inmediata_uds ?? 0;
   const cajas       = ump > 0 ? Math.floor(stockFemaco / ump) : 0;
-  const hcCajas     = ump > 0 && stockHC ? Math.floor(stockHC / ump) : null;
   const condicion   = product.condicion || product.estado || '';
+  const condUpper   = String(condicion).trim().toUpperCase();
+  const condClass   = condUpper.includes('BLOQ') ? 'status-bloqueado'
+                    : (condUpper.includes('DESC') || condUpper.includes('INACT')) ? 'status-descontinuado'
+                    : (condUpper.includes('ACT') || condUpper === 'MIX') ? 'status-activo'
+                    : '';
   const esNuevo     = !product.sku || String(product.sku).trim() === '';
   const calendario  = product.calendario || [];
   const sumSellOut = calendario.reduce((acc, m) => acc + (Number(m.sell_out) || 0), 0);
@@ -190,7 +194,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
         <span className="ch-item"><b>SKU</b> {product.sku || 'NUEVO'}</span>
         <span className="ch-item"><b>CÓD.</b> {product.codigo_femaco || '—'}</span>
         <span className="ch-desc">{product.nombre_producto || '—'}</span>
-        {condicion && <span className={`ch-badge ${esNuevo ? 'nuevo' : ''}`}>{condicion}</span>}
+        {condicion && <span className={`ch-badge ${condClass} ${esNuevo ? 'nuevo' : ''}`}>{condicion}</span>}
         {esNuevo && <span className="ch-badge nuevo">PRODUCTO NUEVO</span>}
         {isMaquilable && <span className="ch-badge maquila-badge" title={`Hermanos: ${familyName}`}>🏭 Maquila</span>}
         <span className="ch-item"><b>Formato</b> {product.formato || '—'}</span>
@@ -341,6 +345,16 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               <div style={{ fontSize: '0.75rem', color: '#E65100', marginTop: 4, fontWeight: 'bold' }}>
                 ⚠️ Sugerencia reducida {Math.abs(product.mom_sellout_pct)}% por decrecimiento mensual
               </div>
+          )}
+          {condUpper.includes('BLOQ') && (
+            <div style={{ fontSize: '0.75rem', color: '#6a1b9a', marginTop: 4, fontWeight: 'bold' }}>
+              🚫 Bloqueado en Maestra (sin compra)
+            </div>
+          )}
+          {condUpper.includes('DESC') && (
+            <div style={{ fontSize: '0.75rem', color: '#c62828', marginTop: 4, fontWeight: 'bold' }}>
+              ⛔ Descontinuado en Maestra (sin compra)
+            </div>
           )}
         </div>
       </div>
