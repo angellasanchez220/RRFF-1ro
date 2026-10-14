@@ -74,9 +74,9 @@ def aplicar_stock_familia_para_sugerencia(
 
     resultado["sug_stock_individual"] = stock_individual
     resultado["sug_stock_familia"] = stocks_familia
-    resultado["sug_stock_actual"] = stocks_familia
-    resultado["sug_transito_actual"] = transitos_familia
-    resultado["sug_ritmo_reemplazable_adicional_4_sem"] = ritmos_familia_adicional
+    resultado["sug_stock_actual"] = stock_individual
+    resultado["sug_transito_actual"] = transito_individual
+    resultado["sug_ritmo_reemplazable_adicional_4_sem"] = 0.0
     resultado["sug_usa_stock_familia"] = usa_familia
     resultado["sug_cantidad_miembros_familia"] = cantidades_miembros
     resultado["sug_nombre_familia"] = nombres_familia

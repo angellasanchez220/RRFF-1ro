@@ -346,7 +346,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           )}
           {condUpper.includes('BLOQ') && (
             <div style={{ fontSize: '0.75rem', color: '#6a1b9a', marginTop: 4, fontWeight: 'bold' }}>
-              🚫 Bloqueado en Maestra (sin compra)
+              ℹ️ Bloqueado en Maestra (evaluado para compra)
             </div>
           )}
           {condUpper.includes('DESC') && (

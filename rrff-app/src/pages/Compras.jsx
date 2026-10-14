@@ -168,8 +168,10 @@ export default function Compras() {
         if (catA < catB) return -1;
         if (catA > catB) return 1;
         
-        const famA = a.familia_maquila && a.familia_maquila.length > 0 ? a.familia_maquila.map(c=>c.sku).sort().join('-') : '';
-        const famB = b.familia_maquila && b.familia_maquila.length > 0 ? b.familia_maquila.map(c=>c.sku).sort().join('-') : '';
+        const fListA = a.familia_skus || a.familia_maquila || [];
+        const fListB = b.familia_skus || b.familia_maquila || [];
+        const famA = fListA.length > 1 ? fListA.map(c => c.sku).sort().join('-') : '';
+        const famB = fListB.length > 1 ? fListB.map(c => c.sku).sort().join('-') : '';
         if (famA && !famB) return -1;
         if (!famA && famB) return 1;
         if (famA && famB && famA !== famB) return famA.localeCompare(famB);
@@ -178,9 +180,12 @@ export default function Compras() {
       });
 
       sortedItems.forEach(s => {
-        const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí (Maquilable)' : 'No';
-        const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
-          ? s.familia_maquila.map(c => `${c.sku} (Stk: ${c.stock_act})`).join(' | ')
+        const fList = s.familia_skus || s.familia_maquila || [];
+        const isMaq = s.es_maquilable === true || fList.length > 1;
+        const esMaquilable = isMaq ? 'Sí' : 'No';
+        const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
+        const familiaStr = fList.length > 1
+          ? fList.map(c => `${c.sku || c.codigo_femaco} (Stk: ${c.stock_act || 0})`).join(' | ')
           : '';
         
         wsSugData.push({
@@ -188,7 +193,8 @@ export default function Compras() {
           'SKU': s.sku,
           'Código Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
-          'Es Maquilable?': esMaquilable,
+          'Es Maquilable': esMaquilable,
+          'Stock Total Familia Maquila': stockFamilia,
           'Hermanos (Componentes)': familiaStr,
           'Stock Físico': s.stock_act || 0,
           'Ventas (4 sem)': s.total_4_sem_verificado || 0,
@@ -200,15 +206,19 @@ export default function Compras() {
     
     // Hoja 2: Observaciones Manuales
     const wsObsData = obsList.map(s => {
-      const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí' : 'No';
-      const familiaStr = s.familia_maquila && s.familia_maquila.length > 0
-          ? s.familia_maquila.map(c => `${c.sku} (Stock: ${c.stock_act}, Venta/mes: ${c.ritmo_mensual})`).join(', ')
+      const fList = s.familia_skus || s.familia_maquila || [];
+      const isMaq = s.es_maquilable === true || fList.length > 1;
+      const esMaquilable = isMaq ? 'Sí' : 'No';
+      const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
+      const familiaStr = fList.length > 1
+          ? fList.map(c => `${c.sku || c.codigo_femaco} (Stock: ${c.stock_act || 0}, Venta/mes: ${c.ritmo_mensual || 0})`).join(', ')
           : '';
       return {
         'SKU': s.sku,
         'Código Femaco': s.codigo_femaco || '',
         'Nombre de Producto': s.nombre_producto,
-        'Es Maquilable?': esMaquilable,
+        'Es Maquilable': esMaquilable,
+        'Stock Total Familia Maquila': stockFamilia,
         'U/E': s.ump || '',
         'Stock Físico': s.stock_act || 0,
         'Ventas (4 sem)': s.total_4_sem_verificado || 0,
@@ -223,8 +233,10 @@ export default function Compras() {
     keysToExport.forEach(key => {
       const group = groupedSug[key];
       const sortedItems = [...group.items].sort((a, b) => {
-        const famA = a.familia_maquila && a.familia_maquila.length > 0 ? 'A' : 'B';
-        const famB = b.familia_maquila && b.familia_maquila.length > 0 ? 'A' : 'B';
+        const fListA = a.familia_skus || a.familia_maquila || [];
+        const fListB = b.familia_skus || b.familia_maquila || [];
+        const famA = fListA.length > 1 ? 'A' : 'B';
+        const famB = fListB.length > 1 ? 'A' : 'B';
         if (famA !== famB) return famA.localeCompare(famB);
         return a.sku.localeCompare(b.sku);
       });
@@ -233,12 +245,16 @@ export default function Compras() {
         const sugerido = s.sugerencia_compra_inmediata_uds || 0;
         const dinamico = s.sugerencia_compra_dinamica || 0;
         const diferencia = dinamico - sugerido;
-        const esMaquilable = s.familia_maquila && s.familia_maquila.length > 0 ? 'Sí' : 'No';
+        const fList = s.familia_skus || s.familia_maquila || [];
+        const isMaq = s.es_maquilable === true || fList.length > 1;
+        const esMaquilable = isMaq ? 'Sí' : 'No';
+        const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
         wsResumenData.push({
           'SKU': s.sku,
           'Código Femaco': s.codigo_femaco || '',
           'Grupo': group.label,
-          'Es Maquilable?': esMaquilable,
+          'Es Maquilable': esMaquilable,
+          'Stock Total Familia Maquila': stockFamilia,
           'Stock Físico': s.stock_act || 0,
           'Sugerido (Uds)': sugerido,
           'Sugerido Dinámico (Uds)': dinamico,

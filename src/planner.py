@@ -902,13 +902,13 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         # 3. PRODUCTO_BLOQUEADO / PRODUCTO_DESCONTINUADO
         if estado in ["BLOQUEADO", "BLOQUEADOS"]:
             excepciones.append("PRODUCTO_BLOQUEADO")
-            bloquea = True
+            # Los bloqueados sí se consideran para la compra
         elif estado in ["DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"]:
             excepciones.append("PRODUCTO_DESCONTINUADO")
             bloquea = True
 
         # 4. SIN_UMP
-        if ump <= 0 and "PRODUCTO_DESCONTINUADO" not in excepciones and "PRODUCTO_BLOQUEADO" not in excepciones:
+        if ump <= 0 and "PRODUCTO_DESCONTINUADO" not in excepciones:
             excepciones.append("SIN_UMP")
             requiere = True
             bloquea = True
@@ -920,7 +920,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
 
         # 6. SIN_VENTAS_SUFICIENTES
         total_4_sem = float(row.get("total_4_sem_verificado", 0) if pd.notna(row.get("total_4_sem_verificado")) else 0)
-        if total_4_sem <= 0 and "PRODUCTO_DESCONTINUADO" not in excepciones and "PRODUCTO_BLOQUEADO" not in excepciones:
+        if total_4_sem <= 0 and "PRODUCTO_DESCONTINUADO" not in excepciones:
             excepciones.append("SIN_VENTAS_SUFICIENTES")
             requiere = True
 
@@ -970,7 +970,8 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         if "FORECAST_MANUAL" in excepciones:
             explicacion = "Forecast manual activo. La recomendación se calculó usando una proyección definida por usuario."
         elif "PRODUCTO_BLOQUEADO" in excepciones:
-            explicacion = "Producto bloqueado en maestra. Compra automática bloqueada."
+            cob_actual = f"Cobertura actual: {dur_solo_stock:.1f} meses." if dur_solo_stock < 999 else "Cobertura actual: +10 meses."
+            explicacion = f"Producto bloqueado en maestra (evaluado para compra). {cob_actual}"
         elif "PRODUCTO_DESCONTINUADO" in excepciones:
             explicacion = "Producto descontinuado. Compra automática bloqueada."
         elif bloquea:

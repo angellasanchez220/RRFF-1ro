@@ -46,7 +46,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
             FROM planificacion_sop
             WHERE (sku = :s OR codigo_femaco = :s)
               AND UPPER(TRIM(COALESCE(estado, '')))
-                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
         """), conn, params={"s": sku})
         if df_sop.empty:
             return None
@@ -160,6 +160,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "motivo": str(row_sop.get("explicacion_compra_dinamica") or row_sop.get("explicacion_compra") or ""),
         "obs": observacion,
         "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
+        "stock_familia": int(familias_map[real_codigo].get("stock_bruto_familia", inv_u)) if (familias_map and real_codigo in familias_map) else inv_u,
         "nombre_familia": familias_map[real_codigo].get("nombre_familia", "") if (familias_map and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1) else ""
     }
     return data
@@ -204,6 +205,10 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(4, 0, data["nombre"])
     set_val(7, 0, data["estado"])
     set_val(9, 0, data["ue"])
+    set_val(10, 0, "Maquilable:" if data.get("tiene_familia") else "")
+    set_val(11, 0, "SÍ" if data.get("tiene_familia") else "NO")
+    set_val(12, 0, "Stock Familia:" if data.get("tiene_familia") else "")
+    set_val(13, 0, data.get("stock_familia", "") if data.get("tiene_familia") else "")
     
     set_val(2, 6, data["inv_u"])
     set_val(3, 6, data["inv_c"])
@@ -390,7 +395,7 @@ def generar_excel_todos_skus() -> bytes:
             SELECT sku
             FROM planificacion_sop
             WHERE UPPER(TRIM(COALESCE(estado, '')))
-                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                  NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
             ORDER BY sku ASC
         """), conn)
         

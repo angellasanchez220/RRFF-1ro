@@ -496,7 +496,7 @@ def get_sop(include_discontinued: bool = False):
         "DATOS_INCOMPLETOS": "Faltan datos críticos (ej. nombre) o producto mal definido. Sugerencia de compra bloqueada.",
         "STOCK_NEGATIVO": "Stock físico negativo. Validar inventario físico antes de emitir compra.",
         "PRODUCTO_DESCONTINUADO": "Producto descontinuado. Compra automática bloqueada.",
-        "PRODUCTO_BLOQUEADO": "Producto bloqueado en maestra. Compra automática bloqueada.",
+        "PRODUCTO_BLOQUEADO": "Producto bloqueado en maestra (se evalúa sugerencia de compra operativa).",
         "SIN_UMP": "Existe necesidad de compra, pero falta Unidad Mínima de Pedido.",
         "SIN_ETA_TRANSITO": "Tránsito sin ETA: no se considera como mitigación de quiebre inmediato.",
         "SIN_VENTAS_SUFICIENTES": "Sin historial suficiente para proyectar demanda de manera confiable.",
@@ -599,9 +599,7 @@ def get_sop(include_discontinued: bool = False):
         records = [
             record for record in records
             if not _is_discontinued(record.get("estado"))
-            and not _is_blocked(record.get("estado"))
             and "PRODUCTO_DESCONTINUADO" not in (record.get("excepciones") or [])
-            and "PRODUCTO_BLOQUEADO" not in (record.get("excepciones") or [])
         ]
 
     return {"data": records, "total": len(records)}
@@ -617,7 +615,7 @@ def get_categories():
                     FROM planificacion_sop p
                     LEFT JOIN dim_productos d ON p.sku = d.sku
                     WHERE UPPER(TRIM(COALESCE(d.condicion, p.estado, '')))
-                          NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                          NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
                     ORDER BY p.categoria, p.subcategoria, p.formato NULLS LAST
                 """),
                 conn
@@ -629,7 +627,7 @@ def get_categories():
                         SELECT DISTINCT categoria, subcategoria, formato
                         FROM planificacion_sop
                         WHERE UPPER(TRIM(COALESCE(estado, '')))
-                              NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                              NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
                         ORDER BY categoria, subcategoria, formato NULLS LAST
                     """),
                     conn
