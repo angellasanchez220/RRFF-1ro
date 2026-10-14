@@ -215,7 +215,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           {calendario.map((m, i) => {
             let growth = '-';
             let gClass = 'zero';
-            if (m.growth_pct != null) {
+            if (m.growth_pct != null && m.hist_val != null && m.hist_val > 0) {
               const diff = m.growth_pct;
               if (diff > 0) {
                 growth = `↑ ${diff.toFixed(0)}%`;
@@ -226,14 +226,13 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               } else {
                 growth = '0%';
               }
+              growth += ` (${fmt(m.hist_val)})`;
             }
-            if (m.hist_val != null && m.hist_val > 0) {
-               growth += ` (${fmt(m.hist_val)})`;
-            }
+
             let growthSI = '-';
             let gClassSI = 'zero';
-            const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
-            if (valSI != null) {
+            const valSI = m.growth_si_pct;
+            if (valSI != null && m.hist_si_val != null && m.hist_si_val > 0) {
               if (valSI > 0) {
                 growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
                 gClassSI = 'pos';
@@ -243,9 +242,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               } else {
                 growthSI = '0%';
               }
-            }
-            if (m.hist_si_val != null && m.hist_si_val > 0) {
-               growthSI += ` (${fmt(m.hist_si_val)})`;
+              growthSI += ` (${fmt(m.hist_si_val)})`;
             }
 
             return (
@@ -504,7 +501,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                 {fullSiblingData.calendario.map((m, i) => {
                                   let growth = '-';
                                   let gClass = 'zero';
-                                  if (m.growth_pct != null) {
+                                  if (m.growth_pct != null && m.hist_val != null && m.hist_val > 0) {
                                     const diff = m.growth_pct;
                                     if (diff > 0) {
                                       growth = `↑ ${diff.toFixed(0)}%`;
@@ -515,14 +512,13 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                     } else {
                                       growth = '0%';
                                     }
+                                    growth += ` (${fmt(m.hist_val)})`;
                                   }
-                                  if (m.hist_val != null && m.hist_val > 0) {
-                                     growth += ` (${fmt(m.hist_val)})`;
-                                  }
+
                                   let growthSI = '-';
                                   let gClassSI = 'zero';
-                                  const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
-                                  if (valSI != null) {
+                                  const valSI = m.growth_si_pct;
+                                  if (valSI != null && m.hist_si_val != null && m.hist_si_val > 0) {
                                     if (valSI > 0) {
                                       growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
                                       gClassSI = 'pos';
@@ -532,9 +528,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                                     } else {
                                       growthSI = '0%';
                                     }
-                                  }
-                                  if (m.hist_si_val != null && m.hist_si_val > 0) {
-                                     growthSI += ` (${fmt(m.hist_si_val)})`;
+                                    growthSI += ` (${fmt(m.hist_si_val)})`;
                                   }
 
                                   return (

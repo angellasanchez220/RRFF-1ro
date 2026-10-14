@@ -231,7 +231,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "yoy_growth_pct": yoy_growth,
             "growth_pct": yoy_growth, # keep for compatibility with the small calendar label
             "growth_so_pct": yoy_growth,
-            "growth_si_pct": yoy_growth_si if yoy_growth_si is not None else mom_growth_si,
+            "growth_si_pct": yoy_growth_si,
             "mom_growth_si_pct": mom_growth_si,
             "hist_si_val": prev_si_hist
         })

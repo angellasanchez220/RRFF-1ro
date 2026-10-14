@@ -345,7 +345,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                     {fullSiblingData.calendario.map((m, i) => {
                                       let growth = '-';
                                       let gClass = 'zero';
-                                      if (m.growth_pct != null) {
+                                      if (m.growth_pct != null && m.hist_val != null && m.hist_val > 0) {
                                         const diff = m.growth_pct;
                                         if (diff > 0) {
                                           growth = `↑ ${diff.toFixed(0)}%`;
@@ -356,14 +356,13 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                         } else {
                                           growth = '0%';
                                         }
-                                      }
-                                      if (m.hist_val != null && m.hist_val > 0) {
                                         growth += ` (${m.hist_val.toLocaleString('es-CL')})`;
                                       }
+
                                       let growthSI = '-';
                                       let gClassSI = 'zero';
-                                      const valSI = m.growth_si_pct ?? m.mom_growth_si_pct;
-                                      if (valSI != null) {
+                                      const valSI = m.growth_si_pct;
+                                      if (valSI != null && m.hist_si_val != null && m.hist_si_val > 0) {
                                         if (valSI > 0) {
                                           growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
                                           gClassSI = 'pos';
@@ -373,9 +372,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                         } else {
                                           growthSI = '0%';
                                         }
-                                      }
-                                      if (m.hist_si_val != null && m.hist_si_val > 0) {
-                                         growthSI += ` (${m.hist_si_val.toLocaleString('es-CL')})`;
+                                        growthSI += ` (${m.hist_si_val.toLocaleString('es-CL')})`;
                                       }
 
                                       return (
