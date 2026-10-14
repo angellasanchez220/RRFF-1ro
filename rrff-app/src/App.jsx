@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Compras   from './pages/Compras';
 import Admin     from './pages/Admin';
 import Maquila   from './pages/Maquila';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const [auth, setAuth] = useState(null);  // { role, username, permisos }
@@ -151,16 +152,18 @@ export default function App() {
       {auth && <TaskNotifications />}
 
       {/* ── CONTENIDO ── */}
-      {page === 'dashboard' && <Dashboard />}
-      {page === 'compras'   && <Compras />}
-      {page === 'maquila'   && <Maquila />}
-      {page === 'admin'     && auth.role === 'admin' && <Admin />}
-      {page === 'admin'     && auth.role !== 'admin' && (
-        <div className="empty-state">
-          <span style={{ fontSize:'2rem' }}>🔒</span>
-          <span>Acceso restringido — solo administradores.</span>
-        </div>
-      )}
+      <ErrorBoundary key={page}>
+        {page === 'dashboard' && <Dashboard />}
+        {page === 'compras'   && <Compras />}
+        {page === 'maquila'   && <Maquila />}
+        {page === 'admin'     && auth.role === 'admin' && <Admin />}
+        {page === 'admin'     && auth.role !== 'admin' && (
+          <div className="empty-state">
+            <span style={{ fontSize:'2rem' }}>🔒</span>
+            <span>Acceso restringido — solo administradores.</span>
+          </div>
+        )}
+      </ErrorBoundary>
 
       {/* ── MODAL SESIÓN EXPIRADA ── */}
       {isSessionExpired && (

@@ -362,7 +362,10 @@ def get_sop(include_discontinued: bool = False):
                 df_sop["condicion"] = df_sop["condicion_maestra"].fillna(df_sop["estado"])
                 df_sop = df_sop.drop(columns=["estado_maestra", "condicion_maestra"])
         except Exception:
-            return {"data": [], "total": 0}  # Base de datos vacia
+            try:
+                df_sop = pd.read_sql(text("SELECT * FROM planificacion_sop ORDER BY sku"), conn)
+            except Exception:
+                return {"data": [], "total": 0}  # Base de datos vacia
 
         # Semanas correctas desde fact_ventas
         try:
@@ -607,17 +610,32 @@ def get_sop(include_discontinued: bool = False):
 @router.get("/categories")
 def get_categories():
     with engine.connect() as conn:
-        df = pd.read_sql(
-            text("""
-                SELECT DISTINCT p.categoria, p.subcategoria, p.formato
-                FROM planificacion_sop p
-                LEFT JOIN dim_productos d ON p.sku = d.sku
-                WHERE UPPER(TRIM(COALESCE(d.condicion, p.estado, '')))
-                      NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
-                ORDER BY p.categoria, p.subcategoria, p.formato NULLS LAST
-            """),
-            conn
-        )
+        try:
+            df = pd.read_sql(
+                text("""
+                    SELECT DISTINCT p.categoria, p.subcategoria, p.formato
+                    FROM planificacion_sop p
+                    LEFT JOIN dim_productos d ON p.sku = d.sku
+                    WHERE UPPER(TRIM(COALESCE(d.condicion, p.estado, '')))
+                          NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                    ORDER BY p.categoria, p.subcategoria, p.formato NULLS LAST
+                """),
+                conn
+            )
+        except Exception:
+            try:
+                df = pd.read_sql(
+                    text("""
+                        SELECT DISTINCT categoria, subcategoria, formato
+                        FROM planificacion_sop
+                        WHERE UPPER(TRIM(COALESCE(estado, '')))
+                              NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO', 'BLOQUEADO', 'BLOQUEADOS')
+                        ORDER BY categoria, subcategoria, formato NULLS LAST
+                    """),
+                    conn
+                )
+            except Exception:
+                df = pd.DataFrame(columns=["categoria", "subcategoria", "formato"])
     tree = {}
     for _, row in df.iterrows():
         cat = row["categoria"] or "SIN CATEGORÍA"

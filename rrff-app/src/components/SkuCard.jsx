@@ -107,6 +107,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const durFisicaStr = durFisica >= 999 ? '∞' : `${Number(durFisica).toFixed(1)} m`;
   const sug         = product.sugerencia_compra_inmediata_uds ?? 0;
   const cajas       = ump > 0 ? Math.floor(stockFemaco / ump) : 0;
+  const hcCajas     = ump > 0 && stockHC ? Math.floor(stockHC / ump) : null;
   const condicion   = product.condicion || product.estado || '';
   const condUpper   = String(condicion).trim().toUpperCase();
   const condClass   = condUpper.includes('BLOQ') ? 'status-bloqueado'

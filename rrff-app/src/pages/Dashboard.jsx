@@ -7,18 +7,21 @@ const NIVELES = ['ROJO','NARANJA','AMARILLO','AZUL','MORADO','VERDE'];
 const EMOJI = { ROJO:'🔴', NARANJA:'🟠', AMARILLO:'🟡', AZUL:'🔵', MORADO:'🟣', VERDE:'🟢' };
 
 function isBloqueado(product) {
+  if (!product) return false;
   const estado = String(product.condicion || product.estado || '').trim().toUpperCase();
   return estado.includes('BLOQUEAD') ||
     (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_BLOQUEADO'));
 }
 
 function isDiscontinued(product) {
+  if (!product) return false;
   const estado = String(product.condicion || product.estado || '').trim().toUpperCase();
   return (estado.includes('DESCONTINUAD') || estado.includes('INACTIV')) ||
     (Array.isArray(product.excepciones) && product.excepciones.includes('PRODUCTO_DESCONTINUADO'));
 }
 
 function isActivo(product) {
+  if (!product) return false;
   return !isDiscontinued(product) && !isBloqueado(product);
 }
 
@@ -99,21 +102,23 @@ export default function Dashboard() {
     fEstado !== 'ACTIVOS' || fNiveles.size > 0 || fCrecimiento !== 'ALL');
 
   const estadoData = useMemo(() => {
-    if (fEstado === 'TODOS') return allData;
-    if (fEstado === 'BLOQUEADOS') return allData.filter(isBloqueado);
-    if (fEstado === 'DESCONTINUADOS') return allData.filter(isDiscontinued);
-    if (fEstado === 'ACTIVOS') return allData.filter(isActivo);
-    return allData;
+    const list = Array.isArray(allData) ? allData.filter(Boolean) : [];
+    if (fEstado === 'TODOS') return list;
+    if (fEstado === 'BLOQUEADOS') return list.filter(isBloqueado);
+    if (fEstado === 'DESCONTINUADOS') return list.filter(isDiscontinued);
+    if (fEstado === 'ACTIVOS') return list.filter(isActivo);
+    return list;
   }, [allData, fEstado]);
 
   const countsByEstado = useMemo(() => {
     let activos = 0, descontinuados = 0, bloqueados = 0;
-    allData.forEach(p => {
+    (Array.isArray(allData) ? allData : []).forEach(p => {
+      if (!p) return;
       if (isBloqueado(p)) bloqueados++;
       else if (isDiscontinued(p)) descontinuados++;
       else activos++;
     });
-    return { activos, descontinuados, bloqueados, total: allData.length };
+    return { activos, descontinuados, bloqueados, total: (allData || []).length };
   }, [allData]);
 
   // ── Opciones derivadas del dataset ───────────────────────────────────────────
