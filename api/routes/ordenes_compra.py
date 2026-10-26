@@ -777,12 +777,18 @@ def list_quiebres_historicos():
     """
     with engine.connect() as conn:
         df_q = pd.read_sql(text("""
-            SELECT d.id, d.numero_oc, d.sku, d.codigo_femaco, d.nombre_producto,
+            SELECT d.id, d.numero_oc,
+                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '—') AS sku,
+                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '—') AS codigo_femaco,
+                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '—') AS nombre_producto,
                    d.cantidad_pedida, d.cantidad_despachada,
                    d.nombre_familia, d.desbalance_familiar,
-                   d.fecha_quiebre, d.oc_recuperacion, d.fecha_recuperacion,
+                   d.fecha_quiebre::date::text AS fecha_quiebre,
+                   d.oc_recuperacion,
+                   d.fecha_recuperacion::date::text AS fecha_recuperacion,
                    d.dias_recuperacion_quiebre,
-                   r.cliente, r.fecha_entrega AS fecha_oc,
+                   r.cliente,
+                   COALESCE(r.fecha_entrega::date::text, r.fecha_pedido::date::text, r.fecha_carga::date::text) AS fecha_oc,
                    COALESCE(
                        NULLIF(TRIM(p1.condicion), ''), NULLIF(TRIM(p1.estado), ''),
                        NULLIF(TRIM(p2.condicion), ''), NULLIF(TRIM(p2.estado), ''),
@@ -817,11 +823,17 @@ def get_orden_compra_detail(oc_id: int):
                 header_dict[k] = None
 
         df_items = pd.read_sql(text("""
-            SELECT d.id, d.numero_oc, d.sku, d.codigo_femaco, d.nombre_producto,
+            SELECT d.id, d.numero_oc,
+                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '—') AS sku,
+                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '—') AS codigo_femaco,
+                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '—') AS nombre_producto,
                    d.cantidad_pedida, d.cantidad_despachada, d.diferencia, d.estado_entrega,
                    d.familia_id, d.nombre_familia, d.desbalance_familiar, d.desbalance_detalle,
-                   d.quiebre_detectado, d.fecha_quiebre, d.dias_recuperacion_quiebre,
-                   d.oc_recuperacion, d.fecha_recuperacion,
+                   d.quiebre_detectado,
+                   d.fecha_quiebre::date::text AS fecha_quiebre,
+                   d.dias_recuperacion_quiebre,
+                   d.oc_recuperacion,
+                   d.fecha_recuperacion::date::text AS fecha_recuperacion,
                    COALESCE(
                        NULLIF(TRIM(p1.condicion), ''), NULLIF(TRIM(p1.estado), ''),
                        NULLIF(TRIM(p2.condicion), ''), NULLIF(TRIM(p2.estado), ''),

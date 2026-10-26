@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../api';
 
+function formatCleanDate(val) {
+  if (!val) return '—';
+  const s = String(val).trim();
+  if (s === '—' || s === 'None' || s === 'null' || !s) return '—';
+  if (s.includes('T')) return s.split('T')[0];
+  if (s.includes(' ')) return s.split(' ')[0];
+  return s.length > 10 ? s.substring(0, 10) : s;
+}
+
 export default function OrdenesCompra() {
   const [ocs, setOcs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -300,19 +309,19 @@ export default function OrdenesCompra() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <table className="table" style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
-                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600 }}>N° OC</th>
-                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600 }}>Cliente</th>
-                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600 }}>Etapa</th>
-                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600 }}>Fecha</th>
-                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Items</th>
-                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Pedido</th>
-                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Despachado</th>
-                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Cumplimiento</th>
-                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Alertas Auditoría</th>
-                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Acciones</th>
+                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>N° OC</th>
+                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cliente</th>
+                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Etapa</th>
+                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha</th>
+                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Items</th>
+                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Pedido</th>
+                      <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Despachado</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cumplimiento</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Alertas Auditoría</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -320,7 +329,7 @@ export default function OrdenesCompra() {
                       const cump = Number(oc.cumplimiento_pct) || 0;
                       return (
                         <tr key={oc.id} style={{ borderBottom: '1px solid #e2e8f0', background: '#ffffff' }}>
-                          <td style={{ padding: '12px', fontWeight: 700 }}>
+                          <td style={{ padding: '12px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                             <span 
                               style={{ color: '#0284c7', cursor: 'pointer', textDecoration: 'underline' }}
                               onClick={() => handleOpenDetail(oc.id, oc.numero_oc)}
@@ -328,8 +337,8 @@ export default function OrdenesCompra() {
                               {oc.numero_oc}
                             </span>
                           </td>
-                          <td style={{ padding: '12px', color: '#0f172a', fontWeight: 500 }}>{oc.cliente || '—'}</td>
-                          <td style={{ padding: '12px' }}>
+                          <td style={{ padding: '12px', color: '#0f172a', fontWeight: 500, whiteSpace: 'nowrap' }}>{oc.cliente || '—'}</td>
+                          <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                               <span style={{
                                 padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
@@ -351,8 +360,8 @@ export default function OrdenesCompra() {
                               )}
                             </div>
                           </td>
-                          <td style={{ padding: '12px', color: '#475569', fontSize: '0.85rem' }}>
-                            {oc.fecha_entrega || oc.fecha_pedido || (oc.fecha_carga ? oc.fecha_carga.substring(0, 10) : '—')}
+                          <td style={{ padding: '12px', color: '#475569', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                            {formatCleanDate(oc.fecha_entrega || oc.fecha_pedido || oc.fecha_carga)}
                           </td>
                           <td style={{ padding: '12px', textAlign: 'right', color: '#334155', fontWeight: 600 }}>{oc.total_items}</td>
                           <td style={{ padding: '12px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
@@ -491,20 +500,21 @@ export default function OrdenesCompra() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                <table className="table" style={{ width: '100%', minWidth: '1350px', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>SKU / Código</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Producto</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado Catálogo</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Familia</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>OC Quiebre</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Fecha Quiebre</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Cant. Pedida (Sin Despacho)</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>OC Recuperación</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Fecha Recuperación</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Tiempo Transcurrido</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado Despacho</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, minWidth: '220px' }}>Producto</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Catálogo</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Quiebre</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Quiebre</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Pedida (Sin Despacho)</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Recuperación</th>
+                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Recuperación</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Tiempo Transcurrido</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Despacho</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -529,71 +539,78 @@ export default function OrdenesCompra() {
 
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: rowBg }}>
-                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft }}>
-                              {q.sku || q.codigo_femaco}
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft, whiteSpace: 'nowrap' }}>
+                              {q.sku || '—'}
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
+                              <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}>
+                                {q.codigo_femaco || '—'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500, minWidth: '220px', maxWidth: '340px', whiteSpace: 'normal', lineHeight: '1.3' }}>
                               {q.nombre_producto}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {isDescontinuado ? (
                                 <span style={{
                                   padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
-                                  background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-block'
+                                  background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   🚫 DESCONTINUADO
                                 </span>
                               ) : isBloqueado ? (
                                 <span style={{
                                   padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
-                                  background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', display: 'inline-block'
+                                  background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   🔒 BLOQUEADO
                                 </span>
                               ) : (
                                 <span style={{
                                   padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600,
-                                  background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-block'
+                                  background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ✓ ACTIVO
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#475569' }}>{q.nombre_familia || '—'}</td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>{q.numero_oc}</td>
-                            <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: 600 }}>{q.fecha_quiebre || q.fecha_oc || '—'}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
+                            <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>{q.nombre_familia || '—'}</td>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{q.numero_oc}</td>
+                            <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {formatCleanDate(q.fecha_quiebre || q.fecha_oc)}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
                               {Math.round(q.cantidad_pedida).toLocaleString()}
                             </td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b', whiteSpace: 'nowrap' }}>
                               {q.oc_recuperacion || '—'}
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#15803d', fontWeight: 600 }}>
-                              {q.fecha_recuperacion || '—'}
+                            <td style={{ padding: '10px 12px', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {formatCleanDate(q.fecha_recuperacion)}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {recuperado ? (
-                                <span style={{ fontWeight: 700, color: '#0284c7' }}>
+                                <span style={{ fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>
                                   ⏱ {q.dias_recuperacion_quiebre} días
                                 </span>
                               ) : (
-                                <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600 }}>
+                                <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                   Aún sin recuperar
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {recuperado ? (
                                 <span style={{
                                   padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
-                                  background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac'
+                                  background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ✓ Recuperado
                                 </span>
                               ) : (
                                 <span style={{
                                   padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
-                                  background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5'
+                                  background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ⚠️ Quiebre Activo
                                 </span>
@@ -920,18 +937,19 @@ export default function OrdenesCompra() {
 
                     {/* Tabla de Detalle */}
                     <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                      <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <table className="table" style={{ width: '100%', minWidth: '1200px', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                         <thead>
                           <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>SKU / Cód.</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Producto</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Familia</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Cant. Pedida</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Cant. Despachada</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600 }}>Diferencia</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Desbalance Familiar</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Historial Quiebre / Recuperación</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, minWidth: '200px' }}>Producto</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Pedida</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Despachada</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Diferencia</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Desbalance Familiar</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Historial Quiebre / Recuperación</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -953,37 +971,42 @@ export default function OrdenesCompra() {
                                   borderBottom: '1px solid #e2e8f0',
                                   background: isQuiebre ? '#fff5f5' : (it.desbalance_familiar ? '#faf5ff' : '#ffffff')
                                 }}>
-                                  <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7' }}>
-                                    {it.sku || it.codigo_femaco}
+                                  <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>
+                                    {it.sku || '—'}
                                   </td>
-                                  <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>
+                                  <td style={{ padding: '10px 12px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
+                                    <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}>
+                                      {it.codigo_femaco || '—'}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500, minWidth: '200px', maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.3' }}>
                                     {it.nombre_producto}
                                     {it.estado_producto && String(it.estado_producto).toUpperCase().includes('DESCONTINUAD') && (
-                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}>
+                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', whiteSpace: 'nowrap' }}>
                                         🚫 DESCONTINUADO
                                       </span>
                                     )}
                                     {it.estado_producto && String(it.estado_producto).toUpperCase().includes('BLOQUEAD') && (
-                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe' }}>
+                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', whiteSpace: 'nowrap' }}>
                                         🔒 BLOQUEADO
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ padding: '10px 12px', color: '#475569' }}>{it.nombre_familia || '—'}</td>
-                                  <td style={{ padding: '10px 12px', textAlign: 'right', color: '#334155', fontWeight: 600 }}>
+                                  <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>{it.nombre_familia || '—'}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', color: '#334155', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                     {Math.round(it.cantidad_pedida).toLocaleString()}
                                   </td>
-                                  <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: isQuiebre ? '#dc2626' : '#15803d' }}>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: isQuiebre ? '#dc2626' : '#15803d', whiteSpace: 'nowrap' }}>
                                     {Math.round(it.cantidad_despachada).toLocaleString()}
                                   </td>
-                                  <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: it.diferencia < 0 ? '#dc2626' : '#15803d' }}>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: it.diferencia < 0 ? '#dc2626' : '#15803d', whiteSpace: 'nowrap' }}>
                                     {it.diferencia > 0 ? `+${Math.round(it.diferencia)}` : Math.round(it.diferencia)}
                                   </td>
-                                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                     {isQuiebre && (
                                       <span style={{
                                         background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5',
-                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem'
+                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem', display: 'inline-block', whiteSpace: 'nowrap'
                                       }}>
                                         NO DESPACHADO (0)
                                       </span>
@@ -991,7 +1014,7 @@ export default function OrdenesCompra() {
                                     {isParcial && (
                                       <span style={{
                                         background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d',
-                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem'
+                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem', display: 'inline-block', whiteSpace: 'nowrap'
                                       }}>
                                         PARCIAL
                                       </span>
@@ -999,7 +1022,7 @@ export default function OrdenesCompra() {
                                     {isCompleto && (
                                       <span style={{
                                         background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac',
-                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem'
+                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem', display: 'inline-block', whiteSpace: 'nowrap'
                                       }}>
                                         ✓ COMPLETO
                                       </span>
@@ -1007,18 +1030,18 @@ export default function OrdenesCompra() {
                                     {isExcedente && (
                                       <span style={{
                                         background: '#eff6ff', color: '#1d4ed8', border: '1px solid #93c5fd',
-                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem'
+                                        padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem', display: 'inline-block', whiteSpace: 'nowrap'
                                       }}>
                                         EXCEDENTE (+)
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ padding: '10px 12px', color: '#334155' }}>
+                                  <td style={{ padding: '10px 12px', color: '#334155', whiteSpace: 'nowrap' }}>
                                     {it.desbalance_familiar ? (
                                       <span style={{
                                         display: 'inline-block', padding: '3px 8px', borderRadius: '4px',
                                         background: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff',
-                                        fontSize: '0.75rem', fontWeight: 600
+                                        fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap'
                                       }}>
                                         ⚖️ {it.desbalance_detalle || 'Desbalance detectado'}
                                       </span>
@@ -1026,10 +1049,10 @@ export default function OrdenesCompra() {
                                       <span style={{ color: '#94a3b8' }}>—</span>
                                     )}
                                   </td>
-                                  <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#334155' }}>
+                                  <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#334155', whiteSpace: 'nowrap' }}>
                                     {it.quiebre_detectado ? (
                                       <div style={{ color: '#dc2626' }}>
-                                        <strong>⚠️ Quiebre</strong> {it.fecha_quiebre ? `(${it.fecha_quiebre})` : ''}
+                                        <strong>⚠️ Quiebre</strong> {it.fecha_quiebre ? `(${formatCleanDate(it.fecha_quiebre)})` : ''}
                                         {it.oc_recuperacion && (
                                           <div style={{ color: '#15803d', fontSize: '0.75rem' }}>
                                             Recuperado en OC {it.oc_recuperacion} ({it.dias_recuperacion_quiebre} días)
