@@ -256,16 +256,18 @@ def _calcular_distribucion_homogenea_data(conn):
     if df_familias.empty:
         return []
 
-    # Cargar datos de planificacion_sop
+    # Cargar datos de planificacion_sop con estado
     df_sop = pd.read_sql(text("""
-        SELECT sku, codigo_femaco, nombre_producto, estado,
-               COALESCE(stock_act, 0) AS stock_act,
-               COALESCE(cantidad_transito, 0) AS cantidad_transito,
-               COALESCE(sug_ritmo_futuro, sug_ritmo_mensual, 0) AS ritmo_demanda,
-               COALESCE(sug_target_uds, 0) AS target_uds,
+        SELECT s.sku, s.codigo_femaco, s.nombre_producto,
+               COALESCE(NULLIF(TRIM(s.estado), ''), NULLIF(TRIM(p.condicion), ''), NULLIF(TRIM(p.estado), ''), 'ACTIVOS') AS estado,
+               COALESCE(s.stock_act, 0) AS stock_act,
+               COALESCE(s.cantidad_transito, 0) AS cantidad_transito,
+               COALESCE(s.sug_ritmo_futuro, s.sug_ritmo_mensual, 0) AS ritmo_demanda,
+               COALESCE(s.sug_target_uds, 0) AS target_uds,
                COALESCE(sugerencia_compra_inmediata_uds, 0) AS sug_compra_inmediata,
-               COALESCE(ump, 1) AS ump
-        FROM planificacion_sop
+               COALESCE(s.ump, 1) AS ump
+        FROM planificacion_sop s
+        LEFT JOIN dim_productos p ON (s.sku IS NOT NULL AND s.sku = p.sku) OR (s.codigo_femaco IS NOT NULL AND s.codigo_femaco = p.codigo_femaco)
     """), conn)
 
     sop_by_fem = {}
@@ -295,6 +297,7 @@ def _calcular_distribucion_homogenea_data(conn):
             "sku": cod,
             "codigo_femaco": cod,
             "nombre_producto": "Producto sin catálogo",
+            "estado": "ACTIVOS",
             "stock_act": 0,
             "cantidad_transito": 0,
             "ritmo_demanda": 0,
@@ -303,11 +306,16 @@ def _calcular_distribucion_homogenea_data(conn):
             "ump": 1
         }
 
+        estado_raw = str(sop_data.get("estado", "")).strip().upper()
+        is_descontinuado = any(k in estado_raw for k in ["DESCONTINUA", "INACTIV"])
+
         familias_grouped[fid]["miembros"].append({
             "codigo_femaco": cod,
             "sku": sop_data.get("sku", cod),
             "nombre_producto": sop_data.get("nombre_producto", "Desconocido"),
             "no_transformable": nt,
+            "estado": estado_raw or "ACTIVOS",
+            "es_descontinuado": is_descontinuado,
             "stock_act": float(sop_data.get("stock_act", 0)),
             "cantidad_transito": float(sop_data.get("cantidad_transito", 0)),
             "stock_total": float(sop_data.get("stock_act", 0)) + float(sop_data.get("cantidad_transito", 0)),
@@ -322,6 +330,7 @@ def _calcular_distribucion_homogenea_data(conn):
         miembros = fam["miembros"]
         # Filtrar transformables para el pool familiar
         transformables = [m for m in miembros if not m["no_transformable"]]
+        no_transformables = [m for m in miembros if m["no_transformable"]]
         
         total_stock_familia = sum(m["stock_total"] for m in transformables)
         total_demanda_familia = sum(m["demanda"] for m in transformables)
@@ -332,11 +341,110 @@ def _calcular_distribucion_homogenea_data(conn):
         deficit_neto_familia = max(0.0, total_demanda_familia - total_stock_familia)
         superavit_neto_familia = max(0.0, total_stock_familia - total_demanda_familia)
 
-        # Reparto homogéneo de las unidades disponibles
+        # Regla de negocio:
+        # "Siempre a no ser que el artículo que cede esté descontinuado, en ese caso cede todo"
+        descontinuados = [m for m in transformables if m.get("es_descontinuado")]
+        activos = [m for m in transformables if not m.get("es_descontinuado")]
+        
+        stock_cedido_descontinuados = sum(m["stock_total"] for m in descontinuados)
+        asignaciones = {}
+        
+        # 1. Los descontinuados ceden el 100% de su stock a los hermanos activos para liquidación
+        for d in descontinuados:
+            asignaciones[d["codigo_femaco"]] = {
+                "stock_asignado": 0.0,
+                "saldo_transf": -d["stock_total"],
+                "cobertura": 100.0 if d["demanda"] == 0 else 0.0,
+                "compra": 0,
+                "cubierto": True,
+                "obs": "Descontinuado: cede 100% de stock a hermanos activos para liquidación"
+            }
+
+        # 2. Distribución entre miembros activos
+        activos_con_demanda = [a for a in activos if a["demanda"] > 0]
+        activos_sin_demanda = [a for a in activos if a["demanda"] == 0]
+
+        if not activos_con_demanda:
+            # Caso donde ningún activo tiene demanda proyectada: conservan su stock
+            for a in activos:
+                asignaciones[a["codigo_femaco"]] = {
+                    "stock_asignado": a["stock_total"],
+                    "saldo_transf": 0.0,
+                    "cobertura": 100.0,
+                    "compra": 0,
+                    "cubierto": True,
+                    "obs": "Activo sin demanda proyectada: conserva su stock"
+                }
+        else:
+            # Hay activos con demanda proyectada
+            # ¿Cuánto déficit tienen los activos con demanda para llegar a su 100%?
+            deficit_necesario_activos = sum(max(0.0, a["demanda"] - a["stock_total"]) for a in activos_con_demanda)
+            
+            # Se cubre primero con el stock de los descontinuados
+            deficit_restante_por_cubrir = max(0.0, deficit_necesario_activos - stock_cedido_descontinuados)
+            
+            # Si aún falta para cubrir el déficit de los activos, los activos sin demanda ceden SOLO LO NECESARIO
+            stock_activos_sin_demanda = sum(a["stock_total"] for a in activos_sin_demanda)
+            aporte_activos_sin_demanda = min(stock_activos_sin_demanda, deficit_restante_por_cubrir)
+            
+            # Asignar a activos sin demanda (solo ceden lo estrictamente necesario y conservan el resto de resguardo)
+            for a in activos_sin_demanda:
+                if stock_activos_sin_demanda > 0 and aporte_activos_sin_demanda > 0:
+                    cede = aporte_activos_sin_demanda * (a["stock_total"] / stock_activos_sin_demanda)
+                else:
+                    cede = 0.0
+                stock_conserva = a["stock_total"] - cede
+                asignaciones[a["codigo_femaco"]] = {
+                    "stock_asignado": round(stock_conserva, 1),
+                    "saldo_transf": round(-cede, 1),
+                    "cobertura": 100.0,
+                    "compra": 0,
+                    "cubierto": True,
+                    "obs": f"Activo sin demanda: cede {round(cede, 1)} uds necesarias y conserva {round(stock_conserva, 1)} uds de resguardo" if cede > 0 else "Activo sin demanda: conserva 100% de su stock"
+                }
+
+            # Stock disponible final para los activos con demanda
+            stock_para_activos_con_demanda = sum(a["stock_total"] for a in activos_con_demanda) + stock_cedido_descontinuados + aporte_activos_sin_demanda
+            demanda_activos_con_demanda = sum(a["demanda"] for a in activos_con_demanda)
+            
+            alcanza_activos_con_demanda = stock_para_activos_con_demanda >= demanda_activos_con_demanda
+            
+            if alcanza_activos_con_demanda:
+                # Caso de cobertura completa o superávit:
+                # Reparto homogéneo proporcional a la demanda para que se acaben en simultáneo
+                ratio_cob = stock_para_activos_con_demanda / demanda_activos_con_demanda
+                for a in activos_con_demanda:
+                    stock_asig = a["demanda"] * ratio_cob
+                    saldo = stock_asig - a["stock_total"]
+                    asignaciones[a["codigo_femaco"]] = {
+                        "stock_asignado": round(stock_asig, 1),
+                        "saldo_transf": round(saldo, 1),
+                        "cobertura": 100.0,
+                        "compra": 0,
+                        "cubierto": True,
+                        "obs": "Cubierto 100% por stock familiar (Maquila)"
+                    }
+            else:
+                # Caso de déficit familiar: reparto homogéneo proporcional
+                ratio_cob = stock_para_activos_con_demanda / demanda_activos_con_demanda if demanda_activos_con_demanda > 0 else 0
+                for a in activos_con_demanda:
+                    stock_asig = a["demanda"] * ratio_cob
+                    saldo = stock_asig - a["stock_total"]
+                    falta = max(0.0, a["demanda"] - stock_asig)
+                    compra = math.ceil(falta / a["ump"]) * a["ump"] if falta > 0 else 0
+                    cob_pct = round((stock_asig / a["demanda"] * 100) if a["demanda"] > 0 else 100.0, 1)
+                    asignaciones[a["codigo_femaco"]] = {
+                        "stock_asignado": round(stock_asig, 1),
+                        "saldo_transf": round(saldo, 1),
+                        "cobertura": cob_pct,
+                        "compra": int(compra),
+                        "cubierto": False,
+                        "obs": f"Déficit familiar: se distribuye stock disponible (cobertura {cob_pct}%) y requiere comprar {int(compra)} uds"
+                    }
+
         miembros_procesados = []
         for m in miembros:
             if m["no_transformable"]:
-                # Se gestiona independiente
                 stock_res = m["stock_total"]
                 compra_m = max(0.0, m["demanda"] - m["stock_total"])
                 miembros_procesados.append({
@@ -349,45 +457,16 @@ def _calcular_distribucion_homogenea_data(conn):
                     "observacion": "No transformable (gestión individual)"
                 })
             else:
-                demanda_m = m["demanda"]
-                stock_ini = m["stock_total"]
-
-                if cubre_total:
-                    # La familia cubre 100% de la demanda de todos los transformables
-                    # Asignamos el 100% de la demanda + reparto homogéneo del superávit remanente
-                    if total_demanda_familia > 0:
-                        extra = superavit_neto_familia * (demanda_m / total_demanda_familia)
-                    else:
-                        extra = superavit_neto_familia / len(transformables) if transformables else 0
-                    stock_asignado = demanda_m + extra
-                    saldo_transf = stock_asignado - stock_ini # positivo = recibe unidades por maquila, negativo = cede
-                    miembros_procesados.append({
-                        **m,
-                        "stock_asignado_homogeneo": round(stock_asignado, 1),
-                        "saldo_transformacion": round(saldo_transf, 1),
-                        "cobertura_post_distribucion_pct": 100.0,
-                        "compra_remanente_sugerida": 0,
-                        "cubierto_por_maquila": True,
-                        "observacion": "Cubierto 100% por stock familiar (Maquila)"
-                    })
-                else:
-                    # Falta stock en la familia: reparto homogéneo proporcional a la demanda
-                    if total_demanda_familia > 0:
-                        stock_asignado = total_stock_familia * (demanda_m / total_demanda_familia)
-                    else:
-                        stock_asignado = stock_ini
-                    saldo_transf = stock_asignado - stock_ini
-                    falta_m = max(0.0, demanda_m - stock_asignado)
-                    compra_m = math.ceil(falta_m / m["ump"]) * m["ump"] if falta_m > 0 else 0
-                    miembros_procesados.append({
-                        **m,
-                        "stock_asignado_homogeneo": round(stock_asignado, 1),
-                        "saldo_transformacion": round(saldo_transf, 1),
-                        "cobertura_post_distribucion_pct": round((stock_asignado / demanda_m * 100) if demanda_m > 0 else 100.0, 1),
-                        "compra_remanente_sugerida": int(compra_m),
-                        "cubierto_por_maquila": False,
-                        "observacion": f"Déficit familiar: se distribuye stock disponible y requiere comprar {int(compra_m)} uds"
-                    })
+                asig = asignaciones.get(m["codigo_femaco"], {})
+                miembros_procesados.append({
+                    **m,
+                    "stock_asignado_homogeneo": asig.get("stock_asignado", m["stock_total"]),
+                    "saldo_transformacion": asig.get("saldo_transf", 0.0),
+                    "cobertura_post_distribucion_pct": asig.get("cobertura", 100.0),
+                    "compra_remanente_sugerida": asig.get("compra", 0),
+                    "cubierto_por_maquila": asig.get("cubierto", False),
+                    "observacion": asig.get("obs", "")
+                })
 
         total_compra_familia = sum(m["compra_remanente_sugerida"] for m in miembros_procesados)
 
@@ -456,6 +535,8 @@ def export_distribucion_homogenea_excel():
                     "Cód. Interno": m["codigo_femaco"],
                     "SKU": m["sku"],
                     "Producto": m["nombre_producto"],
+                    "Estado": m.get("estado", "ACTIVOS"),
+                    "Descontinuado": "SÍ" if m.get("es_descontinuado") else "NO",
                     "No Transformable": "SÍ" if m["no_transformable"] else "NO",
                     "Stock Actual": m["stock_act"],
                     "Tránsito": m["cantidad_transito"],

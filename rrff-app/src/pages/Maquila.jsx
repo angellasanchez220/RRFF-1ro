@@ -345,7 +345,19 @@ export default function FamiliasReemplazo() {
                                   return (
                                     <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
                                       <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0369a1' }}>
-                                        {m.codigo_femaco} {m.sku && m.sku !== m.codigo_femaco && `(${m.sku})`}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                          <span>{m.codigo_femaco} {m.sku && m.sku !== m.codigo_femaco && `(${m.sku})`}</span>
+                                          {m.es_descontinuado && (
+                                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#fee2e2', color: '#991b1b', fontWeight: 700 }}>
+                                              DESCONTINUADO
+                                            </span>
+                                          )}
+                                          {m.estado && m.estado.includes('BLOQUE') && (
+                                            <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: 700 }}>
+                                              BLOQUEADO
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                       <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>{m.nombre_producto}</td>
                                       <td style={{ padding: '10px 12px', textAlign: 'right', color: '#334155', fontWeight: 600 }}>
