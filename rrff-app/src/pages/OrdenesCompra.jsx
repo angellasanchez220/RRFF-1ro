@@ -41,7 +41,11 @@ export default function OrdenesCompra() {
   // Histórico de quiebres
   const [quiebresHistory, setQuiebresHistory] = useState([]);
   const [quiebresLoading, setQuiebresLoading] = useState(false);
-  const [quiebresFilterCat, setQuiebresFilterCat] = useState('ALL');
+  const [filterCatalogStates, setFilterCatalogStates] = useState({
+    ACTIVO: true,
+    BLOQUEADO: true,
+    DESCONTINUADO: false, // Por defecto no mostrar descontinuados
+  });
 
   useEffect(() => {
     loadOcs();
@@ -178,9 +182,37 @@ export default function OrdenesCompra() {
     return true;
   });
 
+  // Métricas y filtrado de histórico de quiebres por casillas
+  const countActivos = quiebresHistory.filter(q => {
+    const est = String(q.estado_producto || '').toUpperCase();
+    return !est.includes('DESCONTINUAD') && !est.includes('INACTIV') && !est.includes('BLOQUEAD');
+  }).length;
+
+  const countBloqueados = quiebresHistory.filter(q => {
+    const est = String(q.estado_producto || '').toUpperCase();
+    return est.includes('BLOQUEAD');
+  }).length;
+
+  const countDescontinuados = quiebresHistory.filter(q => {
+    const est = String(q.estado_producto || '').toUpperCase();
+    return est.includes('DESCONTINUAD') || est.includes('INACTIV');
+  }).length;
+
+  const filteredQuiebres = quiebresHistory.filter(q => {
+    const est = String(q.estado_producto || '').toUpperCase();
+    const isDesc = est.includes('DESCONTINUAD') || est.includes('INACTIV');
+    const isBloq = est.includes('BLOQUEAD');
+    const isAct = !isDesc && !isBloq;
+
+    if (isDesc && !filterCatalogStates.DESCONTINUADO) return false;
+    if (isBloq && !filterCatalogStates.BLOQUEADO) return false;
+    if (isAct && !filterCatalogStates.ACTIVO) return false;
+    return true;
+  });
+
   return (
     <div className="content-area">
-      <div className="main-panel" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+      <div className="main-panel" style={{ padding: '20px 24px', maxWidth: '100%', margin: 0, width: '100%' }}>
         
         {/* ── HEADER PRINCIPAL ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
@@ -459,35 +491,72 @@ export default function OrdenesCompra() {
                 </p>
               </div>
 
-              {/* Leyenda y Filtro por Estado de Catálogo */}
-              <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', background: '#f8fafc', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>Filtrar Catálogo:</label>
-                  <select
-                    value={quiebresFilterCat}
-                    onChange={e => setQuiebresFilterCat(e.target.value)}
-                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#ffffff', color: '#0f172a', fontWeight: 600 }}
-                  >
-                    <option value="ALL">Todos los Estados ({quiebresHistory.length})</option>
-                    <option value="ACTIVOS">Solo Activos</option>
-                    <option value="BLOQUEADOS">Solo Bloqueados 🔒</option>
-                    <option value="DESCONTINUADOS">Solo Descontinuados 🚫</option>
-                  </select>
-                </div>
-                <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', alignItems: 'center' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#334155', fontWeight: 600 }}>
-                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#ffffff', border: '1px solid #cbd5e1' }} />
-                    Activo
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#6b21a8', fontWeight: 700 }}>
-                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#faf5ff', border: '2px solid #a855f7' }} />
-                    🔒 Bloqueado
-                  </span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#991b1b', fontWeight: 700 }}>
-                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#fff1f2', border: '2px solid #ef4444' }} />
-                    🚫 Descontinuado
-                  </span>
-                </div>
+              {/* Filtro por Estado de Catálogo con Casillas (Checkboxes) */}
+              <div style={{
+                display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+                background: '#f8fafc', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1'
+              }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>
+                  Filtrar Catálogo:
+                </span>
+
+                {/* Casilla Activo */}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600,
+                  background: filterCatalogStates.ACTIVO ? '#f0fdf4' : '#ffffff',
+                  border: `1.5px solid ${filterCatalogStates.ACTIVO ? '#86efac' : '#cbd5e1'}`,
+                  color: filterCatalogStates.ACTIVO ? '#166534' : '#64748b',
+                  userSelect: 'none'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={filterCatalogStates.ACTIVO}
+                    onChange={e => setFilterCatalogStates(prev => ({ ...prev, ACTIVO: e.target.checked }))}
+                    style={{ cursor: 'pointer', accentColor: '#16a34a' }}
+                  />
+                  ✓ Activos ({countActivos})
+                </label>
+
+                {/* Casilla Bloqueado */}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700,
+                  background: filterCatalogStates.BLOQUEADO ? '#faf5ff' : '#ffffff',
+                  border: `1.5px solid ${filterCatalogStates.BLOQUEADO ? '#d8b4fe' : '#cbd5e1'}`,
+                  color: filterCatalogStates.BLOQUEADO ? '#6b21a8' : '#64748b',
+                  userSelect: 'none'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={filterCatalogStates.BLOQUEADO}
+                    onChange={e => setFilterCatalogStates(prev => ({ ...prev, BLOQUEADO: e.target.checked }))}
+                    style={{ cursor: 'pointer', accentColor: '#9333ea' }}
+                  />
+                  🔒 Bloqueados ({countBloqueados})
+                </label>
+
+                {/* Casilla Descontinuado (Por default desmarcado) */}
+                <label style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                  padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700,
+                  background: filterCatalogStates.DESCONTINUADO ? '#fff1f2' : '#ffffff',
+                  border: `1.5px solid ${filterCatalogStates.DESCONTINUADO ? '#fca5a5' : '#cbd5e1'}`,
+                  color: filterCatalogStates.DESCONTINUADO ? '#991b1b' : '#64748b',
+                  userSelect: 'none'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={filterCatalogStates.DESCONTINUADO}
+                    onChange={e => setFilterCatalogStates(prev => ({ ...prev, DESCONTINUADO: e.target.checked }))}
+                    style={{ cursor: 'pointer', accentColor: '#dc2626' }}
+                  />
+                  🚫 Descontinuados ({countDescontinuados})
+                </label>
+
+                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginLeft: '6px' }}>
+                  ({filteredQuiebres.length} visibles)
+                </span>
               </div>
             </div>
 
@@ -499,117 +568,114 @@ export default function OrdenesCompra() {
                 No se han detectado quiebres de producto en las órdenes de compra analizadas.
               </div>
             ) : (
-              <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                <table className="table" style={{ width: '100%', minWidth: '1350px', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+              <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%' }}>
+                <table className="table" style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, minWidth: '220px' }}>Producto</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Catálogo</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Quiebre</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Quiebre</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Pedida (Sin Despacho)</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Recuperación</th>
-                      <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Recuperación</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Tiempo Transcurrido</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Despacho</th>
+                      <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
+                      <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
+                      <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, minWidth: '180px' }}>Producto</th>
+                      <th style={{ padding: '9px 8px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Catálogo</th>
+                      <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
+                      <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Quiebre</th>
+                      <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Quiebre</th>
+                      <th style={{ padding: '9px 10px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Pedida</th>
+                      <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Recup.</th>
+                      <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Recup.</th>
+                      <th style={{ padding: '9px 8px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Tiempo</th>
+                      <th style={{ padding: '9px 10px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Despacho</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {quiebresHistory
-                      .filter(q => {
-                        const est = String(q.estado_producto || '').toUpperCase();
-                        const isDesc = est.includes('DESCONTINUAD') || est.includes('INACTIV');
-                        const isBloq = est.includes('BLOQUEAD');
-                        if (quiebresFilterCat === 'ACTIVOS') return !isDesc && !isBloq;
-                        if (quiebresFilterCat === 'BLOQUEADOS') return isBloq;
-                        if (quiebresFilterCat === 'DESCONTINUADOS') return isDesc;
-                        return true;
-                      })
-                      .map((q, idx) => {
+                    {filteredQuiebres.length === 0 ? (
+                      <tr>
+                        <td colSpan="12" style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                          No hay productos para los estados seleccionados. Marca alguna de las casillas de arriba para visualizarlos.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredQuiebres.map((q, idx) => {
                         const recuperado = Boolean(q.oc_recuperacion);
                         const est = String(q.estado_producto || '').toUpperCase();
                         const isDescontinuado = est.includes('DESCONTINUAD') || est.includes('INACTIV');
                         const isBloqueado = est.includes('BLOQUEAD');
 
                         const rowBg = isDescontinuado ? '#fff1f2' : (isBloqueado ? '#faf5ff' : '#ffffff');
-                        const borderLeft = isDescontinuado ? '5px solid #ef4444' : (isBloqueado ? '5px solid #a855f7' : '5px solid transparent');
+                        const borderLeft = isDescontinuado ? '4px solid #ef4444' : (isBloqueado ? '4px solid #a855f7' : '4px solid transparent');
 
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: rowBg }}>
-                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft, whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft, whiteSpace: 'nowrap' }}>
                               {q.sku || '—'}
                             </td>
-                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
-                              <span style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}>
+                            <td style={{ padding: '8px 10px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
+                              <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}>
                                 {q.codigo_femaco || '—'}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500, minWidth: '220px', maxWidth: '340px', whiteSpace: 'normal', lineHeight: '1.3' }}>
+                            <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 500, minWidth: '180px', lineHeight: '1.25' }}>
                               {q.nombre_producto}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {isDescontinuado ? (
                                 <span style={{
-                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800,
                                   background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   🚫 DESCONTINUADO
                                 </span>
                               ) : isBloqueado ? (
                                 <span style={{
-                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800,
                                   background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   🔒 BLOQUEADO
                                 </span>
                               ) : (
                                 <span style={{
-                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600,
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
                                   background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ✓ ACTIVO
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>{q.nombre_familia || '—'}</td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{q.numero_oc}</td>
-                            <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 8px', color: '#475569', whiteSpace: 'nowrap' }}>{q.nombre_familia || '—'}</td>
+                            <td style={{ padding: '8px 8px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{q.numero_oc}</td>
+                            <td style={{ padding: '8px 8px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
                               {formatCleanDate(q.fecha_quiebre || q.fecha_oc)}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
                               {Math.round(q.cantidad_pedida).toLocaleString()}
                             </td>
-                            <td style={{ padding: '10px 12px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 8px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b', whiteSpace: 'nowrap' }}>
                               {q.oc_recuperacion || '—'}
                             </td>
-                            <td style={{ padding: '10px 12px', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 8px', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
                               {formatCleanDate(q.fecha_recuperacion)}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {recuperado ? (
                                 <span style={{ fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>
-                                  ⏱ {q.dias_recuperacion_quiebre} días
+                                  ⏱ {q.dias_recuperacion_quiebre} d
                                 </span>
                               ) : (
                                 <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                  Aún sin recuperar
+                                  Sin recuperar
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {recuperado ? (
                                 <span style={{
-                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700,
                                   background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ✓ Recuperado
                                 </span>
                               ) : (
                                 <span style={{
-                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
+                                  padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700,
                                   background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
                                   ⚠️ Quiebre Activo
@@ -618,7 +684,8 @@ export default function OrdenesCompra() {
                             </td>
                           </tr>
                         );
-                      })}
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
