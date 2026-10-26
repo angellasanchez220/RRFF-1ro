@@ -49,13 +49,139 @@ def _parse_date(val: Any) -> Optional[date]:
         return None
     if isinstance(val, (datetime, date)):
         return val.date() if isinstance(val, datetime) else val
+    s = str(val).strip()
     try:
-        dt = pd.to_datetime(val, errors='coerce', dayfirst=True)
+        if re.match(r'^\d{4}-\d{2}-\d{2}', s):
+            dt = pd.to_datetime(s, format='mixed', errors='coerce')
+        else:
+            dt = pd.to_datetime(s, errors='coerce', dayfirst=True)
         if pd.notna(dt):
             return dt.date()
     except Exception:
         pass
     return None
+
+
+def _detect_quantity_columns(cols: List[str]):
+    """
+    Detecta columnas de cantidad pedida y despachada.
+    Soporta exports de portales retail (Sodimac/B2B) donde pandas renombra 'Unidades' duplicadas a 'Unidades' y 'Unidades.1'.
+    """
+    # Caso 1: Columnas duplicadas que pandas renombra con .1 (p.ej. Unidades y Unidades.1)
+    unidades_cols = [c for c in cols if re.match(r'^unidades(?:\.0)?$', str(c).strip(), re.IGNORECASE)]
+    unidades_1_cols = [c for c in cols if re.match(r'^unidades\.[1-9]\d*$', str(c).strip(), re.IGNORECASE)]
+    if unidades_cols and unidades_1_cols:
+        return unidades_cols[0], unidades_1_cols[0]
+
+    cant_cols = [c for c in cols if re.match(r'^cantidad(?:\.0)?$', str(c).strip(), re.IGNORECASE)]
+    cant_1_cols = [c for c in cols if re.match(r'^cantidad\.[1-9]\d*$', str(c).strip(), re.IGNORECASE)]
+    if cant_cols and cant_1_cols:
+        return cant_cols[0], cant_1_cols[0]
+
+    # Caso 2: Nombres explícitos de cantidades
+    col_ped = None
+    for pat in [
+        r'cant(?:idad)?[_\s]*(?:pedida|solicitada|comprada)',
+        r'unidades[_\s]*(?:pedidas|compradas|solicitadas)',
+        r'^pedido$', r'^solicitado$', r'^solicitada$'
+    ]:
+        for c in cols:
+            if re.search(pat, str(c).strip(), re.IGNORECASE):
+                col_ped = c
+                break
+        if col_ped:
+            break
+
+    col_desp = None
+    for pat in [
+        r'cant(?:idad)?[_\s]*(?:despachada|entregada|recibida|recepcionada)',
+        r'unidades[_\s]*(?:despachadas|entregadas|recibidas|recepcionadas)',
+        r'^despacho$', r'^entregado$', r'^recibido$', r'^recepcionado$'
+    ]:
+        for c in cols:
+            if re.search(pat, str(c).strip(), re.IGNORECASE):
+                col_desp = c
+                break
+        if col_desp:
+            break
+
+    if not col_ped and not col_desp:
+        if unidades_cols:
+            col_ped = unidades_cols[0]
+        elif cant_cols:
+            col_ped = cant_cols[0]
+
+    return col_ped, col_desp
+
+
+def _read_file_to_df(content: bytes, filename: str) -> pd.DataFrame:
+    """Lee archivos Excel o CSV de portales B2B con detección automática de separador, codificación y fila de cabecera."""
+    fn_lower = filename.lower()
+    if fn_lower.endswith(".csv"):
+        for sep in [";", ",", "\t"]:
+            for enc in ["latin-1", "utf-8", "utf-8-sig"]:
+                try:
+                    df = pd.read_csv(io.BytesIO(content), sep=sep, encoding=enc)
+                    if len(df.columns) > 2:
+                        return df
+                except Exception:
+                    continue
+        return pd.read_csv(io.BytesIO(content))
+    else:
+        try:
+            df = pd.read_excel(io.BytesIO(content))
+        except Exception:
+            df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
+
+        # Verificar si la cabecera real está más abajo (filas de título o metadatos)
+        expected_pats = [r"sku", r"orden", r"unidades", r"cant", r"vin", r"item", r"c[oó]digo"]
+        matched = sum(1 for c in df.columns if any(re.search(p, str(c), re.IGNORECASE) for p in expected_pats))
+        if matched == 0 and len(df) > 0:
+            for header_idx in range(1, min(10, len(df))):
+                candidate_cols = [str(x) for x in df.iloc[header_idx - 1].tolist()]
+                m = sum(1 for c in candidate_cols if any(re.search(p, c, re.IGNORECASE) for p in expected_pats))
+                if m >= 2:
+                    try:
+                        df = pd.read_excel(io.BytesIO(content), header=header_idx)
+                        break
+                    except Exception:
+                        pass
+        return df
+
+
+def _interpret_estado_y_etapa(estado_raw: str, sum_ped: float, sum_desp: float, user_etapa: str):
+    """
+    Interpreta el estado del portal ('Cursado', 'Recepción', etc.) y define la etapa correspondiente.
+    """
+    user_etapa = (user_etapa or "AUTO").strip().upper()
+    estado_raw_str = str(estado_raw or "").strip()
+    e_lower = estado_raw_str.lower()
+
+    if user_etapa in ("PEDIDO", "ENTREGA"):
+        # Selección forzada por el usuario
+        if estado_raw_str:
+            return user_etapa, estado_raw_str.upper()
+        return user_etapa, ("CURSADO" if user_etapa == "PEDIDO" else "RECEPCIONADO")
+
+    # Detección Automática (AUTO)
+    if estado_raw_str:
+        if any(k in e_lower for k in ["cursa", "pend", "vigen", "emit"]):
+            return "PEDIDO", "CURSADO"
+        elif any(k in e_lower for k in ["recep", "entreg", "cerrad", "factur", "cumpli"]):
+            return "ENTREGA", "RECEPCIONADO"
+        elif any(k in e_lower for k in ["anul", "cancel"]):
+            return "PEDIDO", "ANULADO"
+        else:
+            if sum_desp > 0:
+                return "ENTREGA", estado_raw_str.upper()
+            else:
+                return "PEDIDO", estado_raw_str.upper()
+
+    # Si no hay columna de estado
+    if sum_desp > 0:
+        return "ENTREGA", "RECEPCIONADO"
+    else:
+        return "PEDIDO", "CURSADO"
 
 
 def _load_active_families(conn) -> Dict[str, Dict[str, Any]]:
@@ -100,7 +226,6 @@ def _recalcular_tiempos_recuperacion(conn, skus_afectados: List[str]):
     if not skus_afectados:
         return
 
-    # Buscar todo el historial de entregas de estos SKUs ordenado por fecha de entrega / carga
     query = text("""
         SELECT d.id AS detalle_id, d.numero_oc, d.sku, d.codigo_femaco,
                d.cantidad_pedida, d.cantidad_despachada, d.quiebre_detectado,
@@ -114,23 +239,19 @@ def _recalcular_tiempos_recuperacion(conn, skus_afectados: List[str]):
     skus_upper = [s.strip().upper() for s in skus_afectados if s]
     rows = conn.execute(query, {"skus": skus_upper}).mappings().all()
 
-    # Agrupar por SKU / Código
     history_by_sku = {}
     for r in rows:
         key = str(r["sku"] or r["codigo_femaco"]).strip().upper()
         history_by_sku.setdefault(key, []).append(dict(r))
 
-    # Para cada SKU, emparejar quiebres con su siguiente re-despacho
     for key, items in history_by_sku.items():
         for i, item in enumerate(items):
-            # Si hubo quiebre (pedido > 0 y despachado == 0)
             if float(item["cantidad_pedida"] or 0) > 0 and float(item["cantidad_despachada"] or 0) == 0:
                 fecha_q = item["fecha_entrega"] or (item["fecha_carga"].date() if item["fecha_carga"] else None)
                 recuperado_oc = None
                 fecha_rec = None
                 dias_rec = None
 
-                # Buscar hacia adelante en items posteriores
                 for next_item in items[i+1:]:
                     if float(next_item["cantidad_despachada"] or 0) > 0:
                         recuperado_oc = next_item["numero_oc"]
@@ -161,7 +282,7 @@ def _recalcular_tiempos_recuperacion(conn, skus_afectados: List[str]):
 @router.post("/upload")
 async def upload_orden_compra(
     file: UploadFile = File(...),
-    etapa: str = Form("ENTREGA"),
+    etapa: str = Form("AUTO"),
     numero_oc: Optional[str] = Form(None),
     cliente: Optional[str] = Form(""),
     fecha_pedido: Optional[str] = Form(None),
@@ -169,31 +290,31 @@ async def upload_orden_compra(
     authorization: str = Header(None)
 ):
     """
-    Sube y procesa una Orden de Compra en etapa 'PEDIDO' (opcional) o 'ENTREGA' (despacho).
-    Audita diferencias, detecta productos no despachados, parciales, desbalances familiares y quiebres.
+    Sube y procesa Órdenes de Compra individuales o masivas con historial de varios meses.
+    Detecta automáticamente número de OC, etapa ('PEDIDO' vs 'ENTREGA'), estado ('CURSADO' vs 'RECEPCIONADO'),
+    consolida por local/tienda al nivel de SKU y calcula auditoría de cumplimiento, quiebres y tiempos de recuperación.
     """
     token = _get_auth_header(authorization)
     user_payload = decode_token(token)
     usuario = user_payload.get("sub") or user_payload.get("username") or "sistema"
 
-    etapa = etapa.strip().upper()
-    if etapa not in ("PEDIDO", "ENTREGA"):
-        raise HTTPException(status_code=400, detail="La etapa debe ser 'PEDIDO' o 'ENTREGA'")
+    etapa_val = etapa if isinstance(etapa, str) else "AUTO"
+    etapa_val = etapa_val.strip().upper()
+    if etapa_val not in ("AUTO", "PEDIDO", "ENTREGA"):
+        raise HTTPException(status_code=400, detail="La etapa debe ser 'AUTO', 'PEDIDO' o 'ENTREGA'")
+
+    form_oc_num = (numero_oc if isinstance(numero_oc, str) else "").strip()
+    form_cliente = (cliente if isinstance(cliente, str) else "").strip()
+    form_fecha_ped = fecha_pedido if isinstance(fecha_pedido, str) else None
+    form_fecha_ent = fecha_entrega if isinstance(fecha_entrega, str) else None
 
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Archivo vacío")
 
-    # Leer Excel o CSV
     filename = file.filename or "archivo.xlsx"
     try:
-        if filename.endswith(".csv"):
-            try:
-                df = pd.read_csv(io.BytesIO(content), sep=";", encoding="latin-1")
-            except Exception:
-                df = pd.read_csv(io.BytesIO(content), sep=",", encoding="utf-8")
-        else:
-            df = pd.read_excel(io.BytesIO(content))
+        df = _read_file_to_df(content, filename)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el archivo: {exc}")
 
@@ -202,340 +323,422 @@ async def upload_orden_compra(
 
     cols = list(df.columns)
 
-    # Identificar columnas
-    col_oc = _find_column(cols, [r"^(?:n[úu]mero[_\s]*oc|nro[_\s]*oc|orden[_\s]*compra|oc|pedido)$", r"n[úu]mero.*orden", r"nro.*pedido"])
-    col_sku = _find_column(cols, [r"^(?:sku|c[oó]digo|c[oó]digo[_\s]*femaco|cod[_\s]*femaco|material|item)$"])
-    col_femaco = _find_column(cols, [r"c[oó]d(?:igo)?[_\s]*femaco", r"c[oó]d(?:igo)?[_\s]*interno"])
-    col_nombre = _find_column(cols, [r"^(?:nombre|nombre[_\s]*producto|descripci[oó]n|producto|modelo)$"])
-    
-    col_ped = _find_column(cols, [r"cant(?:idad)?[_\s]*(?:pedida|solicitada|comprada)", r"unidades[_\s]*(?:pedidas|compradas)", r"^pedido$", r"^solicitado$"])
-    col_desp = _find_column(cols, [r"cant(?:idad)?[_\s]*(?:despachada|entregada|recibida)", r"unidades[_\s]*(?:despachadas|entregadas|recibidas)", r"^despacho$", r"^entregado$"])
-    col_cliente = _find_column(cols, [r"cliente", r"raz[oó]n[_\s]*social", r"comprador"])
-    col_fecha_p = _find_column(cols, [r"fecha[_\s]*pedido", r"fecha[_\s]*emisi[oó]n", r"fecha[_\s]*oc"])
-    col_fecha_e = _find_column(cols, [r"fecha[_\s]*entrega", r"fecha[_\s]*despacho", r"fecha[_\s]*recepci[oó]n"])
+    # Identificar columnas principales
+    col_oc = _find_column(cols, [
+        r"^(?:n[úu]mero|nro|n°)[_\s]*(?:oc|compra|orden|pedido)?.*$",
+        r"n[úu]mero.*", r"n°.*orden", r"orden[_\s]*compra", r"^oc$", r"^pedido$"
+    ])
+    col_sku = _find_column(cols, [
+        r"^(?:sku|material|item)$", r"sku.*", r"c[oó]digo"
+    ])
+    col_femaco = _find_column(cols, [
+        r"^(?:vin|vendor[_\s]*item[_\s]*number)$",
+        r"c[oó]d(?:igo)?[_\s]*femaco", r"c[oó]d(?:igo)?[_\s]*interno", r"^c[oó]digo$"
+    ])
+    col_nombre = _find_column(cols, [
+        r"^(?:nombre|nombre[_\s]*producto|descripci[oó]n|producto|modelo)$",
+        r"descripci[oó]n.*"
+    ])
+    col_estado_oc = _find_column(cols, [
+        r"^(?:estado[_\s]*oc|estado|status|situaci[oó]n)$", r"estado.*"
+    ])
 
-    # Determinar número de OC
-    oc_num = (numero_oc or "").strip()
-    if not oc_num and col_oc:
-        valid_vals = df[col_oc].dropna().astype(str).str.strip()
-        if not valid_vals.empty:
-            oc_num = valid_vals.iloc[0]
-    if not oc_num:
-        # Extraer de filename
-        match_fn = re.search(r'(?:OC|ORDEN|PEDIDO)[_\s-]*([A-Za-z0-9_-]+)', filename, re.IGNORECASE)
-        oc_num = match_fn.group(0) if match_fn else filename.rsplit('.', 1)[0]
+    col_ped, col_desp = _detect_quantity_columns(cols)
 
-    # Cliente
-    cli = (cliente or "").strip()
-    if not cli and col_cliente:
-        vcli = df[col_cliente].dropna().astype(str).str.strip()
-        if not vcli.empty:
-            cli = vcli.iloc[0]
-
-    # Fechas
-    f_ped = _parse_date(fecha_pedido)
-    if not f_ped and col_fecha_p:
-        vfp = df[col_fecha_p].dropna()
-        if not vfp.empty:
-            f_ped = _parse_date(vfp.iloc[0])
-
-    f_ent = _parse_date(fecha_entrega)
-    if not f_ent and col_fecha_e:
-        vfe = df[col_fecha_e].dropna()
-        if not vfe.empty:
-            f_ent = _parse_date(vfe.iloc[0])
-
-    if etapa == 'ENTREGA' and not f_ent:
-        f_ent = date.today()
+    col_cliente = _find_column(cols, [r"^(?:cliente|comprador|bu)$", r"cliente.*", r"raz[oó]n[_\s]*social"])
+    col_bu = _find_column(cols, [r"^bu$", r"bu.*"])
+    col_local = _find_column(cols, [r"local", r"sucursal", r"tienda"])
+    col_fecha_p = _find_column(cols, [r"fecha.*(?:creaci[oó]n|pedido|emisi[oó]n|compra)", r"fecha.*inic.*", r"fecha[_\s]*oc"])
+    col_fecha_e = _find_column(cols, [r"fecha.*(?:entrega|despacho|recepci[oó]n)", r"fecha.*fin.*", r"fecha.*venc.*"])
 
     if not col_sku and not col_femaco:
-        raise HTTPException(status_code=400, detail="No se encontró columna para SKU o Código Interno.")
+        raise HTTPException(status_code=400, detail="No se encontró columna para SKU o Código Interno/VIN.")
 
-    # Conexión DB
+    # Agrupar por Orden de Compra si existe columna de OC
+    oc_groups = []
+    if col_oc:
+        # Extraer OCs válidas
+        valid_rows = df[df[col_oc].notna() & (df[col_oc].astype(str).str.strip() != '')]
+        grouped = valid_rows.groupby(col_oc)
+        for val_oc, df_subset in grouped:
+            str_oc = str(val_oc).strip()
+            # Filtrar cabeceras repetidas si las hubiera
+            if str_oc.lower() in ('none', 'nan', 'null', 'n° de orden', 'numero oc', 'orden', 'oc'):
+                continue
+            oc_groups.append((str_oc, df_subset))
+
+    if not oc_groups:
+        # Una sola OC tomada del formulario o del nombre del archivo
+        fallback_num = form_oc_num
+        if not fallback_num:
+            match_fn = re.search(r'(?:OC|ORDEN|PEDIDO)[_\s-]*([A-Za-z0-9_-]+)', filename, re.IGNORECASE)
+            fallback_num = match_fn.group(0) if match_fn else filename.rsplit('.', 1)[0]
+        oc_groups.append((fallback_num, df))
+
+    processed_results = []
+    all_affected_skus = []
+
     with engine.begin() as conn:
         familias_map = _load_active_families(conn)
 
-        # Cargar catálogo de planificacion_sop para rellenar descripciones si faltan
+        # Catálogo de planificacion_sop para descripciones y cruces
         sop_rows = conn.execute(text("SELECT sku, codigo_femaco, nombre_producto FROM planificacion_sop")).fetchall()
         sop_by_sku = {str(r.sku).strip().upper(): str(r.nombre_producto or '') for r in sop_rows if r.sku}
         sop_by_fem = {str(r.codigo_femaco).strip().upper(): str(r.nombre_producto or '') for r in sop_rows if r.codigo_femaco}
         sku_to_fem = {str(r.sku).strip().upper(): str(r.codigo_femaco or '') for r in sop_rows if r.sku}
 
-        # Verificar si ya existe registro previo de esta OC
-        prev_oc = conn.execute(text("""
-            SELECT id, etapa, fecha_pedido, total_pedido_uds
-            FROM ordenes_compra_registro
-            WHERE numero_oc = :num
-            ORDER BY id DESC
-            LIMIT 1
-        """), {"num": oc_num}).fetchone()
+        for oc_num, df_oc in oc_groups:
+            # 1. Determinar Cliente
+            cli = form_cliente
+            if not cli:
+                if col_bu:
+                    vbu = df_oc[col_bu].dropna().astype(str).str.strip()
+                    if not vbu.empty and 'SOD' in vbu.iloc[0].upper():
+                        cli = "Sodimac Chile"
+                if not cli and col_local:
+                    vloc = df_oc[col_local].dropna().astype(str).str.strip()
+                    if not vloc.empty and vloc.iloc[0].upper().startswith("HC"):
+                        cli = "Sodimac / Homecenter"
+                if not cli and col_cliente:
+                    vcli = df_oc[col_cliente].dropna().astype(str).str.strip()
+                    if not vcli.empty:
+                        candidate_cli = vcli.iloc[0]
+                        if "FEMACO" not in candidate_cli.upper():
+                            cli = candidate_cli
+                        else:
+                            cli = "Sodimac Chile"
+            if not cli:
+                cli = "Sodimac Chile" if ("SOD" in str(cols) or "HC" in str(cols)) else "Cliente General"
 
-        prev_items_map = {}
-        if prev_oc:
-            rows_prev_items = conn.execute(text("""
-                SELECT sku, codigo_femaco, cantidad_pedida
-                FROM ordenes_compra_detalle
-                WHERE oc_id = :oid
-            """), {"oid": prev_oc.id}).fetchall()
-            for pi in rows_prev_items:
-                k_sku = str(pi.sku or '').strip().upper()
-                k_fem = str(pi.codigo_femaco or '').strip().upper()
-                if k_sku: prev_items_map[k_sku] = float(pi.cantidad_pedida or 0)
-                if k_fem: prev_items_map[k_fem] = float(pi.cantidad_pedida or 0)
-            if not f_ped and prev_oc.fecha_pedido:
-                f_ped = prev_oc.fecha_pedido
+            # 2. Fechas
+            f_ped = _parse_date(form_fecha_ped)
+            if not f_ped and col_fecha_p:
+                vfp = df_oc[col_fecha_p].dropna()
+                if not vfp.empty:
+                    f_ped = _parse_date(vfp.iloc[0])
 
-        # Procesar filas
-        raw_items = []
-        for idx, row in df.iterrows():
-            sku_val = str(row[col_sku]).strip() if col_sku and pd.notna(row.get(col_sku)) else ""
-            fem_val = str(row[col_femaco]).strip() if col_femaco and pd.notna(row.get(col_femaco)) else ""
-            if not sku_val and not fem_val:
+            f_ent = _parse_date(form_fecha_ent)
+            if not f_ent and col_fecha_e:
+                vfe = df_oc[col_fecha_e].dropna()
+                if not vfe.empty:
+                    f_ent = _parse_date(vfe.iloc[0])
+
+            # 3. Extraer ítems crudos
+            raw_items = []
+            for idx, row in df_oc.iterrows():
+                sku_val = str(row[col_sku]).strip() if col_sku and pd.notna(row.get(col_sku)) else ""
+                fem_val = str(row[col_femaco]).strip() if col_femaco and pd.notna(row.get(col_femaco)) else ""
+                if not sku_val and not fem_val:
+                    continue
+
+                if sku_val and not fem_val and sku_val.upper() in sku_to_fem:
+                    fem_val = sku_to_fem[sku_val.upper()]
+
+                nombre_val = ""
+                if col_nombre and pd.notna(row.get(col_nombre)):
+                    nombre_val = str(row[col_nombre]).strip()
+                if not nombre_val:
+                    nombre_val = sop_by_sku.get(sku_val.upper()) or sop_by_fem.get(fem_val.upper()) or "Producto sin descripción"
+
+                cant_p = 0.0
+                cant_d = 0.0
+                if col_ped and pd.notna(row.get(col_ped)):
+                    try: cant_p = float(row[col_ped])
+                    except Exception: cant_p = 0.0
+
+                if col_desp and pd.notna(row.get(col_desp)):
+                    try: cant_d = float(row[col_desp])
+                    except Exception: cant_d = 0.0
+
+                raw_items.append({
+                    "sku": sku_val,
+                    "codigo_femaco": fem_val,
+                    "nombre_producto": nombre_val,
+                    "cantidad_pedida": cant_p,
+                    "cantidad_despachada": cant_d,
+                })
+
+            if not raw_items:
                 continue
 
-            # Fallback de femaco <-> sku
-            if sku_val and not fem_val and sku_val.upper() in sku_to_fem:
-                fem_val = sku_to_fem[sku_val.upper()]
+            # 4. Consolidar tiendas/locales dentro de la misma OC por (SKU, VIN/Código Femaco)
+            consolidated = {}
+            for it in raw_items:
+                key = (it["sku"].upper(), it["codigo_femaco"].upper())
+                if key not in consolidated:
+                    consolidated[key] = {
+                        "sku": it["sku"],
+                        "codigo_femaco": it["codigo_femaco"],
+                        "nombre_producto": it["nombre_producto"],
+                        "cantidad_pedida": 0.0,
+                        "cantidad_despachada": 0.0,
+                    }
+                consolidated[key]["cantidad_pedida"] += it["cantidad_pedida"]
+                consolidated[key]["cantidad_despachada"] += it["cantidad_despachada"]
 
-            # Nombre
-            nombre_val = ""
-            if col_nombre and pd.notna(row.get(col_nombre)):
-                nombre_val = str(row[col_nombre]).strip()
-            if not nombre_val:
-                nombre_val = sop_by_sku.get(sku_val.upper()) or sop_by_fem.get(fem_val.upper()) or "Producto sin descripción"
+            item_list = list(consolidated.values())
 
-            # Cantidades
-            cant_p = 0.0
-            cant_d = 0.0
+            # 5. Interpretar Estado OC y Etapa
+            estado_raw_val = ""
+            if col_estado_oc:
+                ve = df_oc[col_estado_oc].dropna().astype(str).str.strip()
+                if not ve.empty:
+                    estado_raw_val = ve.iloc[0]
 
-            if col_ped and pd.notna(row.get(col_ped)):
-                try: cant_p = float(row[col_ped])
-                except Exception: cant_p = 0.0
+            sum_p_pre = sum(it["cantidad_pedida"] for it in item_list)
+            sum_d_pre = sum(it["cantidad_despachada"] for it in item_list)
 
-            if col_desp and pd.notna(row.get(col_desp)):
-                try: cant_d = float(row[col_desp])
-                except Exception: cant_d = 0.0
+            oc_etapa, oc_estado = _interpret_estado_y_etapa(estado_raw_val, sum_p_pre, sum_d_pre, etapa_val)
 
-            # Si estamos en PEDIDO y solo había 1 columna de cantidad
-            if etapa == 'PEDIDO':
-                if not col_ped and col_desp:
-                    cant_p = cant_d
-                    cant_d = 0.0
-                elif not col_ped and not col_desp:
-                    # Buscar alguna columna con números
-                    for c in cols:
-                        if c not in (col_sku, col_femaco, col_nombre, col_oc):
-                            try:
-                                val = float(row[c])
-                                cant_p = val
-                                break
-                            except Exception:
-                                pass
-            elif etapa == 'ENTREGA':
-                # Si no vino cantidad_pedida en el archivo de entrega pero teníamos registro de PEDIDO previo
-                if cant_p == 0.0:
-                    matched_prev_p = prev_items_map.get(sku_val.upper()) or prev_items_map.get(fem_val.upper())
-                    if matched_prev_p is not None:
-                        cant_p = matched_prev_p
-                    elif col_desp is None and col_ped is not None:
-                        # Si el archivo solo traía una columna llamada "cantidad", en entrega es el despacho
-                        cant_d = cant_p
-                        cant_p = 0.0
-
-                # Si solo traía despacho y no pedido previo, asumir pedido = despacho (entrega 100% informada)
-                if cant_p == 0.0 and cant_d > 0.0 and not prev_items_map:
-                    cant_p = cant_d
-
-            raw_items.append({
-                "sku": sku_val,
-                "codigo_femaco": fem_val,
-                "nombre_producto": nombre_val,
-                "cantidad_pedida": cant_p,
-                "cantidad_despachada": cant_d,
-            })
-
-        if not raw_items:
-            raise HTTPException(status_code=400, detail="No se encontraron líneas válidas de productos con cantidades.")
-
-        # Consolidar líneas duplicadas dentro de la misma OC por SKU / Cód. Femaco
-        consolidated = {}
-        for it in raw_items:
-            key = (it["sku"].upper(), it["codigo_femaco"].upper())
-            if key not in consolidated:
-                consolidated[key] = {
-                    "sku": it["sku"],
-                    "codigo_femaco": it["codigo_femaco"],
-                    "nombre_producto": it["nombre_producto"],
-                    "cantidad_pedida": 0.0,
-                    "cantidad_despachada": 0.0,
-                }
-            consolidated[key]["cantidad_pedida"] += it["cantidad_pedida"]
-            consolidated[key]["cantidad_despachada"] += it["cantidad_despachada"]
-
-        item_list = list(consolidated.values())
-
-        # Enriquecer con familias y auditoría de despacho
-        total_ped = sum(it["cantidad_pedida"] for it in item_list)
-        total_desp = sum(it["cantidad_despachada"] for it in item_list)
-        cumplimiento = (total_desp / total_ped * 100.0) if total_ped > 0 else (100.0 if total_desp > 0 else 0.0)
-
-        quiebres_cnt = 0
-        parciales_cnt = 0
-        desbalance_cnt = 0
-
-        # Mapear familia para cada item
-        for it in item_list:
-            fem_u = it["codigo_femaco"].upper()
-            sku_u = it["sku"].upper()
-            fam_info = familias_map.get(fem_u) or familias_map.get(sku_u)
-            if fam_info:
-                it["familia_id"] = fam_info["familia_id"]
-                it["nombre_familia"] = fam_info["nombre_familia"]
-                it["familia_miembros"] = fam_info["miembros"]
-            else:
-                it["familia_id"] = None
-                it["nombre_familia"] = None
-                it["familia_miembros"] = []
-
-            # Estado de entrega
-            dif = it["cantidad_despachada"] - it["cantidad_pedida"]
-            it["diferencia"] = dif
-
-            if etapa == 'ENTREGA':
-                if it["cantidad_pedida"] > 0 and it["cantidad_despachada"] == 0:
-                    it["estado_entrega"] = "NO_DESPACHADO"
-                    it["quiebre_detectado"] = True
-                    quiebres_cnt += 1
-                elif 0 < it["cantidad_despachada"] < it["cantidad_pedida"]:
-                    it["estado_entrega"] = "DESPACHO_PARCIAL"
+            # Ajustes según la etapa final
+            if oc_etapa == "PEDIDO":
+                for it in item_list:
+                    if it["cantidad_pedida"] == 0.0 and it["cantidad_despachada"] > 0.0:
+                        it["cantidad_pedida"] = it["cantidad_despachada"]
+                    it["cantidad_despachada"] = 0.0
+                    it["diferencia"] = 0.0
+                    it["estado_entrega"] = "PENDIENTE"
                     it["quiebre_detectado"] = False
-                    parciales_cnt += 1
-                elif it["cantidad_despachada"] == it["cantidad_pedida"]:
-                    it["estado_entrega"] = "COMPLETO"
-                    it["quiebre_detectado"] = False
-                elif it["cantidad_despachada"] > it["cantidad_pedida"]:
-                    it["estado_entrega"] = "EXCEDENTE"
-                    it["quiebre_detectado"] = False
-                else:
-                    it["estado_entrega"] = "COMPLETO"
-                    it["quiebre_detectado"] = False
-            else:
-                it["estado_entrega"] = "PENDIENTE"
-                it["quiebre_detectado"] = False
+                    it["desbalance_familiar"] = False
+                    it["desbalance_detalle"] = ""
+            elif oc_etapa == "ENTREGA":
+                if not f_ent:
+                    f_ent = f_ped or date.today()
+                for it in item_list:
+                    # Si no vino cantidad pedida pero sí despacho, asumir pedido = despacho
+                    if it["cantidad_pedida"] == 0.0 and it["cantidad_despachada"] > 0.0:
+                        it["cantidad_pedida"] = it["cantidad_despachada"]
+                    dif = it["cantidad_despachada"] - it["cantidad_pedida"]
+                    it["diferencia"] = dif
 
-            it["desbalance_familiar"] = False
-            it["desbalance_detalle"] = ""
+                    if it["cantidad_pedida"] > 0 and it["cantidad_despachada"] == 0:
+                        it["estado_entrega"] = "NO_DESPACHADO"
+                        it["quiebre_detectado"] = True
+                    elif 0 < it["cantidad_despachada"] < it["cantidad_pedida"]:
+                        it["estado_entrega"] = "DESPACHO_PARCIAL"
+                        it["quiebre_detectado"] = False
+                    elif it["cantidad_despachada"] == it["cantidad_pedida"]:
+                        it["estado_entrega"] = "COMPLETO"
+                        it["quiebre_detectado"] = False
+                    elif it["cantidad_despachada"] > it["cantidad_pedida"]:
+                        it["estado_entrega"] = "EXCEDENTE"
+                        it["quiebre_detectado"] = False
+                    else:
+                        it["estado_entrega"] = "COMPLETO"
+                        it["quiebre_detectado"] = False
 
-        # Detección de Desbalance Familiar:
-        # "si en las familias hay un producto que sí se despachó pero otros de esa misma familia no"
-        if etapa == 'ENTREGA':
-            fam_groups = {}
+                    it["desbalance_familiar"] = False
+                    it["desbalance_detalle"] = ""
+
+            # 6. Familias y Desbalance Familiar
+            total_ped = sum(it["cantidad_pedida"] for it in item_list)
+            total_desp = sum(it["cantidad_despachada"] for it in item_list)
+            cumplimiento = (total_desp / total_ped * 100.0) if total_ped > 0 else (100.0 if total_desp > 0 else 0.0)
+
+            quiebres_cnt = 0
+            parciales_cnt = 0
+            desbalance_cnt = 0
+
             for it in item_list:
-                if it["familia_id"]:
-                    fam_groups.setdefault(it["familia_id"], []).append(it)
+                fem_u = it["codigo_femaco"].upper()
+                sku_u = it["sku"].upper()
+                fam_info = familias_map.get(fem_u) or familias_map.get(sku_u)
+                if fam_info:
+                    it["familia_id"] = fam_info["familia_id"]
+                    it["nombre_familia"] = fam_info["nombre_familia"]
+                else:
+                    it["familia_id"] = None
+                    it["nombre_familia"] = None
 
-            for fid, f_items in fam_groups.items():
-                despachados = [it for it in f_items if it["cantidad_despachada"] > 0]
-                no_despachados = [it for it in f_items if it["cantidad_despachada"] == 0]
-                
-                # Si al menos 1 se despachó y al menos 1 NO se despachó
-                if despachados and no_despachados:
-                    desbalance_cnt += len(f_items)
-                    desp_names = ", ".join(f"{x['sku'] or x['codigo_femaco']} ({int(x['cantidad_despachada'])} uds)" for x in despachados)
-                    nodesp_names = ", ".join(f"{x['sku'] or x['codigo_femaco']} (0 uds)" for x in no_despachados)
-                    
-                    for it in f_items:
-                        it["desbalance_familiar"] = True
-                        if it["cantidad_despachada"] > 0:
-                            it["desbalance_detalle"] = f"Se despachó este producto, pero sus hermanos no se despacharon: {nodesp_names}"
-                        else:
-                            it["desbalance_detalle"] = f"No se despachó (0 uds), mientras que otros miembros sí se despacharon: {desp_names}"
+                if it.get("quiebre_detectado"):
+                    quiebres_cnt += 1
+                if it.get("estado_entrega") == "DESPACHO_PARCIAL":
+                    parciales_cnt += 1
 
-        # Insertar registro principal
-        res_oc = conn.execute(text("""
-            INSERT INTO ordenes_compra_registro (
-                numero_oc, cliente, etapa, fecha_pedido, fecha_entrega,
-                nombre_archivo, total_items, total_pedido_uds, total_despachado_uds,
-                cumplimiento_pct, quiebres_count, parciales_count, desbalance_familiar_count,
-                usuario_carga, observaciones
-            ) VALUES (
-                :num, :cli, :etapa, :fp, :fe,
-                :fn, :items, :tot_p, :tot_d,
-                :cump, :quiebres, :parciales, :desbal,
-                :user, :obs
-            ) RETURNING id
-        """), {
-            "num": oc_num,
-            "cli": cli,
-            "etapa": etapa,
-            "fp": f_ped,
-            "fe": f_ent,
-            "fn": filename,
-            "items": len(item_list),
-            "tot_p": total_ped,
-            "tot_d": total_desp,
-            "cump": round(cumplimiento, 2),
-            "quiebres": quiebres_cnt,
-            "parciales": parciales_cnt,
-            "desbal": desbalance_cnt,
-            "user": usuario,
-            "obs": f"Carga de {filename} el {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        })
-        oc_id = res_oc.fetchone()[0]
+            if oc_etapa == "ENTREGA":
+                fam_groups = {}
+                for it in item_list:
+                    if it["familia_id"]:
+                        fam_groups.setdefault(it["familia_id"], []).append(it)
 
-        # Insertar detalle
-        skus_para_recalculo = []
-        for it in item_list:
-            conn.execute(text("""
-                INSERT INTO ordenes_compra_detalle (
-                    oc_id, numero_oc, sku, codigo_femaco, nombre_producto,
-                    cantidad_pedida, cantidad_despachada, diferencia, estado_entrega,
-                    familia_id, nombre_familia, desbalance_familiar, desbalance_detalle,
-                    quiebre_detectado, fecha_quiebre
-                ) VALUES (
-                    :oid, :num, :sku, :fem, :nom,
-                    :qp, :qd, :dif, :est,
-                    :fid, :fnom, :desb, :desb_det,
-                    :quieb, :fq
-                )
-            """), {
-                "oid": oc_id,
-                "num": oc_num,
-                "sku": it["sku"],
-                "fem": it["codigo_femaco"],
-                "nom": it["nombre_producto"],
-                "qp": it["cantidad_pedida"],
-                "qd": it["cantidad_despachada"],
-                "dif": it["diferencia"],
-                "est": it["estado_entrega"],
-                "fid": it["familia_id"],
-                "fnom": it["nombre_familia"],
-                "desb": it["desbalance_familiar"],
-                "desb_det": it["desbalance_detalle"],
-                "quieb": it["quiebre_detectado"],
-                "fq": f_ent if it["quiebre_detectado"] else None
+                for fid, f_items in fam_groups.items():
+                    despachados = [it for it in f_items if it["cantidad_despachada"] > 0]
+                    no_despachados = [it for it in f_items if it["cantidad_despachada"] == 0]
+                    if despachados and no_despachados:
+                        desbalance_cnt += len(f_items)
+                        desp_names = ", ".join(f"{x['sku'] or x['codigo_femaco']} ({int(x['cantidad_despachada'])} uds)" for x in despachados)
+                        nodesp_names = ", ".join(f"{x['sku'] or x['codigo_femaco']} (0 uds)" for x in no_despachados)
+                        for it in f_items:
+                            it["desbalance_familiar"] = True
+                            if it["cantidad_despachada"] > 0:
+                                it["desbalance_detalle"] = f"Se despachó este producto, pero sus hermanos no se despacharon: {nodesp_names}"
+                            else:
+                                it["desbalance_detalle"] = f"No se despachó (0 uds), mientras que otros miembros sí se despacharon: {desp_names}"
+
+            # 7. Upsert en ordenes_compra_registro
+            prev_oc = conn.execute(text("""
+                SELECT id, etapa, fecha_pedido, total_pedido_uds
+                FROM ordenes_compra_registro
+                WHERE numero_oc = :num
+                ORDER BY id DESC
+                LIMIT 1
+            """), {"num": oc_num}).fetchone()
+
+            if prev_oc:
+                oc_id = prev_oc.id
+                conn.execute(text("""
+                    UPDATE ordenes_compra_registro
+                    SET cliente = :cli,
+                        etapa = :etapa,
+                        estado_oc = :estado_oc,
+                        fecha_pedido = COALESCE(:fp, fecha_pedido),
+                        fecha_entrega = COALESCE(:fe, fecha_entrega),
+                        nombre_archivo = :fn,
+                        total_items = :items,
+                        total_pedido_uds = :tot_p,
+                        total_despachado_uds = :tot_d,
+                        cumplimiento_pct = :cump,
+                        quiebres_count = :quiebres,
+                        parciales_count = :parciales,
+                        desbalance_familiar_count = :desbal,
+                        usuario_carga = :user,
+                        actualizado_en = NOW()
+                    WHERE id = :oid
+                """), {
+                    "cli": cli,
+                    "etapa": oc_etapa,
+                    "estado_oc": oc_estado,
+                    "fp": f_ped,
+                    "fe": f_ent,
+                    "fn": filename,
+                    "items": len(item_list),
+                    "tot_p": total_ped,
+                    "tot_d": total_desp,
+                    "cump": round(cumplimiento, 2),
+                    "quiebres": quiebres_cnt,
+                    "parciales": parciales_cnt,
+                    "desbal": desbalance_cnt,
+                    "user": usuario,
+                    "oid": oc_id
+                })
+                # Reemplazar detalle previo
+                conn.execute(text("DELETE FROM ordenes_compra_detalle WHERE oc_id = :oid"), {"oid": oc_id})
+                action_type = "ACTUALIZADA"
+            else:
+                res_oc = conn.execute(text("""
+                    INSERT INTO ordenes_compra_registro (
+                        numero_oc, cliente, etapa, estado_oc, fecha_pedido, fecha_entrega,
+                        nombre_archivo, total_items, total_pedido_uds, total_despachado_uds,
+                        cumplimiento_pct, quiebres_count, parciales_count, desbalance_familiar_count,
+                        usuario_carga, observaciones
+                    ) VALUES (
+                        :num, :cli, :etapa, :estado_oc, :fp, :fe,
+                        :fn, :items, :tot_p, :tot_d,
+                        :cump, :quiebres, :parciales, :desbal,
+                        :user, :obs
+                    ) RETURNING id
+                """), {
+                    "num": oc_num,
+                    "cli": cli,
+                    "etapa": oc_etapa,
+                    "estado_oc": oc_estado,
+                    "fp": f_ped,
+                    "fe": f_ent,
+                    "fn": filename,
+                    "items": len(item_list),
+                    "tot_p": total_ped,
+                    "tot_d": total_desp,
+                    "cump": round(cumplimiento, 2),
+                    "quiebres": quiebres_cnt,
+                    "parciales": parciales_cnt,
+                    "desbal": desbalance_cnt,
+                    "user": usuario,
+                    "obs": f"Carga B2B ({oc_estado}) el {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                })
+                oc_id = res_oc.fetchone()[0]
+                action_type = "NUEVA"
+
+            # 8. Insertar detalle
+            for it in item_list:
+                conn.execute(text("""
+                    INSERT INTO ordenes_compra_detalle (
+                        oc_id, numero_oc, sku, codigo_femaco, nombre_producto,
+                        cantidad_pedida, cantidad_despachada, diferencia, estado_entrega,
+                        familia_id, nombre_familia, desbalance_familiar, desbalance_detalle,
+                        quiebre_detectado, fecha_quiebre
+                    ) VALUES (
+                        :oid, :num, :sku, :fem, :nom,
+                        :qp, :qd, :dif, :est,
+                        :fid, :fnom, :desb, :desb_det,
+                        :quieb, :fq
+                    )
+                """), {
+                    "oid": oc_id,
+                    "num": oc_num,
+                    "sku": it["sku"],
+                    "fem": it["codigo_femaco"],
+                    "nom": it["nombre_producto"],
+                    "qp": it["cantidad_pedida"],
+                    "qd": it["cantidad_despachada"],
+                    "dif": it["diferencia"],
+                    "est": it["estado_entrega"],
+                    "fid": it["familia_id"],
+                    "fnom": it["nombre_familia"],
+                    "desb": it["desbalance_familiar"],
+                    "desb_det": it["desbalance_detalle"],
+                    "quieb": it["quiebre_detectado"],
+                    "fq": f_ent if it["quiebre_detectado"] else None
+                })
+                if it["sku"]: all_affected_skus.append(it["sku"])
+                if it["codigo_femaco"]: all_affected_skus.append(it["codigo_femaco"])
+
+            processed_results.append({
+                "oc_id": oc_id,
+                "numero_oc": oc_num,
+                "etapa": oc_etapa,
+                "estado_oc": oc_estado,
+                "cliente": cli,
+                "total_items": len(item_list),
+                "total_pedido_uds": total_ped,
+                "total_despachado_uds": total_desp,
+                "cumplimiento_pct": round(cumplimiento, 2),
+                "quiebres_count": quiebres_cnt,
+                "parciales_count": parciales_cnt,
+                "desbalance_familiar_count": desbalance_cnt,
+                "tipo_accion": action_type
             })
-            if it["sku"]: skus_para_recalculo.append(it["sku"])
-            if it["codigo_femaco"]: skus_para_recalculo.append(it["codigo_femaco"])
 
         # Recalcular historial de quiebres y tiempos de recuperación
-        if etapa == 'ENTREGA':
-            _recalcular_tiempos_recuperacion(conn, skus_para_recalculo)
+        if all_affected_skus:
+            _recalcular_tiempos_recuperacion(conn, list(set(all_affected_skus)))
+
+    if not processed_results:
+        raise HTTPException(status_code=400, detail="No se pudo procesar ninguna orden de compra del archivo.")
+
+    total_pedidos = sum(1 for r in processed_results if r["etapa"] == "PEDIDO")
+    total_entregas = sum(1 for r in processed_results if r["etapa"] == "ENTREGA")
+    total_nuevas = sum(1 for r in processed_results if r["tipo_accion"] == "NUEVA")
+    total_actualizadas = sum(1 for r in processed_results if r["tipo_accion"] == "ACTUALIZADA")
+    total_quiebres = sum(r["quiebres_count"] for r in processed_results)
+
+    first_oc = processed_results[0]
+    msg = f"Se procesaron {len(processed_results)} órdenes de compra ({total_entregas} entregas, {total_pedidos} pedidos pendientes). {total_actualizadas} actualizadas, {total_nuevas} nuevas."
 
     return {
         "ok": True,
-        "oc_id": oc_id,
-        "numero_oc": oc_num,
-        "etapa": etapa,
-        "cliente": cli,
-        "total_items": len(item_list),
-        "total_pedido_uds": total_ped,
-        "total_despachado_uds": total_desp,
-        "cumplimiento_pct": round(cumplimiento, 2),
-        "quiebres_count": quiebres_cnt,
-        "parciales_count": parciales_cnt,
-        "desbalance_familiar_count": desbalance_cnt,
-        "msg": f"Orden de Compra {oc_num} procesada con éxito ({etapa})."
+        "total_ocs": len(processed_results),
+        "total_pedidos": total_pedidos,
+        "total_entregas": total_entregas,
+        "total_nuevas": total_nuevas,
+        "total_actualizadas": total_actualizadas,
+        "total_quiebres_detectados": total_quiebres,
+        "oc_id": first_oc["oc_id"] if len(processed_results) == 1 else None,
+        "numero_oc": first_oc["numero_oc"] if len(processed_results) == 1 else None,
+        "etapa": first_oc["etapa"] if len(processed_results) == 1 else "BATCH",
+        "estado_oc": first_oc["estado_oc"] if len(processed_results) == 1 else "BATCH",
+        "cumplimiento_pct": first_oc["cumplimiento_pct"] if len(processed_results) == 1 else None,
+        "ocs": processed_results,
+        "msg": msg
     }
 
 
@@ -544,7 +747,7 @@ def list_ordenes_compra():
     """Retorna listado general de OCs cargadas."""
     with engine.connect() as conn:
         df_ocs = pd.read_sql(text("""
-            SELECT id, numero_oc, cliente, etapa,
+            SELECT id, numero_oc, cliente, etapa, estado_oc,
                    fecha_pedido, fecha_entrega,
                    total_items, total_pedido_uds, total_despachado_uds,
                    cumplimiento_pct, quiebres_count, parciales_count,

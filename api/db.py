@@ -250,6 +250,7 @@ def run_migrations():
         "CREATE INDEX IF NOT EXISTS idx_oc_detalle_oc_id ON ordenes_compra_detalle(oc_id)",
         "CREATE INDEX IF NOT EXISTS idx_oc_detalle_sku ON ordenes_compra_detalle(sku)",
         "CREATE INDEX IF NOT EXISTS idx_oc_detalle_cod_femaco ON ordenes_compra_detalle(codigo_femaco)",
+        "ALTER TABLE ordenes_compra_registro ADD COLUMN IF NOT EXISTS estado_oc TEXT DEFAULT ''",
     ]
 
 

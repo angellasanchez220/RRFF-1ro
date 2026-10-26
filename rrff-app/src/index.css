@@ -248,6 +248,29 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── TARJETAS Y CONTENEDORES GLOBALES ── */
+.card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* ── TABLAS ESTÁNDAR Y CABECERAS OSCURAS ── */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table thead tr {
+  background: #1e293b !important;
+}
+.table thead th {
+  color: #ffffff !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+
 /* â”€â”€ SKU CARD â”€â”€ */
 .sku-card {
   background: var(--white);
