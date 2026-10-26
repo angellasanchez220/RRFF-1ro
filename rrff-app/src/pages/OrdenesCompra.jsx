@@ -32,6 +32,7 @@ export default function OrdenesCompra() {
   // Histórico de quiebres
   const [quiebresHistory, setQuiebresHistory] = useState([]);
   const [quiebresLoading, setQuiebresLoading] = useState(false);
+  const [quiebresFilterCat, setQuiebresFilterCat] = useState('ALL');
 
   useEffect(() => {
     loadOcs();
@@ -439,13 +440,46 @@ export default function OrdenesCompra() {
         {/* ── TAB 2: AUDITORÍA HISTÓRICA DE QUIEBRES Y RECUPERACIÓN ── */}
         {activeTab === 'quiebres' && (
           <div className="card" style={{ padding: '20px' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <h2 style={{ margin: '0 0 6px', fontSize: '1.2rem', color: '#ff5252' }}>
-                🚨 Registro Consolidado de Quiebres y Tiempos de Recuperación
-              </h2>
-              <p style={{ margin: 0, color: '#aaa', fontSize: '0.85rem' }}>
-                Muestra todos los productos que sufrieron quiebre (pedido &gt; 0 con 0 despachado), en qué OC posterior se volvió a despachar y cuántos días tardó la recuperación.
-              </p>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+              <div>
+                <h2 style={{ margin: '0 0 6px', fontSize: '1.25rem', color: '#ff5252', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🚨</span> Registro Consolidado de Quiebres y Tiempos de Recuperación
+                </h2>
+                <p style={{ margin: 0, color: '#475569', fontSize: '0.85rem' }}>
+                  Muestra todos los productos que sufrieron quiebre (pedido &gt; 0 con 0 despachado), en qué OC posterior se volvió a despachar y cuántos días tardó la recuperación.
+                </p>
+              </div>
+
+              {/* Leyenda y Filtro por Estado de Catálogo */}
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', background: '#f8fafc', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e293b' }}>Filtrar Catálogo:</label>
+                  <select
+                    value={quiebresFilterCat}
+                    onChange={e => setQuiebresFilterCat(e.target.value)}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#ffffff', color: '#0f172a', fontWeight: 600 }}
+                  >
+                    <option value="ALL">Todos los Estados ({quiebresHistory.length})</option>
+                    <option value="ACTIVOS">Solo Activos</option>
+                    <option value="BLOQUEADOS">Solo Bloqueados 🔒</option>
+                    <option value="DESCONTINUADOS">Solo Descontinuados 🚫</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#334155', fontWeight: 600 }}>
+                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#ffffff', border: '1px solid #cbd5e1' }} />
+                    Activo
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#6b21a8', fontWeight: 700 }}>
+                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#faf5ff', border: '2px solid #a855f7' }} />
+                    🔒 Bloqueado
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#991b1b', fontWeight: 700 }}>
+                    <span style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#fff1f2', border: '2px solid #ef4444' }} />
+                    🚫 Descontinuado
+                  </span>
+                </div>
+              </div>
             </div>
 
             {quiebresLoading ? (
@@ -457,11 +491,12 @@ export default function OrdenesCompra() {
               </div>
             ) : (
               <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>SKU / Código</th>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Producto</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado Catálogo</th>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Familia</th>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>OC Quiebre</th>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Fecha Quiebre</th>
@@ -469,61 +504,104 @@ export default function OrdenesCompra() {
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>OC Recuperación</th>
                       <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600 }}>Fecha Recuperación</th>
                       <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Tiempo Transcurrido</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600 }}>Estado Despacho</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {quiebresHistory.map((q, idx) => {
-                      const recuperado = Boolean(q.oc_recuperacion);
-                      return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: '#ffffff' }}>
-                          <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7' }}>
-                            {q.sku || q.codigo_femaco}
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>{q.nombre_producto}</td>
-                          <td style={{ padding: '10px 12px', color: '#475569' }}>{q.nombre_familia || '—'}</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>{q.numero_oc}</td>
-                          <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: 600 }}>{q.fecha_quiebre || q.fecha_oc || '—'}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
-                            {Math.round(q.cantidad_pedida).toLocaleString()}
-                          </td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b' }}>
-                            {q.oc_recuperacion || '—'}
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#15803d', fontWeight: 600 }}>
-                            {q.fecha_recuperacion || '—'}
-                          </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {recuperado ? (
-                              <span style={{ fontWeight: 700, color: '#0284c7' }}>
-                                ⏱ {q.dias_recuperacion_quiebre} días
-                              </span>
-                            ) : (
-                              <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600 }}>
-                                Aún sin recuperar
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {recuperado ? (
-                              <span style={{
-                                padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
-                                background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac'
-                              }}>
-                                ✓ Recuperado
-                              </span>
-                            ) : (
-                              <span style={{
-                                padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
-                                background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5'
-                              }}>
-                                ⚠️ Quiebre Activo
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {quiebresHistory
+                      .filter(q => {
+                        const est = String(q.estado_producto || '').toUpperCase();
+                        const isDesc = est.includes('DESCONTINUAD') || est.includes('INACTIV');
+                        const isBloq = est.includes('BLOQUEAD');
+                        if (quiebresFilterCat === 'ACTIVOS') return !isDesc && !isBloq;
+                        if (quiebresFilterCat === 'BLOQUEADOS') return isBloq;
+                        if (quiebresFilterCat === 'DESCONTINUADOS') return isDesc;
+                        return true;
+                      })
+                      .map((q, idx) => {
+                        const recuperado = Boolean(q.oc_recuperacion);
+                        const est = String(q.estado_producto || '').toUpperCase();
+                        const isDescontinuado = est.includes('DESCONTINUAD') || est.includes('INACTIV');
+                        const isBloqueado = est.includes('BLOQUEAD');
+
+                        const rowBg = isDescontinuado ? '#fff1f2' : (isBloqueado ? '#faf5ff' : '#ffffff');
+                        const borderLeft = isDescontinuado ? '5px solid #ef4444' : (isBloqueado ? '5px solid #a855f7' : '5px solid transparent');
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: rowBg }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft }}>
+                              {q.sku || q.codigo_femaco}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>
+                              {q.nombre_producto}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {isDescontinuado ? (
+                                <span style={{
+                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
+                                  background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-block'
+                                }}>
+                                  🚫 DESCONTINUADO
+                                </span>
+                              ) : isBloqueado ? (
+                                <span style={{
+                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800,
+                                  background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', display: 'inline-block'
+                                }}>
+                                  🔒 BLOQUEADO
+                                </span>
+                              ) : (
+                                <span style={{
+                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600,
+                                  background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-block'
+                                }}>
+                                  ✓ ACTIVO
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#475569' }}>{q.nombre_familia || '—'}</td>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: '#334155' }}>{q.numero_oc}</td>
+                            <td style={{ padding: '10px 12px', color: '#dc2626', fontWeight: 600 }}>{q.fecha_quiebre || q.fecha_oc || '—'}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
+                              {Math.round(q.cantidad_pedida).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b' }}>
+                              {q.oc_recuperacion || '—'}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: '#15803d', fontWeight: 600 }}>
+                              {q.fecha_recuperacion || '—'}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {recuperado ? (
+                                <span style={{ fontWeight: 700, color: '#0284c7' }}>
+                                  ⏱ {q.dias_recuperacion_quiebre} días
+                                </span>
+                              ) : (
+                                <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600 }}>
+                                  Aún sin recuperar
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {recuperado ? (
+                                <span style={{
+                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
+                                  background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac'
+                                }}>
+                                  ✓ Recuperado
+                                </span>
+                              ) : (
+                                <span style={{
+                                  padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700,
+                                  background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5'
+                                }}>
+                                  ⚠️ Quiebre Activo
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -878,7 +956,19 @@ export default function OrdenesCompra() {
                                   <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7' }}>
                                     {it.sku || it.codigo_femaco}
                                   </td>
-                                  <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>{it.nombre_producto}</td>
+                                  <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500 }}>
+                                    {it.nombre_producto}
+                                    {it.estado_producto && String(it.estado_producto).toUpperCase().includes('DESCONTINUAD') && (
+                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}>
+                                        🚫 DESCONTINUADO
+                                      </span>
+                                    )}
+                                    {it.estado_producto && String(it.estado_producto).toUpperCase().includes('BLOQUEAD') && (
+                                      <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe' }}>
+                                        🔒 BLOQUEADO
+                                      </span>
+                                    )}
+                                  </td>
                                   <td style={{ padding: '10px 12px', color: '#475569' }}>{it.nombre_familia || '—'}</td>
                                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#334155', fontWeight: 600 }}>
                                     {Math.round(it.cantidad_pedida).toLocaleString()}

@@ -773,6 +773,7 @@ def list_quiebres_historicos():
     """
     Retorna la auditoría acumulada de todos los quiebres y el tiempo transcurrido
     hasta que se volvió a vender/despachar cada producto en OCs posteriores.
+    Incluye estado del producto en catálogo (ACTIVO, BLOQUEADO, DESCONTINUADO).
     """
     with engine.connect() as conn:
         df_q = pd.read_sql(text("""
@@ -781,9 +782,16 @@ def list_quiebres_historicos():
                    d.nombre_familia, d.desbalance_familiar,
                    d.fecha_quiebre, d.oc_recuperacion, d.fecha_recuperacion,
                    d.dias_recuperacion_quiebre,
-                   r.cliente, r.fecha_entrega AS fecha_oc
+                   r.cliente, r.fecha_entrega AS fecha_oc,
+                   COALESCE(
+                       NULLIF(TRIM(p1.condicion), ''), NULLIF(TRIM(p1.estado), ''),
+                       NULLIF(TRIM(p2.condicion), ''), NULLIF(TRIM(p2.estado), ''),
+                       'ACTIVO'
+                   ) AS estado_producto
             FROM ordenes_compra_detalle d
             JOIN ordenes_compra_registro r ON d.oc_id = r.id
+            LEFT JOIN dim_productos p1 ON (d.sku IS NOT NULL AND TRIM(d.sku) != '' AND TRIM(d.sku) = TRIM(p1.sku))
+            LEFT JOIN dim_productos p2 ON (d.codigo_femaco IS NOT NULL AND TRIM(d.codigo_femaco) != '' AND TRIM(d.codigo_femaco) = TRIM(p2.codigo_femaco) AND p1.sku IS NULL)
             WHERE d.quiebre_detectado = TRUE
             ORDER BY d.fecha_quiebre DESC NULLS LAST, d.id DESC
         """), conn)
@@ -793,7 +801,7 @@ def list_quiebres_historicos():
 
 @router.get("/{oc_id}")
 def get_orden_compra_detail(oc_id: int):
-    """Retorna detalle de una OC con su desglose de auditoría por producto."""
+    """Retorna detalle de una OC con su desglose de auditoría por producto y estado de catálogo."""
     with engine.connect() as conn:
         head = conn.execute(text("SELECT * FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id}).fetchone()
         if not head:
@@ -809,21 +817,28 @@ def get_orden_compra_detail(oc_id: int):
                 header_dict[k] = None
 
         df_items = pd.read_sql(text("""
-            SELECT id, numero_oc, sku, codigo_femaco, nombre_producto,
-                   cantidad_pedida, cantidad_despachada, diferencia, estado_entrega,
-                   familia_id, nombre_familia, desbalance_familiar, desbalance_detalle,
-                   quiebre_detectado, fecha_quiebre, dias_recuperacion_quiebre,
-                   oc_recuperacion, fecha_recuperacion
-            FROM ordenes_compra_detalle
-            WHERE oc_id = :id
+            SELECT d.id, d.numero_oc, d.sku, d.codigo_femaco, d.nombre_producto,
+                   d.cantidad_pedida, d.cantidad_despachada, d.diferencia, d.estado_entrega,
+                   d.familia_id, d.nombre_familia, d.desbalance_familiar, d.desbalance_detalle,
+                   d.quiebre_detectado, d.fecha_quiebre, d.dias_recuperacion_quiebre,
+                   d.oc_recuperacion, d.fecha_recuperacion,
+                   COALESCE(
+                       NULLIF(TRIM(p1.condicion), ''), NULLIF(TRIM(p1.estado), ''),
+                       NULLIF(TRIM(p2.condicion), ''), NULLIF(TRIM(p2.estado), ''),
+                       'ACTIVO'
+                   ) AS estado_producto
+            FROM ordenes_compra_detalle d
+            LEFT JOIN dim_productos p1 ON (d.sku IS NOT NULL AND TRIM(d.sku) != '' AND TRIM(d.sku) = TRIM(p1.sku))
+            LEFT JOIN dim_productos p2 ON (d.codigo_femaco IS NOT NULL AND TRIM(d.codigo_femaco) != '' AND TRIM(d.codigo_femaco) = TRIM(p2.codigo_femaco) AND p1.sku IS NULL)
+            WHERE d.oc_id = :id
             ORDER BY 
-                CASE estado_entrega 
+                CASE d.estado_entrega 
                     WHEN 'NO_DESPACHADO' THEN 1 
                     WHEN 'DESPACHO_PARCIAL' THEN 2 
                     ELSE 3 
                 END,
-                desbalance_familiar DESC,
-                id ASC
+                d.desbalance_familiar DESC,
+                d.id ASC
         """), conn, params={"id": oc_id})
 
         return {
