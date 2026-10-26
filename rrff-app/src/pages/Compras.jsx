@@ -524,12 +524,19 @@ export default function Compras() {
               ) : (
                 sortedGroupKeys.map(key => {
                   const group = groupedSug[key];
-                  // Ordenar ítems dentro del grupo por categoría, luego por fecha ideal
+                  // Ordenar ítems dentro del grupo: Categoría -> Familia Maquila -> Fecha ideal
                   group.items.sort((a, b) => {
                     const catA = a.categoria || '';
                     const catB = b.categoria || '';
                     if (catA < catB) return -1;
                     if (catA > catB) return 1;
+                    
+                    const famA = a.nombre_familia_maquila || (a.familia_skus && a.familia_skus.length > 1 ? (a.familia_skus[0].codigo_femaco || a.familia_skus[0].sku) : '');
+                    const famB = b.nombre_familia_maquila || (b.familia_skus && b.familia_skus.length > 1 ? (b.familia_skus[0].codigo_femaco || b.familia_skus[0].sku) : '');
+                    if (famA && !famB) return -1;
+                    if (!famA && famB) return 1;
+                    if (famA && famB && famA !== famB) return famA.localeCompare(famB);
+
                     return a.idealDateObj - b.idealDateObj;
                   });
                   
@@ -549,9 +556,9 @@ export default function Compras() {
                         <table className="preview-table" style={{ margin: 0, border: 'none', borderRadius: 0 }}>
                           <thead>
                             <tr>
-                              <th>SKU</th>
+                              <th>SKU / Cód. Femaco</th>
                               <th>Categoría</th>
-                              <th>Estado</th>
+                              <th>Estado & Maquila</th>
                               <th>Cobertura</th>
                               <th>Tránsito</th>
                               <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Legacy (Oficial)</th>
@@ -565,23 +572,65 @@ export default function Compras() {
                             {group.items.map(s => {
                               const stockoutDate = new Date(s.idealDateObj);
                               stockoutDate.setDate(stockoutDate.getDate() + LEAD_TIME_DAYS);
+                              const isMaq = Boolean(s.es_maquilable || (s.familia_skus && s.familia_skus.length > 1));
+                              const cubiertoMaquila = isMaq && s.sug_usa_stock_familia && (Number(s.sug_stock_familia) >= Number(s.sug_target_uds) || Number(s.sugerencia_compra_inmediata_uds) === 0);
                               
                               return (
-                                <tr key={s.sku}>
-                                  <td>
-                                    <div><b>{s.sku}</b></div>
+                                <tr key={s.sku} style={isMaq ? { background: '#fdfbfe' } : {}}>
+                                  <td style={isMaq ? { borderLeft: '3px solid #9333ea' } : {}}>
+                                    <div>
+                                      <b>{s.sku}</b>
+                                      {s.codigo_femaco && s.codigo_femaco !== s.sku && (
+                                        <span style={{ marginLeft: 6, fontSize: '0.75rem', color: '#0369a1', fontWeight: 700 }}>
+                                          [{s.codigo_femaco}]
+                                        </span>
+                                      )}
+                                    </div>
                                     <div style={{ fontSize: '0.75rem', color: '#666', maxWidth: 180, whiteSpace: 'normal' }}>{s.nombre_producto}</div>
+                                    {isMaq && (
+                                      <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f3e8ff', padding: '1px 6px', borderRadius: 4, fontSize: '0.68rem', color: '#6b21a8', fontWeight: 600, border: '1px solid #d8b4fe' }}>
+                                        🧩 {s.nombre_familia_maquila || 'Familia Maquila'} ({s.familia_skus?.length || 1} SKUs)
+                                      </div>
+                                    )}
                                   </td>
                                   <td style={{ fontSize: '0.8rem', maxWidth: 120 }}>{s.categoria || '—'}</td>
-                                  <td>
+                                  <td style={{ verticalAlign: 'top' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                      <span style={{ 
-                                        padding: '2px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 'bold', width: 'fit-content',
-                                        background: s.nivel_alerta === 'ROJO' ? '#ffebee' : s.nivel_alerta === 'NARANJA' ? '#fff3e0' : s.nivel_alerta === 'AMARILLO' ? '#fffde7' : s.nivel_alerta === 'MORADO' ? '#f3e5f5' : '#e8f5e9',
-                                        color: s.nivel_alerta === 'ROJO' ? '#c62828' : s.nivel_alerta === 'NARANJA' ? '#ef6c00' : s.nivel_alerta === 'AMARILLO' ? '#f57f17' : s.nivel_alerta === 'MORADO' ? '#6a1b9a' : '#2e7d32'
-                                      }}>
-                                        {s.nivel_alerta}
-                                      </span>
+                                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        <span style={{ 
+                                          padding: '2px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 'bold', width: 'fit-content',
+                                          background: s.nivel_alerta === 'ROJO' ? '#ffebee' : s.nivel_alerta === 'NARANJA' ? '#fff3e0' : s.nivel_alerta === 'AMARILLO' ? '#fffde7' : s.nivel_alerta === 'MORADO' ? '#f3e5f5' : '#e8f5e9',
+                                          color: s.nivel_alerta === 'ROJO' ? '#c62828' : s.nivel_alerta === 'NARANJA' ? '#ef6c00' : s.nivel_alerta === 'AMARILLO' ? '#f57f17' : s.nivel_alerta === 'MORADO' ? '#6a1b9a' : '#2e7d32'
+                                        }}>
+                                          {s.nivel_alerta}
+                                        </span>
+
+                                        {s.estado && (s.estado.includes('BLOQUE') || s.condicion?.includes('BLOQUE')) && (
+                                          <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 'bold', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                                            BLOQUEADO
+                                          </span>
+                                        )}
+
+                                        {s.estado && (s.estado.includes('DESCONTINUA') || s.condicion?.includes('DESCONTINUA')) && (
+                                          <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 'bold', background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}>
+                                            DESCONTINUADO
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Estado de Maquila Familiar */}
+                                      {isMaq && (
+                                        cubiertoMaquila ? (
+                                          <span title={`Cubierto por stock familiar (${Number(s.stock_bruto_familia || s.sug_stock_familia || 0).toLocaleString()} uds en familia). No requiere compra individual.`} style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #bae6fd', width: 'fit-content' }}>
+                                            🛡️ CUBIERTO MAQUILA
+                                          </span>
+                                        ) : (
+                                          <span title={`Parte de la familia ${s.nombre_familia_maquila || 'Maquila'} (${Number(s.stock_bruto_familia || 0).toLocaleString()} uds en stock familiar). Se debe coordinar la compra de toda la familia.`} style={{ background: '#faf5ff', color: '#7e22ce', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #d8b4fe', width: 'fit-content' }}>
+                                            🔄 FAMILIA MAQUILA
+                                          </span>
+                                        )
+                                      )}
+
                                       {s.excepciones && s.excepciones.length > 0 && s.excepciones.map((ex, i) => (
                                         <span key={ex} title={s.explicacion_excepcion?.[i] || ex} style={{ background: '#FFF3EB', color: '#b35f1a', padding: '2px 6px', borderRadius: 4, fontSize: '0.65rem', border: '1px solid #F4864A', cursor: 'help', width: 'fit-content' }}>
                                           {ex.replace(/_/g, ' ')}
