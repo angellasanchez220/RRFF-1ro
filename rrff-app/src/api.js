@@ -387,3 +387,84 @@ export async function downloadRrffExcel() {
   }
   return { blob, filename };
 }
+
+// ── Órdenes de Compra (Auditoría Pedido vs Despacho) ─────────────────────────
+
+export async function fetchOrdenesCompra() {
+  const res = await fetch(`${BASE}/ordenes-compra/`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar órdenes de compra');
+  return res.json();
+}
+
+export async function fetchOrdenCompraDetail(id) {
+  const res = await fetch(`${BASE}/ordenes-compra/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar detalle de la orden');
+  return res.json();
+}
+
+export async function uploadOrdenCompra(formData) {
+  const res = await fetch(`${BASE}/ordenes-compra/upload`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al subir orden de compra' }));
+    throw new Error(err.detail || 'Error al procesar orden de compra');
+  }
+  return res.json();
+}
+
+export async function deleteOrdenCompra(id) {
+  const res = await fetch(`${BASE}/ordenes-compra/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Error al eliminar la orden de compra');
+  return res.json();
+}
+
+export async function fetchQuiebresHistoricos() {
+  const res = await fetch(`${BASE}/ordenes-compra/quiebres/historicos`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar histórico de quiebres');
+  return res.json();
+}
+
+export async function downloadOrdenCompraExcel(id) {
+  const res = await fetch(`${BASE}/ordenes-compra/${id}/export`, {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  });
+  if (!res.ok) throw new Error('Error al exportar orden de compra');
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition');
+  let filename = `Auditoria_OC_${id}.xlsx`;
+  if (disposition && disposition.indexOf('filename=') !== -1) {
+    const matches = /filename[^;=\n]*=((['\x22]).*?\2|[^;\n]*)/.exec(disposition);
+    if (matches && matches[1]) filename = matches[1].replace(/['\x22]/g, '');
+  }
+  return { blob, filename };
+}
+
+// ── Maquila: Distribución Homogénea ──────────────────────────────────────────
+
+export async function fetchMaquilaDistribucionHomogenea() {
+  const res = await fetch(`${BASE}/maquila/distribucion-homogenea`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar distribución homogénea');
+  return res.json();
+}
+
+export async function downloadMaquilaDistribucionExcel() {
+  const res = await fetch(`${BASE}/maquila/export-distribucion`, {
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  });
+  if (!res.ok) throw new Error('Error al exportar plan de distribución de maquila');
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition');
+  let filename = 'Plan_Distribucion_Homogenea_Maquila.xlsx';
+  if (disposition && disposition.indexOf('filename=') !== -1) {
+    const matches = /filename[^;=\n]*=((['\x22]).*?\2|[^;\n]*)/.exec(disposition);
+    if (matches && matches[1]) filename = matches[1].replace(/['\x22]/g, '');
+  }
+  return { blob, filename };
+}
+

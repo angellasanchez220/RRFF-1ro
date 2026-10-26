@@ -22,7 +22,8 @@ function isDiscontinued(product) {
 
 function isActivo(product) {
   if (!product) return false;
-  return !isDiscontinued(product) && !isBloqueado(product);
+  // Los bloqueados se consideran igual para operar y comprar
+  return !isDiscontinued(product);
 }
 
 

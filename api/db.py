@@ -198,7 +198,60 @@ def run_migrations():
             cantidad_empaque   INTEGER DEFAULT 0
         )
         """,
+
+        # ── Órdenes de Compra (Gestión y Auditoría Pedido vs Despacho) ───────
+        """
+        CREATE TABLE IF NOT EXISTS ordenes_compra_registro (
+            id                        SERIAL PRIMARY KEY,
+            numero_oc                 TEXT NOT NULL,
+            cliente                   TEXT DEFAULT '',
+            etapa                     TEXT NOT NULL,
+            fecha_pedido              DATE,
+            fecha_entrega             DATE,
+            nombre_archivo            TEXT,
+            total_items               INTEGER DEFAULT 0,
+            total_pedido_uds          NUMERIC DEFAULT 0,
+            total_despachado_uds      NUMERIC DEFAULT 0,
+            cumplimiento_pct          NUMERIC DEFAULT 0,
+            quiebres_count            INTEGER DEFAULT 0,
+            parciales_count           INTEGER DEFAULT 0,
+            desbalance_familiar_count INTEGER DEFAULT 0,
+            observaciones             TEXT,
+            usuario_carga             TEXT,
+            fecha_carga               TIMESTAMP DEFAULT NOW(),
+            actualizado_en            TIMESTAMP DEFAULT NOW()
+        )
+        """,
+
+        """
+        CREATE TABLE IF NOT EXISTS ordenes_compra_detalle (
+            id                        SERIAL PRIMARY KEY,
+            oc_id                     INTEGER NOT NULL REFERENCES ordenes_compra_registro(id) ON DELETE CASCADE,
+            numero_oc                 TEXT NOT NULL,
+            sku                       TEXT,
+            codigo_femaco             TEXT,
+            nombre_producto           TEXT,
+            cantidad_pedida           NUMERIC DEFAULT 0,
+            cantidad_despachada       NUMERIC DEFAULT 0,
+            diferencia                NUMERIC DEFAULT 0,
+            estado_entrega            TEXT,
+            familia_id               INTEGER,
+            nombre_familia            TEXT,
+            desbalance_familiar       BOOLEAN DEFAULT FALSE,
+            desbalance_detalle        TEXT,
+            quiebre_detectado         BOOLEAN DEFAULT FALSE,
+            fecha_quiebre             DATE,
+            dias_recuperacion_quiebre INTEGER,
+            oc_recuperacion           TEXT,
+            fecha_recuperacion        DATE
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_oc_registro_num ON ordenes_compra_registro(numero_oc)",
+        "CREATE INDEX IF NOT EXISTS idx_oc_detalle_oc_id ON ordenes_compra_detalle(oc_id)",
+        "CREATE INDEX IF NOT EXISTS idx_oc_detalle_sku ON ordenes_compra_detalle(sku)",
+        "CREATE INDEX IF NOT EXISTS idx_oc_detalle_cod_femaco ON ordenes_compra_detalle(codigo_femaco)",
     ]
+
 
 
     for stmt in stmts:

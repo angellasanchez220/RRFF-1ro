@@ -673,17 +673,44 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                 globalIdx++;
               });
 
-              // 3. Forecast Futuro 4 Meses (azul punteado)
-              fc.forEach((item) => {
+              // 3. Forecast Futuro 4 Meses (azul punteado) con Proyección en %
+              const fcGrowthSummary = [];
+              const prevHistVal = gaps.length > 0
+                ? gaps[gaps.length - 1].value
+                : (visibleHistory.length > 0 ? visibleHistory[visibleHistory.length - 1].value : null);
+
+              fc.forEach((item, fIdx) => {
                 let mo = parseInt(item.month.split('-')[1], 10) - 1;
                 let trend = m * globalIdx + b;
                 let seasonalForecast = Math.max(0, Math.round(trend * (seasonalIndices[mo] || 1)));
+
+                const prevV = fIdx === 0 ? prevHistVal : fc[fIdx - 1].value;
+                const momGrowth = (prevV != null && prevV > 0)
+                  ? Number((((item.value - prevV) / prevV) * 100).toFixed(1))
+                  : null;
+
+                const yr = parseInt(item.month.split('-')[0], 10);
+                const prevYrMonth = `${yr - 1}-${String(mo + 1).padStart(2, '0')}`;
+                const matchHistPrevYr = histAll.find(h => h.month === prevYrMonth);
+                const yoyGrowth = (matchHistPrevYr && matchHistPrevYr.value > 0)
+                  ? Number((((item.value - matchHistPrevYr.value) / matchHistPrevYr.value) * 100).toFixed(1))
+                  : null;
+
+                fcGrowthSummary.push({
+                  month: fmtMonthLabel(item.month),
+                  value: item.value,
+                  mom: momGrowth,
+                  yoy: yoyGrowth
+                });
+
                 hwChartData.push({
                   name: fmtMonthLabel(item.month),
                   'Sell Out Real': null,
                   'Estimación Atraso': null,
                   'Proyección Futura': item.value,
-                  'Tendencia Estacional': seasonalForecast
+                  'Tendencia Estacional': seasonalForecast,
+                  mom_growth_pct: momGrowth,
+                  yoy_growth_pct: yoyGrowth
                 });
                 globalIdx++;
               });
@@ -768,6 +795,15 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
+                  {fcGrowthSummary.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                      {fcGrowthSummary.map(f => (
+                        <span key={f.month} style={{ background: '#E8F5E9', border: '1px solid #C8E6C9', color: '#1B5E20', padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>
+                          📈 {f.month}: {Number(f.value).toLocaleString('es-CL')} uds {f.mom != null ? `(${f.mom > 0 ? '+' : ''}${f.mom}% MoM)` : ''}{f.yoy != null ? ` · (${f.yoy > 0 ? '+' : ''}${f.yoy}% YoY)` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
                     {hwData.data_status === 'lagging' && (
                       <div style={{ color: '#b35f1a', fontWeight: 'bold', marginBottom: 4 }}>
@@ -842,16 +878,20 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               
               const fc = hwData.forecast || [];
               const relationChartData = [];
+              const fcRelSummary = [];
               
               const histContext = chartData.slice(-12); // Mostrar últimos 12 meses de contexto
               histContext.forEach((item, idx) => {
                 const isLast = idx === histContext.length - 1;
                 relationChartData.push({
                   name: item.name,
-                  'Sell Out Histórico': item["Sell Out"],
-                  'Sell In Histórico': item["Sell In"],
+                  'Sell Out': item["Sell Out"],
+                  'Sell In': item["Sell In"],
                   'Sell Out Proyectado': (isLast && fc.length > 0) ? item["Sell Out"] : null,
-                  'Sell In Requerido': (isLast && fc.length > 0) ? item["Sell In"] : null
+                  'Sell In Proyectado': (isLast && fc.length > 0) ? item["Sell In"] : null,
+                  'Stock Proyectado': isLast ? (product.stock_fisico_matrix ?? product.stock_hc ?? 0) : null,
+                  mom_growth_pct: item.mom_growth_pct,
+                  yoy_growth_pct: item.yoy_growth_pct
                 });
               });
               
@@ -867,7 +907,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
               let simStoreStock = product.stock_fisico_matrix ?? product.stock_hc ?? 0;
               const MAX_STORE_COVERAGE = 2; // meses maximos de stock sano en tienda
               
-              fc.forEach(item => {
+              let prevProjSO = (histContext.length > 0) ? histContext[histContext.length - 1]["Sell Out"] : null;
+              let prevProjSI = (histContext.length > 0) ? histContext[histContext.length - 1]["Sell In"] : null;
+
+              fc.forEach((item) => {
                 const projectedSO = item.value;
                 const maxStoreStock = projectedSO * MAX_STORE_COVERAGE;
                 
@@ -882,16 +925,36 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                    requiredSI = Math.max(0, limitSI);
                 }
                 
-                simStoreStock = simStoreStock + requiredSI - projectedSO;
-                if (simStoreStock < 0) simStoreStock = 0;
+                // Balance mes: Stock proyectado = Stock cierre anterior + Sell In proyectado - Sell Out proyectado
+                simStoreStock = Math.max(0, simStoreStock + requiredSI - projectedSO);
+
+                const momSO = (prevProjSO != null && prevProjSO > 0)
+                  ? Number((((projectedSO - prevProjSO) / prevProjSO) * 100).toFixed(1))
+                  : null;
+                const momSI = (prevProjSI != null && prevProjSI > 0)
+                  ? Number((((requiredSI - prevProjSI) / prevProjSI) * 100).toFixed(1))
+                  : null;
+                prevProjSO = projectedSO;
+                prevProjSI = requiredSI;
+
+                fcRelSummary.push({
+                  month: fmtMonthLabel(item.month),
+                  so: projectedSO,
+                  momSO,
+                  si: Math.round(requiredSI),
+                  momSI,
+                  stock: Math.round(simStoreStock)
+                });
               
                 relationChartData.push({
                   name: fmtMonthLabel(item.month),
-                  'Sell Out Histórico': null,
-                  'Sell In Histórico': null,
+                  'Sell Out': null,
+                  'Sell In': null,
                   'Sell Out Proyectado': projectedSO,
-                  'Sell In Requerido': Math.round(requiredSI),
-                  'Stock Tienda Sim.': Math.round(simStoreStock)
+                  'Sell In Proyectado': Math.round(requiredSI),
+                  'Stock Proyectado': Math.round(simStoreStock),
+                  mom_growth_pct: momSO,
+                  mom_growth_si_pct: momSI
                 });
               });
 
@@ -909,15 +972,24 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
                         <Tooltip content={<CustomTooltip />} />
                         <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                         
-                        <Line type="monotone" dataKey="Sell Out Histórico" stroke="#8DC63F" strokeWidth={2} dot={{ r: 3 }} />
-                        <Line type="monotone" dataKey="Sell In Histórico" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Sell Out" stroke="#8DC63F" strokeWidth={2} dot={{ r: 3 }} />
+                        <Line type="monotone" dataKey="Sell In" stroke="#3A86C8" strokeWidth={2} dot={{ r: 3 }} />
                         
                         <Line type="monotone" dataKey="Sell Out Proyectado" stroke="#8DC63F" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="Sell In Requerido" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
-                        <Line type="monotone" dataKey="Stock Tienda Sim." stroke="#8E44AD" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} />
+                        <Line type="monotone" dataKey="Sell In Proyectado" stroke="#2196F3" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Stock Proyectado" stroke="#8E44AD" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
+                  {fcRelSummary.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                      {fcRelSummary.map(f => (
+                        <span key={f.month} style={{ background: '#F4F9FF', border: '1px solid #BBDEFB', color: '#1565C0', padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 'bold' }}>
+                          📊 {f.month}: Sell-In Proy: {Number(f.si).toLocaleString('es-CL')} uds {f.momSI != null ? `(${f.momSI > 0 ? '+' : ''}${f.momSI}%)` : ''} · Sell-Out: {Number(f.so).toLocaleString('es-CL')} {f.momSO != null ? `(${f.momSO > 0 ? '+' : ''}${f.momSO}%)` : ''} · Stock Proyectado: {Number(f.stock).toLocaleString('es-CL')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ fontSize: 11, color: '#444', marginTop: 8, textAlign: 'center', background: '#FAFAFA', padding: '6px 10px', borderRadius: 4, border: '1px solid #EAEAEA' }}>
                     <strong>Relación S&OP:</strong> {elastText}
                   </div>

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api.routes import auth, sop, upload, maquila, maquila_ordenes, export, forecast
+from api.routes import auth, sop, upload, maquila, maquila_ordenes, export, forecast, ordenes_compra
 from api.routes.auth import require_authenticated
 
 app = FastAPI(title="RRFF Soft API", version="2.1.0")
@@ -44,7 +44,9 @@ app.include_router(forecast.router, prefix="/api/sop", tags=["Forecast"], depend
 app.include_router(upload.router, prefix="/api/upload", tags=["Upload"], dependencies=[Depends(require_authenticated)])
 app.include_router(maquila.router, prefix="/api/maquila", tags=["Maquila"], dependencies=[Depends(require_authenticated)])
 app.include_router(maquila_ordenes.router, prefix="/api/maquila/ordenes", tags=["Maquila Ordenes"], dependencies=[Depends(require_authenticated)])
+app.include_router(ordenes_compra.router, prefix="/api/ordenes-compra", tags=["Ordenes de Compra"], dependencies=[Depends(require_authenticated)])
 app.include_router(export.router, prefix="/api/export", tags=["Export"], dependencies=[Depends(require_authenticated)])
+
 
 
 

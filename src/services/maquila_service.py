@@ -4,9 +4,14 @@ from sqlalchemy import text
 
 def is_discontinued(value):
     """Normaliza los estados que el planner trata como descontinuados."""
-    if pd.isna(value) or not value or str(value).strip() == "":
-        return True
-    return str(value).strip().upper() not in {"MIX", "ACTIVO", "ACTIVOS", "NUEVO", "LANZAMIENTO"}
+    if value is None:
+        return False
+    v = str(value).strip().upper()
+    if not v:
+        return False
+    return v in {"DESCONTINUADO", "DESCONTINUADOS", "OBSOLETO", "INACTIVO", "INACTIVOS"}
+
+
 
 
 def build_product_lookup_by_internal_code(df, ritmo_col="ritmo_mensual"):
@@ -170,12 +175,12 @@ def build_maquila_families(conn, lookup_dict):
                 
             info = get_info(nodo_alcanzable)
             familia_list.append(info)
-            if not info["no_transformable"]:
+            if not info["descontinuado"]:
                 stock_bruto += info["stock_act"]
                 transito_bruto += info["cantidad_transito"]
             
             if nodo_alcanzable != codigo:
-                if not info["no_transformable"]:
+                if not info["no_transformable"] and not info["descontinuado"]:
                     reemplazos_validos.append(info)
                     stock_reemplazable += info["stock_act"]
                     transito_reemplazable += info["cantidad_transito"]

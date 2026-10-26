@@ -20,15 +20,50 @@ export default function FamiliasReemplazo() {
     miembros: []
   });
 
+  // Distribución Homogénea State
+  const [distribucionData, setDistribucionData] = useState([]);
+  const [loadingDistribucion, setLoadingDistribucion] = useState(false);
+  const [searchDistribucion, setSearchDistribucion] = useState('');
+  const [filterDistribucion, setFilterDistribucion] = useState('ALL');
+
   // Role
   const role = localStorage.getItem('rrff_role') || 'viewer';
   const isAdmin = role === 'admin';
 
   useEffect(() => {
-    if (view === 'list') {
+    if (view === 'list' && activeTab === 'recetas') {
       loadFamilias();
+    } else if (activeTab === 'distribucion') {
+      loadDistribucion();
     }
-  }, [view]);
+  }, [view, activeTab]);
+
+  async function loadDistribucion() {
+    setLoadingDistribucion(true);
+    try {
+      const res = await api.fetchMaquilaDistribucionHomogenea();
+      setDistribucionData(res.data || []);
+    } catch (err) {
+      alert("Error al cargar distribución homogénea: " + err.message);
+    } finally {
+      setLoadingDistribucion(false);
+    }
+  }
+
+  async function handleDownloadDistribucionExcel() {
+    try {
+      const { blob, filename } = await api.downloadMaquilaDistribucionExcel();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      alert("Error al descargar Excel: " + err.message);
+    }
+  }
 
   async function loadFamilias() {
     setLoading(true);
@@ -143,22 +178,221 @@ export default function FamiliasReemplazo() {
         <div className="page" style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
           
           {/* ── TABS ── */}
-          <div style={{ display: 'flex', gap: '20px', borderBottom: '2px solid #eee', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '20px', borderBottom: '2px solid #333', marginBottom: '20px' }}>
             <h2 
-              style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'recetas' ? '#1976d2' : '#888', borderBottom: activeTab === 'recetas' ? '3px solid #1976d2' : 'none' }}
+              style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'recetas' ? '#1976d2' : '#888', borderBottom: activeTab === 'recetas' ? '3px solid #1976d2' : 'none', fontSize: '1.15rem' }}
               onClick={() => setActiveTab('recetas')}
             >
-              Hermanos de Reemplazo
+              👨‍👦 Hermanos de Reemplazo
             </h2>
             <h2 
-              style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'ordenes' ? '#1976d2' : '#888', borderBottom: activeTab === 'ordenes' ? '3px solid #1976d2' : 'none' }}
+              style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'distribucion' ? '#1976d2' : '#888', borderBottom: activeTab === 'distribucion' ? '3px solid #1976d2' : 'none', fontSize: '1.15rem' }}
+              onClick={() => setActiveTab('distribucion')}
+            >
+              ⚖️ Distribución Homogénea (Plan de Maquila)
+            </h2>
+            <h2 
+              style={{ margin: 0, paddingBottom: '10px', cursor: 'pointer', color: activeTab === 'ordenes' ? '#1976d2' : '#888', borderBottom: activeTab === 'ordenes' ? '3px solid #1976d2' : 'none', fontSize: '1.15rem' }}
               onClick={() => setActiveTab('ordenes')}
             >
-              Órdenes de Compra
+              📑 Órdenes de Corte / Trabajo
             </h2>
           </div>
 
           {activeTab === 'ordenes' && <MaquilaOrdenes isAdmin={isAdmin} />}
+
+          {/* ── TAB DISTRIBUCIÓN HOMOGÉNEA DE FAMILIAS ── */}
+          {activeTab === 'distribucion' && (
+            <div>
+              {/* Banner explicativo de la regla de maquila */}
+              <div className="card" style={{ padding: '16px 20px', marginBottom: '20px', borderLeft: '4px solid #1976d2', background: 'rgba(25, 118, 210, 0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div style={{ flex: 1, minWidth: '300px' }}>
+                    <h3 style={{ margin: '0 0 6px', color: '#64b5f6', fontSize: '1.1rem' }}>
+                      🏭 Regla de Negocio: Sustitución y Transformación Homogénea Familiar
+                    </h3>
+                    <p style={{ margin: 0, color: '#ccc', fontSize: '0.85rem', lineHeight: 1.4 }}>
+                      Los productos que pertenecen a una familia de reemplazo no se compran si el grupo familiar tiene inventario suficiente para cubrir la demanda.
+                      Las unidades se distribuyen de manera homogénea entre los integrantes. Solo si el total familiar queda en déficit, el saldo faltante pasa a compra en el módulo Compras.
+                    </p>
+                  </div>
+                  <button
+                    className="btn-primary"
+                    style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    onClick={handleDownloadDistribucionExcel}
+                  >
+                    <span style={{ fontSize: '1.2rem' }}>📥</span> Descargar Plan de Distribución y Maquila (Excel)
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtros de familias */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Buscar por nombre de familia o código..."
+                  value={searchDistribucion}
+                  onChange={e => setSearchDistribucion(e.target.value)}
+                  style={{ flex: 1, minWidth: '220px', padding: '10px', borderRadius: '6px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                />
+                <select
+                  value={filterDistribucion}
+                  onChange={e => setFilterDistribucion(e.target.value)}
+                  style={{ padding: '10px', borderRadius: '6px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                >
+                  <option value="ALL">Todas las Familias</option>
+                  <option value="CUBIERTAS">100% Cubiertas por Maquila (0 compra)</option>
+                  <option value="DEFICIT">Con Déficit Familiar (Pasa a compra)</option>
+                </select>
+              </div>
+
+              {loadingDistribucion ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>Calculando distribución homogénea familiar...</div>
+              ) : distribucionData.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>No hay familias activas registradas para calcular distribución.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {distribucionData
+                    .filter(f => {
+                      if (filterDistribucion === 'CUBIERTAS' && !f.cubre_con_stock_familiar) return false;
+                      if (filterDistribucion === 'DEFICIT' && f.cubre_con_stock_familiar) return false;
+                      if (searchDistribucion) {
+                        const q = searchDistribucion.toLowerCase();
+                        const matchName = f.nombre_familia.toLowerCase().includes(q);
+                        const matchMember = f.miembros.some(m => m.sku.toLowerCase().includes(q) || m.codigo_femaco.toLowerCase().includes(q));
+                        if (!matchName && !matchMember) return false;
+                      }
+                      return true;
+                    })
+                    .map(f => {
+                      const cubre = f.cubre_con_stock_familiar;
+                      return (
+                        <div key={f.familia_id} className="card" style={{ padding: '18px 20px', borderLeft: `4px solid ${cubre ? '#4caf50' : '#ff9800'}` }}>
+                          {/* Encabezado Familia */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
+                            <div>
+                              <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem', color: '#fff' }}>
+                                {f.nombre_familia}
+                              </h3>
+                              <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                                {f.cantidad_miembros} integrantes vinculados | ID #{f.familia_id}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#888' }}>Stock Familiar Disponible</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#64b5f6' }}>
+                                  {Math.round(f.total_stock_familia).toLocaleString()} uds
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.75rem', color: '#888' }}>Demanda Total Familia</div>
+                                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>
+                                  {Math.round(f.total_demanda_familia).toLocaleString()} uds
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: 'center', padding: '6px 12px', borderRadius: '6px', background: cubre ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 152, 0, 0.15)', border: `1px solid ${cubre ? '#4caf50' : '#ff9800'}` }}>
+                                <span style={{ fontSize: '0.7rem', display: 'block', textTransform: 'uppercase', color: cubre ? '#81c784' : '#ffb74d', fontWeight: 600 }}>
+                                  Cobertura Familiar
+                                </span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: cubre ? '#81c784' : '#ffb74d' }}>
+                                  {f.cobertura_pct}%
+                                </span>
+                              </div>
+
+                              <div>
+                                {cubre ? (
+                                  <span style={{
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700,
+                                    background: 'rgba(76, 175, 80, 0.2)', color: '#81c784', border: '1px solid #4caf50'
+                                  }}>
+                                    ✓ Cubierto 100% por Maquila (0 compra)
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700,
+                                    background: 'rgba(244, 67, 54, 0.2)', color: '#ff5252', border: '1px solid #d32f2f'
+                                  }}>
+                                    🛒 Déficit: Comprar {Math.round(f.total_compra_remanente_sugerida).toLocaleString()} uds
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tabla de Miembros y Distribución */}
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                              <thead>
+                                <tr style={{ background: '#252525', textAlign: 'left', borderBottom: '1px solid #333' }}>
+                                  <th style={{ padding: '8px' }}>Cód. Interno / SKU</th>
+                                  <th style={{ padding: '8px' }}>Producto</th>
+                                  <th style={{ padding: '8px', textAlign: 'right' }}>Stock Inicial Total</th>
+                                  <th style={{ padding: '8px', textAlign: 'right' }}>Demanda Objetivo</th>
+                                  <th style={{ padding: '8px', textAlign: 'right' }}>Asignación Homogénea</th>
+                                  <th style={{ padding: '8px', textAlign: 'center' }}>Saldo Transformación (Maquila)</th>
+                                  <th style={{ padding: '8px', textAlign: 'center' }}>Cobertura Lograda</th>
+                                  <th style={{ padding: '8px', textAlign: 'right' }}>Compra Neta</th>
+                                  <th style={{ padding: '8px' }}>Resolución Operativa</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {f.miembros.map((m, idx) => {
+                                  const transf = m.saldo_transformacion;
+                                  return (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #333' }}>
+                                      <td style={{ padding: '8px', fontWeight: 600, color: '#64b5f6' }}>
+                                        {m.codigo_femaco} {m.sku && m.sku !== m.codigo_femaco && `(${m.sku})`}
+                                      </td>
+                                      <td style={{ padding: '8px' }}>{m.nombre_producto}</td>
+                                      <td style={{ padding: '8px', textAlign: 'right' }}>
+                                        {Math.round(m.stock_total).toLocaleString()}
+                                      </td>
+                                      <td style={{ padding: '8px', textAlign: 'right' }}>
+                                        {Math.round(m.demanda).toLocaleString()}
+                                      </td>
+                                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: '#64b5f6' }}>
+                                        {Math.round(m.stock_asignado_homogeneo).toLocaleString()}
+                                      </td>
+                                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                                        {transf > 0 ? (
+                                          <span style={{ color: '#81c784', fontWeight: 600 }}>
+                                            + Recibir {Math.round(transf).toLocaleString()} uds (Maquilar)
+                                          </span>
+                                        ) : transf < 0 ? (
+                                          <span style={{ color: '#ffb74d', fontWeight: 500 }}>
+                                            - Ceder {Math.round(Math.abs(transf)).toLocaleString()} uds a hermanos
+                                          </span>
+                                        ) : (
+                                          <span style={{ color: '#888' }}>Equilibrado</span>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: m.cobertura_post_distribucion_pct >= 100 ? '#81c784' : '#ff9800' }}>
+                                        {m.cobertura_post_distribucion_pct}%
+                                      </td>
+                                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: m.compra_remanente_sugerida > 0 ? '#ff5252' : '#81c784' }}>
+                                        {m.compra_remanente_sugerida > 0 ? `${m.compra_remanente_sugerida.toLocaleString()} uds` : '0 (No comprar)'}
+                                      </td>
+                                      <td style={{ padding: '8px', fontSize: '0.8rem', color: m.cubierto_por_maquila ? '#81c784' : '#ccc' }}>
+                                        {m.observacion}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+
 
           {activeTab === 'recetas' && (
             <>

@@ -819,10 +819,53 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     sug_neta = df["sug_target_uds"] - inv_disponible
     sug_neta = sug_neta.clip(lower=0)
     df["sugerencia_bruta"] = sug_neta
+
+    # 6.1 Detección de Quiebre de Sell-In (Sell-In <= 5 o cercano a 0 habiendo demanda)
+    # Aumenta el cupo de compra proyectado (+25% buffer o mínimo 1 mes)
+    si_cols = [c for c in df.columns if c.startswith("sellin_") and not c.startswith("sellin_ump") and not c.startswith("sellin_minimo")]
+    if si_cols:
+        si_primeros = df[si_cols[:2]].fillna(0)
+        quiebre_si = (df["sug_ritmo_mensual"] > 5) & (si_primeros.min(axis=1) <= 5)
+    else:
+        quiebre_si = pd.Series(False, index=df.index)
+    df["quiebre_sellin_detectado"] = quiebre_si.astype(int)
+    
+    # Si hay quiebre de Sell-In, se aumenta el cupo de compra proyectado
+    df.loc[quiebre_si, "sugerencia_bruta"] = np.where(
+        df.loc[quiebre_si, "sugerencia_bruta"] > 0,
+        df.loc[quiebre_si, "sugerencia_bruta"] * 1.25,
+        df.loc[quiebre_si, "sug_ritmo_mensual"]
+    )
+
+    # 6.2 Regla SELLOS: comparar la compra con la proyección del primer gráfico y agregar 100-200 (150) de margen para crecer
+    if "categoria" in df.columns:
+        es_sellos = df["categoria"].astype(str).str.strip().str.upper() == "SELLOS"
+        margen_crecer_sellos = 150.0
+        proy_primer_grafico = df.get("sug_ritmo_futuro", df["sug_ritmo_mensual"]).fillna(0)
+        base_sellos = np.maximum(df["sugerencia_bruta"], proy_primer_grafico)
+        df.loc[es_sellos & (df["sug_ritmo_mensual"] > 0), "sugerencia_bruta"] = (
+            base_sellos[es_sellos & (df["sug_ritmo_mensual"] > 0)] + margen_crecer_sellos
+        )
+
+    # 6.3 Proyección de Compra Masiva Año Nuevo Chino (Arribos requeridos en Febrero + Marzo + Abril)
+    cols_feb = [c for c in df.columns if c.startswith("sellout_feb_")]
+    cols_mar = [c for c in df.columns if c.startswith("sellout_mar_")]
+    cols_abr = [c for c in df.columns if c.startswith("sellout_abr_")]
+    so_feb = df[cols_feb[0]] if cols_feb else df["sug_ritmo_mensual"]
+    so_mar = df[cols_mar[0]] if cols_mar else df["sug_ritmo_mensual"]
+    so_abr = df[cols_abr[0]] if cols_abr else df["sug_ritmo_mensual"]
+    demanda_cny_total = so_feb.fillna(0) + so_mar.fillna(0) + so_abr.fillna(0)
+    df["compra_masiva_cny_uds"] = df.apply(
+        lambda r: _ceil_to_multiple(demanda_cny_total[r.name], r["ump"]) if demanda_cny_total[r.name] > 0 else 0,
+        axis=1
+    ).round(0)
     
     # 7. Descuento por Decrecimiento MoM <= -10% sobre la Sugerencia Neta (antes de UMP)
     def apply_growth_discount_before_ump(row):
         sug = row["sugerencia_bruta"]
+        # No aplicar descuento por decrecimiento a categoría SELLOS con margen de crecimiento
+        if "categoria" in row and str(row["categoria"]).strip().upper() == "SELLOS":
+            return sug
         mom = row.get("mom_sellout_pct")
         if pd.notna(mom) and mom <= -10.0:
             reduction = abs(mom) / 100.0
@@ -958,6 +1001,8 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
             sugerencia_final = 0
             df.at[idx, "sugerencia_final"] = 0
             df.at[idx, "sugerencia_compra_inmediata_uds"] = 0
+        else:
+            df.at[idx, "sugerencia_final"] = sugerencia_final
 
         # Calcular Fecha Estimada de Quiebre
         fecha_quiebre = today + timedelta(days=dur_solo_stock * 30.4) if dur_solo_stock < 999 else None
@@ -971,7 +1016,11 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
             explicacion = "Forecast manual activo. La recomendación se calculó usando una proyección definida por usuario."
         elif "PRODUCTO_BLOQUEADO" in excepciones:
             cob_actual = f"Cobertura actual: {dur_solo_stock:.1f} meses." if dur_solo_stock < 999 else "Cobertura actual: +10 meses."
-            explicacion = f"Producto bloqueado en maestra (evaluado para compra). {cob_actual}"
+            if sugerencia_final > 0:
+                sug = f"Se sugieren {sugerencia_final:g} unidades (con ajuste UMP) para compra operativa (target {target_meses} meses)."
+                explicacion = f"Producto bloqueado en maestra (se considera para compra). {cob_actual} {sug}"
+            else:
+                explicacion = f"Producto bloqueado en maestra (evaluado para compra). {cob_actual}"
         elif "PRODUCTO_DESCONTINUADO" in excepciones:
             explicacion = "Producto descontinuado. Compra automática bloqueada."
         elif bloquea:
@@ -1002,6 +1051,12 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
                 else:
                     explicacion = f"{cob_actual} No hay necesidad inminente de reposición para el target de {target_meses} meses."
 
+        if row.get("quiebre_sellin_detectado", 0) == 1:
+            excepciones.append("QUIEBRE_SELLIN")
+            if explicacion:
+                explicacion += " [Quiebre de Sell-In detectado: cupo de compra aumentado]"
+
+        df.at[idx, "excepciones"] = json.dumps(excepciones)
         df.at[idx, "explicacion_compra"] = explicacion
 
     return df

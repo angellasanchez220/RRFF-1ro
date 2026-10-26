@@ -38,6 +38,8 @@ export default function Compras() {
   const [filterTransit, setFilterTransit] = useState('ALL');
   const [filterComparacion, setFilterComparacion] = useState('ALL');
   const [filterCrecimiento, setFilterCrecimiento] = useState('ALL');
+  const [filterCNY, setFilterCNY] = useState(false);
+  const [filterExcluirMaquila, setFilterExcluirMaquila] = useState(true);
   const [selectedSku, setSelectedSku] = useState(null);
 
   const LEAD_TIME_DAYS = 60; // Días de tránsito (margen)
@@ -101,8 +103,34 @@ export default function Compras() {
     });
   }
 
+  // Filtro específico para Compra Masiva Año Nuevo Chino
+  if (filterCNY) {
+    filteredData = filteredData.filter(s => (s.compra_masiva_cny_uds || 0) > 0);
+  }
+
+  // Productos cubiertos por Maquila familiar
+  const maquilaCubiertos = (Array.isArray(data) ? data : []).filter(s => 
+    s.sug_usa_stock_familia && (Number(s.sug_stock_familia) >= Number(s.sug_target_uds) || (Number(s.sugerencia_compra_inmediata_uds) === 0))
+  );
+
+  // Regla: Los productos maquilables con stock familiar suficiente se gestionan en Maquila
+  if (filterExcluirMaquila) {
+    filteredData = filteredData.filter(s => {
+      if (s.sug_usa_stock_familia) {
+        const stockFam = Number(s.sug_stock_familia) || 0;
+        const targetFam = Number(s.sug_target_uds) || 0;
+        if (stockFam >= targetFam) return false;
+      }
+      return true;
+    });
+  }
+
+  const totalCNYUds = (Array.isArray(data) ? data : []).reduce(
+    (acc, curr) => acc + (Number(curr.compra_masiva_cny_uds) || 0), 0
+  );
+
   // ── 1. PROCESAR SUGERENCIAS AUTOMÁTICAS ──
-  const sugList = filteredData.filter(s => (s.sugerencia_compra_inmediata_uds || 0) > 0 || (s.sugerencia_compra_dinamica || 0) > 0);
+  const sugList = filteredData.filter(s => (s.sugerencia_compra_inmediata_uds || 0) > 0 || (s.sugerencia_compra_dinamica || 0) > 0 || (filterCNY && (s.compra_masiva_cny_uds || 0) > 0));
   
   // ── PROCESAR REVISIONES (EXCEPCIONES) ──
   const revisionList = filteredData.filter(s => s.requiere_revision);
@@ -199,7 +227,8 @@ export default function Compras() {
           'Ventas 4 sem': s.total_4_sem_verificado || 0,
           'Stock': s.stock_act || 0,
           'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
-          'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0
+          'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
+          'Compra Masiva Año Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
         });
       });
     });
@@ -261,7 +290,8 @@ export default function Compras() {
           'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': sugerido,
           'Sugerido Dinámico (Uds)': dinamico,
-          'Diferencia (Dinámico - Sugerido)': diferencia
+          'Diferencia (Dinámico - Sugerido)': diferencia,
+          'Compra Masiva Año Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
         });
       });
     });
@@ -329,6 +359,49 @@ export default function Compras() {
             <li><b>Filtro de Tránsito:</b> Si un SKU tiene al menos 1 unidad ya en tránsito (estado Morado), <b>NO</b> se sugiere volver a comprar.</li>
             <li><b>Disparador (Trigger):</b> Solo se sugiere comprar cuando el stock proyectado cae por debajo de 4 meses (Amarillo, Naranja o Rojo).</li>
           </ul>
+        </div>
+
+        {/* ── BANNER GESTIÓN POR MAQUILA ── */}
+        <div style={{ backgroundColor: '#ebf8ff', border: '1px solid #90cdf4', color: '#2b6cb0', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🏭 Gestión y Transformación en Maquila: Exclusión de Productos Cubiertos por Familia
+          </h4>
+          <p style={{ margin: '0 0 6px 0' }}>
+            Todo producto que sea maquilable (pertenece a una familia de reemplazo) se abastece mediante la redistribución homogénea de su grupo familiar en <b>Maquila</b> y no se lista para compra si su familia tiene unidades suficientes. Solo pasan a compra aquellos con déficit neto familiar.
+          </p>
+          <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ background: '#2b6cb0', color: '#fff', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
+              {maquilaCubiertos.length} productos cubiertos por Maquila (0 compra)
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 600, color: '#2b6cb0' }}>
+              <input
+                type="checkbox"
+                checked={filterExcluirMaquila}
+                onChange={e => setFilterExcluirMaquila(e.target.checked)}
+              />
+              Ocultar cubiertos por Maquila (Activo por regla de negocio)
+            </label>
+          </div>
+        </div>
+
+        {/* ── BANNER AÑO NUEVO CHINO (FEBRERO) ── */}
+        <div style={{ backgroundColor: '#fff5f5', border: '1px solid #feb2b2', color: '#9b2c2c', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🏮 Recomendación Estratégica: Compra Masiva por Año Nuevo Chino (Febrero)
+          </h4>
+          <p style={{ margin: '0 0 6px 0' }}>
+            Las fábricas y puertos en China cierran durante semanas en febrero. Con el lead time de importación (~5 meses), los pedidos que deban arribar en <b>Febrero, Marzo y Abril</b> deben ordenarse anticipadamente en una sola <b>Compra Masiva Proyectada</b>.
+          </p>
+          <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ background: '#c53030', color: '#fff', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
+              Volumen Consolidado Sugerido (Feb-Abr): {Number(totalCNYUds).toLocaleString('es-CL')} uds
+            </span>
+            <button
+              onClick={() => setFilterCNY(!filterCNY)}
+              style={{ padding: '6px 12px', background: filterCNY ? '#742a2a' : '#fff', color: filterCNY ? '#fff' : '#c53030', border: '1px solid #c53030', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
+              {filterCNY ? '✓ Mostrando solo compras CNY' : '🏮 Filtrar solo SKUs con compra CNY'}
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -425,6 +498,7 @@ export default function Compras() {
                               <th>Cobertura</th>
                               <th>Tránsito</th>
                               <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Legacy (Oficial)</th>
+                              <th style={{ background: '#ffebee', color: '#b71c1c', borderLeft: '2px solid #ef9a9a' }}>🏮 Masiva CNY (Feb-Abr)</th>
                               <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Dinámico (Exp.)</th>
                               <th style={{ background: '#f5f5f5', color: '#333' }}>Comparativa</th>
                               <th>Detalle</th>
@@ -463,6 +537,10 @@ export default function Compras() {
                                   
                                   <td style={{ fontWeight: 'bold', background: '#E7F7ED', color: '#1d6b3e', borderLeft: '2px solid #a5d6a7' }}>
                                     {Number(s.sugerencia_compra_inmediata_uds || 0).toLocaleString('es-CL')}
+                                  </td>
+
+                                  <td style={{ fontWeight: 'bold', background: '#FFF5F5', color: '#B71C1C', borderLeft: '2px solid #EF9A9A', textAlign: 'center' }}>
+                                    {Number(s.compra_masiva_cny_uds || 0).toLocaleString('es-CL')}
                                   </td>
                                   
                                   <td style={{ background: '#e3f2fd', color: '#0d47a1', fontSize: '0.8rem', verticalAlign: 'top' }}>

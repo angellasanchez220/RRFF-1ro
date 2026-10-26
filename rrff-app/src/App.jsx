@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Compras   from './pages/Compras';
 import Admin     from './pages/Admin';
 import Maquila   from './pages/Maquila';
+import OrdenesCompra from './pages/OrdenesCompra';
 import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
@@ -18,7 +19,7 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '') || 'dashboard';
-      if (['dashboard', 'compras', 'maquila', 'admin'].includes(hash)) {
+      if (['dashboard', 'compras', 'maquila', 'ordenes-compra', 'admin'].includes(hash)) {
         setPage(hash);
       }
     };
@@ -83,7 +84,7 @@ export default function App() {
       setPage('dashboard');
     } else {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
-      if (['dashboard', 'compras', 'maquila', 'admin'].includes(hash)) {
+      if (['dashboard', 'compras', 'maquila', 'ordenes-compra', 'admin'].includes(hash)) {
         setPage(hash);
       } else {
         setPage('dashboard');
@@ -131,6 +132,12 @@ export default function App() {
           >
             🏭 Maquila
           </button>
+          <button
+            className={page === 'ordenes-compra' ? 'active' : ''}
+            onClick={() => setPage('ordenes-compra')}
+          >
+            📄 Órdenes de Compra
+          </button>
           {auth.role === 'admin' && (
             <button
               className={page === 'admin' ? 'active' : ''}
@@ -153,17 +160,19 @@ export default function App() {
 
       {/* ── CONTENIDO ── */}
       <ErrorBoundary key={page}>
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'compras'   && <Compras />}
-        {page === 'maquila'   && <Maquila />}
-        {page === 'admin'     && auth.role === 'admin' && <Admin />}
-        {page === 'admin'     && auth.role !== 'admin' && (
+        {page === 'dashboard'      && <Dashboard />}
+        {page === 'compras'        && <Compras />}
+        {page === 'maquila'        && <Maquila />}
+        {page === 'ordenes-compra' && <OrdenesCompra />}
+        {page === 'admin'          && auth.role === 'admin' && <Admin />}
+        {page === 'admin'          && auth.role !== 'admin' && (
           <div className="empty-state">
             <span style={{ fontSize:'2rem' }}>🔒</span>
             <span>Acceso restringido — solo administradores.</span>
           </div>
         )}
       </ErrorBoundary>
+
 
       {/* ── MODAL SESIÓN EXPIRADA ── */}
       {isSessionExpired && (

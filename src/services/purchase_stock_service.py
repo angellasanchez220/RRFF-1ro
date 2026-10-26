@@ -49,11 +49,17 @@ def aplicar_stock_familia_para_sugerencia(
 
         if es_familia_activa:
             try:
-                stock_reemplazable = float(familia.get("stock_reemplazable_adicional", 0))
-                stock_calculo = float(stock_sku) + stock_reemplazable
+                if "stock_bruto_familia" in familia:
+                    stock_calculo = float(familia["stock_bruto_familia"])
+                else:
+                    stock_reemplazable = float(familia.get("stock_reemplazable_adicional", 0))
+                    stock_calculo = float(stock_sku) + stock_reemplazable
                 
-                transito_reemplazable = float(familia.get("transito_reemplazable_adicional", 0))
-                transito_calculo = float(transito_sku) + transito_reemplazable
+                if "transito_bruto_familia" in familia:
+                    transito_calculo = float(familia["transito_bruto_familia"])
+                else:
+                    transito_reemplazable = float(familia.get("transito_reemplazable_adicional", 0))
+                    transito_calculo = float(transito_sku) + transito_reemplazable
                 
                 ritmo_reemplazable = float(familia.get("ritmo_reemplazable_adicional", 0))
             except (TypeError, ValueError):
@@ -74,10 +80,11 @@ def aplicar_stock_familia_para_sugerencia(
 
     resultado["sug_stock_individual"] = stock_individual
     resultado["sug_stock_familia"] = stocks_familia
-    resultado["sug_stock_actual"] = stock_individual
-    resultado["sug_transito_actual"] = transito_individual
+    resultado["sug_stock_actual"] = [sf if uf else si for sf, uf, si in zip(stocks_familia, usa_familia, stock_individual)]
+    resultado["sug_transito_actual"] = [tf if uf else ti for tf, uf, ti in zip(transitos_familia, usa_familia, transito_individual)]
     resultado["sug_ritmo_reemplazable_adicional_4_sem"] = 0.0
     resultado["sug_usa_stock_familia"] = usa_familia
     resultado["sug_cantidad_miembros_familia"] = cantidades_miembros
     resultado["sug_nombre_familia"] = nombres_familia
     return resultado
+

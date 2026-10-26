@@ -500,7 +500,8 @@ def get_sop(include_discontinued: bool = False):
         "SIN_UMP": "Existe necesidad de compra, pero falta Unidad Mínima de Pedido.",
         "SIN_ETA_TRANSITO": "Tránsito sin ETA: no se considera como mitigación de quiebre inmediato.",
         "SIN_VENTAS_SUFICIENTES": "Sin historial suficiente para proyectar demanda de manera confiable.",
-        "PRODUCTO_NUEVO": "Producto nuevo. Requiere revisión de demanda antes de comprar."
+        "PRODUCTO_NUEVO": "Producto nuevo. Requiere revisión de demanda antes de comprar.",
+        "QUIEBRE_SELLIN": "Quiebre de Sell-In detectado (Sell-In ~ 0). Se incrementó el cupo de compra proyectado para restablecer disponibilidad en tiendas."
     }
 
     # (Las variables sug_*, excepciones, requiere_revision, bloquea_compra_automatica
