@@ -29,6 +29,16 @@ function getWeekDateRange(d) {
   return `semana del ${getDayMonth(start)} al ${getDayMonth(end)}`;
 }
 
+// Helper: Obtener nombre de mes formateado
+const MESES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+function getMonthLabel(d) {
+  return `📅 ${MESES_ES[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 export default function Compras() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +50,7 @@ export default function Compras() {
   const [filterCrecimiento, setFilterCrecimiento] = useState('ALL');
   const [filterCNY, setFilterCNY] = useState(false);
   const [filterExcluirMaquila, setFilterExcluirMaquila] = useState(true);
+  const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
   const [selectedSku, setSelectedSku] = useState(null);
 
   const LEAD_TIME_DAYS = 60; // Días de tránsito (margen)
@@ -147,7 +158,6 @@ export default function Compras() {
     
     s.idealDateObj = idealDate;
     
-    const wk = getWeekNumber(idealDate);
     // Si la fecha ideal ya pasó, la agrupamos como "URGENTE / ATRASADA"
     const hoy = new Date();
     let groupKey = '';
@@ -156,7 +166,13 @@ export default function Compras() {
     if (idealDate < hoy) {
       groupKey = '0000-URGENTE';
       groupLabel = '🚨 PEDIDOS ATRASADOS (Emitir YA)';
+    } else if (groupBy === 'MONTH') {
+      const year = idealDate.getFullYear();
+      const monthNum = (idealDate.getMonth() + 1).toString().padStart(2, '0');
+      groupKey = `${year}-${monthNum}`;
+      groupLabel = getMonthLabel(idealDate);
     } else {
+      const wk = getWeekNumber(idealDate);
       groupKey = `${wk.year}-W${wk.week.toString().padStart(2, '0')}`;
       groupLabel = `📅 ${getWeekDateRange(idealDate)}`;
     }
@@ -451,6 +467,47 @@ export default function Compras() {
                   <option value="NEG_2M">Crecimiento Negativo (2M)</option>
                   <option value="HIGH_50_2M">Crecimiento &gt;50% (2M)</option>
                 </select>
+              </div>
+
+              {/* Selector de Agrupación (Mes / Semana) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Agrupación</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => setGroupBy('MONTH')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 4,
+                      border: '1.5px solid ' + (groupBy === 'MONTH' ? '#1d6b3e' : '#cbd5e1'),
+                      background: groupBy === 'MONTH' ? '#1d6b3e' : '#ffffff',
+                      color: groupBy === 'MONTH' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Agrupar compras por Mes calendario"
+                  >
+                    📅 Por Mes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGroupBy('WEEK')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 4,
+                      border: '1.5px solid ' + (groupBy === 'WEEK' ? '#1d6b3e' : '#cbd5e1'),
+                      background: groupBy === 'WEEK' ? '#1d6b3e' : '#ffffff',
+                      color: groupBy === 'WEEK' ? '#ffffff' : '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer'
+                    }}
+                    title="Agrupar compras por Semana ISO"
+                  >
+                    📆 Por Semana
+                  </button>
+                </div>
               </div>
             </div>
 
