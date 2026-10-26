@@ -398,7 +398,10 @@ export async function fetchOrdenesCompra() {
 
 export async function fetchOrdenCompraDetail(id) {
   const res = await fetch(`${BASE}/ordenes-compra/${id}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Error al cargar detalle de la orden');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al cargar detalle de la orden' }));
+    throw new Error(err.detail || 'Error al cargar detalle de la orden');
+  }
   return res.json();
 }
 
@@ -420,13 +423,19 @@ export async function deleteOrdenCompra(id) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Error al eliminar la orden de compra');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al eliminar la orden de compra' }));
+    throw new Error(err.detail || 'Error al eliminar la orden de compra');
+  }
   return res.json();
 }
 
 export async function fetchQuiebresHistoricos() {
   const res = await fetch(`${BASE}/ordenes-compra/quiebres/historicos`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Error al cargar histórico de quiebres');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al cargar histórico de quiebres' }));
+    throw new Error(err.detail || 'Error al cargar histórico de quiebres');
+  }
   return res.json();
 }
 

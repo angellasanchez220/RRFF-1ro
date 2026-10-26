@@ -24,6 +24,7 @@ export default function OrdenesCompra() {
 
   // Modal de Detalle
   const [selectedOcId, setSelectedOcId] = useState(null);
+  const [selectedOcNumero, setSelectedOcNumero] = useState('');
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFilter, setDetailFilter] = useState('ALL'); // 'ALL' | 'NO_DESPACHADO' | 'PARCIAL' | 'DESBALANCE'
@@ -61,8 +62,9 @@ export default function OrdenesCompra() {
     }
   }
 
-  async function handleOpenDetail(id) {
+  async function handleOpenDetail(id, numero_oc = '') {
     setSelectedOcId(id);
+    setSelectedOcNumero(numero_oc || '');
     setDetailLoading(true);
     try {
       const res = await api.fetchOrdenCompraDetail(id);
@@ -71,6 +73,7 @@ export default function OrdenesCompra() {
     } catch (err) {
       alert("Error al cargar auditoría: " + err.message);
       setSelectedOcId(null);
+      setSelectedOcNumero('');
     } finally {
       setDetailLoading(false);
     }
@@ -319,7 +322,7 @@ export default function OrdenesCompra() {
                           <td style={{ padding: '12px', fontWeight: 700 }}>
                             <span 
                               style={{ color: '#0284c7', cursor: 'pointer', textDecoration: 'underline' }}
-                              onClick={() => handleOpenDetail(oc.id)}
+                              onClick={() => handleOpenDetail(oc.id, oc.numero_oc)}
                             >
                               {oc.numero_oc}
                             </span>
@@ -401,7 +404,7 @@ export default function OrdenesCompra() {
                               <button
                                 className="btn-secondary"
                                 style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                onClick={() => handleOpenDetail(oc.id)}
+                                onClick={() => handleOpenDetail(oc.id, oc.numero_oc)}
                                 title="Ver Auditoría Detallada"
                               >
                                 👁 Ver
@@ -717,7 +720,7 @@ export default function OrdenesCompra() {
                 <div>
                   <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '10px', color: '#0f172a', fontWeight: 700 }}>
                     <span>Auditoría OC:</span>
-                    <span style={{ color: '#0284c7' }}>{detailData?.header?.numero_oc || selectedOcId}</span>
+                    <span style={{ color: '#0284c7' }}>{detailData?.header?.numero_oc || selectedOcNumero || (detailLoading ? 'Cargando...' : selectedOcId)}</span>
                     <span style={{
                       fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', fontWeight: 700,
                       background: detailData?.header?.etapa === 'ENTREGA' ? '#ecfdf5' : '#eff6ff',

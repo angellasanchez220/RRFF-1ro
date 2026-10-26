@@ -122,6 +122,28 @@ class OrdenesCompraTests(unittest.TestCase):
         dias_recuperacion = (fecha_recuperacion - fecha_quiebre).days
         self.assertEqual(dias_recuperacion, 28)
 
+    def test_route_ordering_quiebres_before_oc_id(self):
+        from api.routes.ordenes_compra import router
+        paths = [r.path for r in router.routes if 'GET' in getattr(r, 'methods', set())]
+        idx_quiebres = paths.index('/quiebres/historicos')
+        idx_oc_id = paths.index('/{oc_id}')
+        self.assertLess(idx_quiebres, idx_oc_id, "Route /quiebres/historicos must precede /{oc_id} to avoid 422 routing mask")
+
+    def test_clean_df_records_json_safe(self):
+        import numpy as np
+        from api.routes.ordenes_compra import _clean_df_records
+        from starlette.responses import JSONResponse
+
+        df = pd.DataFrame([
+            {"sku": "5522900", "dias": np.nan, "fecha": pd.NaT, "desbalance": False, "none_val": None}
+        ])
+        clean = _clean_df_records(df)
+        self.assertIsNone(clean[0]["dias"])
+        self.assertIsNone(clean[0]["fecha"])
+        # Starlette JSONResponse must render with allow_nan=False without raising ValueError
+        res = JSONResponse(content={"items": clean})
+        self.assertIn(b'"dias":null', res.body)
+
 
 if __name__ == "__main__":
     unittest.main()

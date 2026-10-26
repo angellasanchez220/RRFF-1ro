@@ -742,6 +742,14 @@ async def upload_orden_compra(
     }
 
 
+def _clean_df_records(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Convierte un DataFrame a una lista de diccionarios JSON-compliant (sin NaN, NaT o Decimales)."""
+    if df.empty:
+        return []
+    import json
+    return json.loads(df.to_json(orient="records", date_format="iso"))
+
+
 @router.get("/")
 def list_ordenes_compra():
     """Retorna listado general de OCs cargadas."""
@@ -756,65 +764,8 @@ def list_ordenes_compra():
             FROM ordenes_compra_registro
             ORDER BY COALESCE(fecha_entrega, fecha_pedido, fecha_carga::date) DESC, id DESC
         """), conn)
-        
-        # Formatear fechas para JSON
-        for c in ["fecha_pedido", "fecha_entrega", "fecha_carga"]:
-            if c in df_ocs.columns:
-                df_ocs[c] = df_ocs[c].astype(str).replace({"None": None, "NaT": None, "nan": None})
 
-        return {"data": df_ocs.to_dict(orient="records")}
-
-
-@router.get("/{oc_id}")
-def get_orden_compra_detail(oc_id: int):
-    """Retorna detalle de una OC con su desglose de auditoría por producto."""
-    with engine.connect() as conn:
-        head = conn.execute(text("SELECT * FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id}).fetchone()
-        if not head:
-            raise HTTPException(status_code=404, detail="Orden de Compra no encontrada")
-
-        header_dict = dict(head._mapping)
-        for k in ["fecha_pedido", "fecha_entrega", "fecha_carga", "actualizado_en"]:
-            if k in header_dict and header_dict[k]:
-                header_dict[k] = str(header_dict[k])
-
-        df_items = pd.read_sql(text("""
-            SELECT id, numero_oc, sku, codigo_femaco, nombre_producto,
-                   cantidad_pedida, cantidad_despachada, diferencia, estado_entrega,
-                   familia_id, nombre_familia, desbalance_familiar, desbalance_detalle,
-                   quiebre_detectado, fecha_quiebre, dias_recuperacion_quiebre,
-                   oc_recuperacion, fecha_recuperacion
-            FROM ordenes_compra_detalle
-            WHERE oc_id = :id
-            ORDER BY 
-                CASE estado_entrega 
-                    WHEN 'NO_DESPACHADO' THEN 1 
-                    WHEN 'DESPACHO_PARCIAL' THEN 2 
-                    ELSE 3 
-                END,
-                desbalance_familiar DESC,
-                id ASC
-        """), conn, params={"id": oc_id})
-
-        for c in ["fecha_quiebre", "fecha_recuperacion"]:
-            if c in df_items.columns:
-                df_items[c] = df_items[c].astype(str).replace({"None": None, "NaT": None, "nan": None})
-
-        return {
-            "header": header_dict,
-            "items": df_items.to_dict(orient="records")
-        }
-
-
-@router.delete("/{oc_id}")
-def delete_orden_compra(oc_id: int, authorization: str = Header(None)):
-    """Elimina una orden de compra y su detalle."""
-    token = _get_auth_header(authorization)
-    decode_token(token)
-
-    with engine.begin() as conn:
-        conn.execute(text("DELETE FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id})
-    return {"ok": True, "msg": f"Orden de compra #{oc_id} eliminada correctamente"}
+        return {"data": _clean_df_records(df_ocs)}
 
 
 @router.get("/quiebres/historicos")
@@ -837,11 +788,59 @@ def list_quiebres_historicos():
             ORDER BY d.fecha_quiebre DESC NULLS LAST, d.id DESC
         """), conn)
 
-        for c in ["fecha_quiebre", "fecha_recuperacion", "fecha_oc"]:
-            if c in df_q.columns:
-                df_q[c] = df_q[c].astype(str).replace({"None": None, "NaT": None, "nan": None})
+        return {"data": _clean_df_records(df_q)}
 
-        return {"data": df_q.to_dict(orient="records")}
+
+@router.get("/{oc_id}")
+def get_orden_compra_detail(oc_id: int):
+    """Retorna detalle de una OC con su desglose de auditoría por producto."""
+    with engine.connect() as conn:
+        head = conn.execute(text("SELECT * FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id}).fetchone()
+        if not head:
+            raise HTTPException(status_code=404, detail="Orden de Compra no encontrada")
+
+        header_dict = dict(head._mapping)
+        for k, v in list(header_dict.items()):
+            if isinstance(v, Decimal):
+                header_dict[k] = float(v)
+            elif isinstance(v, (datetime, date)):
+                header_dict[k] = str(v)
+            elif pd.isna(v) or v is None:
+                header_dict[k] = None
+
+        df_items = pd.read_sql(text("""
+            SELECT id, numero_oc, sku, codigo_femaco, nombre_producto,
+                   cantidad_pedida, cantidad_despachada, diferencia, estado_entrega,
+                   familia_id, nombre_familia, desbalance_familiar, desbalance_detalle,
+                   quiebre_detectado, fecha_quiebre, dias_recuperacion_quiebre,
+                   oc_recuperacion, fecha_recuperacion
+            FROM ordenes_compra_detalle
+            WHERE oc_id = :id
+            ORDER BY 
+                CASE estado_entrega 
+                    WHEN 'NO_DESPACHADO' THEN 1 
+                    WHEN 'DESPACHO_PARCIAL' THEN 2 
+                    ELSE 3 
+                END,
+                desbalance_familiar DESC,
+                id ASC
+        """), conn, params={"id": oc_id})
+
+        return {
+            "header": header_dict,
+            "items": _clean_df_records(df_items)
+        }
+
+
+@router.delete("/{oc_id}")
+def delete_orden_compra(oc_id: int, authorization: str = Header(None)):
+    """Elimina una orden de compra y su detalle."""
+    token = _get_auth_header(authorization)
+    decode_token(token)
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id})
+    return {"ok": True, "msg": f"Orden de compra #{oc_id} eliminada correctamente"}
 
 
 @router.get("/{oc_id}/export")
