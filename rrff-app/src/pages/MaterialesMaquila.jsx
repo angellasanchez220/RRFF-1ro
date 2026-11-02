@@ -126,19 +126,41 @@ export default function MaterialesMaquila() {
     }
   }
 
-  async function handleDownloadPlantilla() {
+  const [copiedHint, setCopiedHint] = useState(false);
+
+  function handleDownloadPlantilla() {
     try {
-      const { blob, filename } = await api.downloadPlantillaMaterialesExcel();
+      const csvContent = "\uFEFFsku,descripcion,categoria,unidades\n" +
+        "ETIQ-50X30,Etiqueta adhesiva 50x30 mm,ETIQUETA,1500\n" +
+        "MANGA-CEL-20CM,Manga de celofán transparente 20 cm,MANGA,3200\n" +
+        "BOLSA-POLI-10X15,Bolsa polietileno 10x15 cm con cierre,EMPAQUE,850\n" +
+        "CAJA-MAESTRA-100U,Caja de cartón master para 100 unidades,EMPAQUE,45\n";
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename;
+      a.download = 'Plantilla_Inventario_Materiales.csv';
       document.body.appendChild(a);
       a.click();
       a.remove();
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert("Error al descargar plantilla: " + err.message);
+      alert("Error al generar plantilla: " + err.message);
     }
+  }
+
+  function handleCopyExampleToClipboard() {
+    const tableText = "sku\tdescripcion\tcategoria\tunidades\n" +
+      "ETIQ-50X30\tEtiqueta adhesiva 50x30 mm\tETIQUETA\t1500\n" +
+      "MANGA-CEL-20CM\tManga de celofán transparente 20 cm\tMANGA\t3200\n" +
+      "BOLSA-POLI-10X15\tBolsa polietileno 10x15 cm con cierre\tEMPAQUE\t850\n" +
+      "CAJA-MAESTRA-100U\tCaja de cartón master para 100 unidades\tEMPAQUE\t45";
+    navigator.clipboard.writeText(tableText).then(() => {
+      setCopiedHint(true);
+      setTimeout(() => setCopiedHint(false), 3000);
+    }).catch(() => {
+      alert("Copia las filas directamente de la tabla de ejemplo.");
+    });
   }
 
   async function handleExportExcel() {
@@ -218,9 +240,9 @@ export default function MaterialesMaquila() {
                 className="btn-secondary"
                 onClick={handleDownloadPlantilla}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
-                title="Descargar plantilla Excel con columnas: sku, descripcion, unidades"
+                title="Descargar plantilla con columnas: sku, descripcion, categoria, unidades"
               >
-                <span>📄</span> Plantilla Excel
+                <span>📄</span> Plantilla Excel / CSV
               </button>
 
               <button
@@ -611,39 +633,87 @@ export default function MaterialesMaquila() {
               background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
             }}>
-              <div className="card" style={{ width: '92%', maxWidth: '520px', padding: '26px', background: '#ffffff', borderRadius: '10px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.25)' }}>
-                <h2 style={{ margin: '0 0 6px', fontSize: '1.3rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📤</span> Carga Masiva de Inventario de Materiales
-                </h2>
-                <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.4 }}>
-                  Sube un archivo Excel (.xlsx o .xls) con las columnas: <b>sku</b>, <b>descripcion</b> y <b>unidades</b>.
-                  Actualizará el stock y nombre de los materiales existentes y creará los nuevos automáticamente.
-                </p>
-
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>
-                    1. sku
-                  </span>
-                  <span style={{ fontSize: '0.78rem', background: '#fef3c7', padding: '4px 8px', borderRadius: '4px', border: '1px solid #fde68a', fontWeight: 700, color: '#92400e' }}>
-                    2. descripcion
-                  </span>
-                  <span style={{ fontSize: '0.78rem', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', border: '1px solid #bae6fd', fontWeight: 700, color: '#0369a1' }}>
-                    3. unidades
-                  </span>
-                </div>
-
-                {/* Banner Plantilla */}
-                <div style={{ padding: '12px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#1e40af', fontWeight: 600 }}>
-                    ¿Necesitas el formato exacto?
-                  </span>
+              <div className="card" style={{ width: '94%', maxWidth: '680px', padding: '24px 26px', background: '#ffffff', borderRadius: '10px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div>
+                    <h2 style={{ margin: '0 0 4px', fontSize: '1.3rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>📤</span> Carga Masiva de Inventario de Materiales
+                    </h2>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '0.86rem' }}>
+                      Actualiza existencias y descripciones de materiales existentes, o registra nuevos automáticamente.
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleDownloadPlantilla}
-                    style={{ background: '#ffffff', border: '1px solid #93c5fd', color: '#1d4ed8', padding: '5px 10px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                    onClick={() => { setUploadModalOpen(false); setSelectedFile(null); setUploadResult(null); }}
+                    style={{ background: 'none', border: 'none', fontSize: '1.4rem', color: '#94a3b8', cursor: 'pointer', padding: '0 4px' }}
                   >
-                    📄 Descargar Plantilla
+                    ✕
                   </button>
+                </div>
+
+                {/* Especificación visual obligatoria de columnas */}
+                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '14px', margin: '14px 0 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>
+                      📋 Columnas obligatorias en la Fila 1 de tu Excel / CSV:
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={handleCopyExampleToClipboard}
+                        style={{ fontSize: '0.78rem', padding: '4px 10px', background: copiedHint ? '#ecfdf5' : '#ffffff', border: copiedHint ? '1.5px solid #10b981' : '1px solid #cbd5e1', color: copiedHint ? '#047857' : '#334155', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        {copiedHint ? '✓ ¡Copiado!' : '📋 Copiar Tabla para Excel'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadPlantilla}
+                        style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        📥 Descargar Plantilla (.csv)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tabla con el orden exacto de columnas */}
+                  <div style={{ overflowX: 'auto', marginBottom: '8px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 1<br/><span style={{ color: '#0284c7' }}>sku</span></th>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 2<br/><span style={{ color: '#0284c7' }}>descripcion</span></th>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 3<br/><span style={{ color: '#0284c7' }}>categoria</span></th>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 4<br/><span style={{ color: '#0284c7' }}>unidades</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>ETIQ-50X30</td>
+                          <td style={{ padding: '6px 8px', color: '#475569' }}>Etiqueta adhesiva 50x30 mm</td>
+                          <td style={{ padding: '6px 8px' }}><span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>ETIQUETA</span></td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>1500</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>MANGA-CEL-20CM</td>
+                          <td style={{ padding: '6px 8px', color: '#475569' }}>Manga de celofán termoencogible</td>
+                          <td style={{ padding: '6px 8px' }}><span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>MANGA</span></td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>3200</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>BOLSA-POLI-10X15</td>
+                          <td style={{ padding: '6px 8px', color: '#475569' }}>Bolsa polietileno con cierre</td>
+                          <td style={{ padding: '6px 8px' }}><span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>EMPAQUE</span></td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>850</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
+                    • <b>Categorías válidas:</b> <code>ETIQUETA</code>, <code>MANGA</code>, <code>EMPAQUE</code>, <code>INSUMO</code> u <code>OTRO</code> (si se omite se asigna INSUMO).<br/>
+                    • <b>Formatos admitidos:</b> <code>.xlsx</code>, <code>.xls</code> o <code>.csv</code>.
+                  </div>
                 </div>
 
                 <form onSubmit={handleUploadExcelSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

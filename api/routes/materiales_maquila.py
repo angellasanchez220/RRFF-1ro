@@ -235,7 +235,7 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
     if df.empty:
         raise HTTPException(status_code=400, detail="El archivo subido está vacío")
 
-    # Mapeo flexible de columnas para 'sku', 'descripcion' y 'unidades'
+    # Mapeo flexible de columnas para 'sku', 'descripcion', 'categoria' y 'unidades'
     col_map = {}
     for c in df.columns:
         norm = str(c).strip().lower()
@@ -243,6 +243,8 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             col_map["sku"] = c
         elif norm in ["descripcion", "descripción", "detalle", "nombre", "desc", "descripcion_material"]:
             col_map["descripcion"] = c
+        elif norm in ["categoria", "categoría", "tipo", "rubro", "cat", "categoria_material"]:
+            col_map["categoria"] = c
         elif norm in ["unidades", "unidad", "stock", "cantidad", "cant", "stock_actual", "inventario", "uds"]:
             col_map["unidades"] = c
 
@@ -260,6 +262,7 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
     sku_col = col_map["sku"]
     uds_col = col_map["unidades"]
     desc_col = col_map.get("descripcion")
+    cat_col = col_map.get("categoria")
 
     actualizados = 0
     creados = 0
@@ -276,6 +279,21 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             raw_uds = row.get(uds_col)
             raw_desc = row.get(desc_col) if desc_col else None
             desc = str(raw_desc).strip() if (raw_desc is not None and not pd.isna(raw_desc) and str(raw_desc).strip().lower() != "nan") else ""
+
+            raw_cat = row.get(cat_col) if cat_col else None
+            cat_raw = str(raw_cat).strip().upper() if (raw_cat is not None and not pd.isna(raw_cat) and str(raw_cat).strip().lower() != "nan") else ""
+            if "ETIQ" in cat_raw:
+                cat = "ETIQUETA"
+            elif "MANGA" in cat_raw or "CELOF" in cat_raw:
+                cat = "MANGA"
+            elif "EMP" in cat_raw or "CAJA" in cat_raw or "BOLSA" in cat_raw:
+                cat = "EMPAQUE"
+            elif cat_raw in ["INSUMO", "OTRO"]:
+                cat = cat_raw
+            elif cat_raw:
+                cat = cat_raw
+            else:
+                cat = "INSUMO"
 
             try:
                 if pd.isna(raw_uds):
@@ -295,32 +313,31 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             ).fetchone()
 
             if existing:
+                set_clauses = ["stock_actual = :stock", "fecha_actualizacion = NOW()"]
+                params = {"stock": uds, "id": existing[0]}
                 if desc:
-                    conn.execute(text("""
-                        UPDATE materiales_maquila
-                        SET stock_actual = :stock,
-                            nombre = :desc,
-                            descripcion = :desc,
-                            fecha_actualizacion = NOW()
-                        WHERE id = :id
-                    """), {"stock": uds, "desc": desc, "id": existing[0]})
-                else:
-                    conn.execute(text("""
-                        UPDATE materiales_maquila
-                        SET stock_actual = :stock, fecha_actualizacion = NOW()
-                        WHERE id = :id
-                    """), {"stock": uds, "id": existing[0]})
+                    set_clauses.extend(["nombre = :desc", "descripcion = :desc"])
+                    params["desc"] = desc
+                if cat_raw:
+                    set_clauses.append("categoria = :cat")
+                    params["cat"] = cat
+
+                conn.execute(text(f"""
+                    UPDATE materiales_maquila
+                    SET {", ".join(set_clauses)}
+                    WHERE id = :id
+                """), params)
                 actualizados += 1
             else:
-                # Crear nuevo material con ese stock y descripción
+                # Crear nuevo material con ese stock, descripción y categoría
                 nombre_defecto = desc if desc else f"Material {sku}"
                 conn.execute(text("""
                     INSERT INTO materiales_maquila (
                         sku, nombre, descripcion, unidad_medida, stock_actual, categoria, observaciones
                     ) VALUES (
-                        :sku, :nombre, :desc, 'UN', :stock, 'INSUMO', 'Creado vía carga masiva de inventario'
+                        :sku, :nombre, :desc, 'UN', :stock, :cat, 'Creado vía carga masiva de inventario'
                     )
-                """), {"sku": sku, "nombre": nombre_defecto, "desc": desc, "stock": uds})
+                """), {"sku": sku, "nombre": nombre_defecto, "desc": desc, "stock": uds, "cat": cat})
                 creados += 1
 
     return {
@@ -335,12 +352,12 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
 
 @router.get("/plantilla-excel")
 def download_plantilla_excel():
-    """Descarga la plantilla Excel con las tres columnas requeridas: sku, descripcion y unidades."""
+    """Descarga la plantilla Excel con las cuatro columnas: sku, descripcion, categoria y unidades."""
     df_sample = pd.DataFrame([
-        {"sku": "ETIQ-50X30", "descripcion": "Etiqueta adhesiva 50x30 mm", "unidades": 1500},
-        {"sku": "MANGA-CEL-20CM", "descripcion": "Manga de celofán transparente 20 cm", "unidades": 3200},
-        {"sku": "BOLSA-POLI-10X15", "descripcion": "Bolsa polietileno 10x15 cm con cierre", "unidades": 850},
-        {"sku": "CAJA-MAESTRA-100U", "descripcion": "Caja de cartón master para 100 unidades", "unidades": 45}
+        {"sku": "ETIQ-50X30", "descripcion": "Etiqueta adhesiva 50x30 mm", "categoria": "ETIQUETA", "unidades": 1500},
+        {"sku": "MANGA-CEL-20CM", "descripcion": "Manga de celofán transparente 20 cm", "categoria": "MANGA", "unidades": 3200},
+        {"sku": "BOLSA-POLI-10X15", "descripcion": "Bolsa polietileno 10x15 cm con cierre", "categoria": "EMPAQUE", "unidades": 850},
+        {"sku": "CAJA-MAESTRA-100U", "descripcion": "Caja de cartón master para 100 unidades", "categoria": "EMPAQUE", "unidades": 45}
     ])
 
     output = io.BytesIO()
@@ -352,7 +369,10 @@ def download_plantilla_excel():
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
     )
 
 

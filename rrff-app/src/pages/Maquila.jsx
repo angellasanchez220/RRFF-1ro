@@ -937,7 +937,7 @@ export default function FamiliasReemplazo() {
                       <strong>ℹ️ Cómo funciona la proporción:</strong> Especifica cuántas unidades se requieren de cada componente para obtener <b>1 unidad terminada</b>.<br/>
                       <em>Ejemplo:</em> Para hacer 1 unidad del Producto B se requieren <b>3 unidades</b> del Producto A, <b>1</b> Etiqueta XXXXX y <b>2</b> Mangas de celofán.
                       <span style={{ display: 'block', marginTop: '6px', color: '#b45309', fontWeight: 600 }}>
-                        🏷️ <b>Materiales e Insumos:</b> Se seleccionan del catálogo creado en el módulo <a href="#/materiales-maquila" style={{ color: '#0284c7', textDecoration: 'underline' }}>Materiales Maquila</a>, donde también puedes subir el Excel de inventario (columnas <code>sku</code>, <code>descripcion</code> y <code>unidades</code>).
+                        🏷️ <b>Materiales e Insumos:</b> Se seleccionan del catálogo creado en el módulo <a href="#/materiales-maquila" style={{ color: '#0284c7', textDecoration: 'underline' }}>Materiales Maquila</a>, donde también puedes subir el Excel de inventario (columnas <code>sku</code>, <code>descripcion</code>, <code>categoria</code> y <code>unidades</code>).
                       </span>
                     </div>
 
