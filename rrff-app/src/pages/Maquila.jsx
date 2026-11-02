@@ -141,10 +141,13 @@ export default function FamiliasReemplazo() {
         activa: data.activa !== false,
         tiempo_base_1p_min: data.tiempo_base_1p_min != null ? data.tiempo_base_1p_min : '',
         unidades_base_tiempo: data.unidades_base_tiempo || 100,
+        costo_hora: data.costo_hora != null && Number(data.costo_hora) > 0 ? data.costo_hora : '',
+        costo_maquila_estimado: Number(data.costo_maquila_estimado) || 0,
         miembros: (data.miembros || []).map(m => ({
           codigo_femaco: m.codigo_femaco || m.sku_componente || '',
           nombre_componente: m.nombre_componente || m.nombre_producto || '',
           cantidad_por_unidad: m.cantidad_por_unidad != null ? m.cantidad_por_unidad : 1.0,
+          costo_unitario: m.costo_unitario != null ? Number(m.costo_unitario) : 0,
           tipo_componente: m.tipo_componente || 'PRODUCTO',
           unidad_medida: m.unidad_medida || 'UN',
           no_transformable: Boolean(m.no_transformable),
@@ -206,6 +209,18 @@ export default function FamiliasReemplazo() {
         return alert(`La fila #${i + 1} (${m.codigo_femaco}) debe tener una proporción/cantidad mayor a 0`);
       }
     }
+
+    // Calcular costo maquila unitario estimado automáticamente
+    const costoInsumos = formData.miembros
+      .filter(m => m.tipo_componente === 'MATERIAL')
+      .reduce((sum, m) => sum + ((Number(m.cantidad_por_unidad) || 0) * (Number(m.costo_unitario) || 0)), 0);
+    
+    const cHora = Number(formData.costo_hora) || 0;
+    const tBaseMin = Number(formData.tiempo_base_1p_min) || 0;
+    const uBase = Number(formData.unidades_base_tiempo) || 100;
+    const velUdsHora = tBaseMin > 0 ? (uBase / tBaseMin) * 60 : 0;
+    const cManoObra = velUdsHora > 0 && cHora > 0 ? (cHora / velUdsHora) : 0;
+    const costoMaquilaEstimado = Number((costoInsumos + cManoObra).toFixed(2));
     
     try {
       setLoading(true);
@@ -213,10 +228,13 @@ export default function FamiliasReemplazo() {
         ...formData,
         tiempo_base_1p_min: formData.tiempo_base_1p_min !== '' ? Number(formData.tiempo_base_1p_min) : null,
         unidades_base_tiempo: Number(formData.unidades_base_tiempo) || 100,
+        costo_hora: cHora,
+        costo_maquila_estimado: costoMaquilaEstimado,
         miembros: formData.miembros.map(m => ({
           ...m,
           codigo_femaco: m.codigo_femaco.trim().toUpperCase(),
-          cantidad_por_unidad: Number(m.cantidad_por_unidad) || 1.0
+          cantidad_por_unidad: Number(m.cantidad_por_unidad) || 1.0,
+          costo_unitario: Number(m.costo_unitario) || 0
         })),
         tiempos: formData.tiempos.filter(t => t.tiempo_minutos !== '' && Number(t.tiempo_minutos) > 0).map(t => ({
           ...t,
@@ -244,6 +262,7 @@ export default function FamiliasReemplazo() {
     let defaultCodigo = '';
     let defaultNombre = '';
     let defaultUm = 'UN';
+    let defaultCosto = 0;
 
     if (tipo === 'MATERIAL' && materialesMaquila.length > 0) {
       const usedSkus = new Set(formData.miembros.map(m => m.codigo_femaco));
@@ -251,6 +270,7 @@ export default function FamiliasReemplazo() {
       defaultCodigo = available.sku;
       defaultNombre = available.nombre || '';
       defaultUm = available.unidad_medida || 'UN';
+      defaultCosto = Number(available.costo_unitario) || 0;
     }
 
     setFormData({
@@ -261,6 +281,7 @@ export default function FamiliasReemplazo() {
           codigo_femaco: defaultCodigo,
           nombre_componente: defaultNombre,
           cantidad_por_unidad: 1.0,
+          costo_unitario: defaultCosto,
           tipo_componente: tipo,
           unidad_medida: defaultUm,
           no_transformable: false,
@@ -288,6 +309,7 @@ export default function FamiliasReemplazo() {
           newMembers[idx].codigo_femaco = mat.sku;
           newMembers[idx].nombre_componente = mat.nombre || '';
           newMembers[idx].unidad_medida = mat.unidad_medida || 'UN';
+          newMembers[idx].costo_unitario = Number(mat.costo_unitario) || 0;
         }
       }
     }
@@ -300,6 +322,7 @@ export default function FamiliasReemplazo() {
         if (mat) {
           newMembers[idx].nombre_componente = mat.nombre || '';
           newMembers[idx].unidad_medida = mat.unidad_medida || 'UN';
+          newMembers[idx].costo_unitario = Number(mat.costo_unitario) || 0;
         }
       } else {
         const match = catalogo.find(c => c.codigo_femaco === upper || c.sku === upper);
@@ -667,8 +690,10 @@ export default function FamiliasReemplazo() {
                         activa: true, 
                         tiempo_base_1p_min: '',
                         unidades_base_tiempo: 100,
+                        costo_hora: '',
+                        costo_maquila_estimado: 0,
                         miembros: [
-                          { codigo_femaco: '', nombre_componente: '', cantidad_por_unidad: 1.0, tipo_componente: 'PRODUCTO', unidad_medida: 'UN', no_transformable: false, observacion: '' }
+                          { codigo_femaco: '', nombre_componente: '', cantidad_por_unidad: 1.0, costo_unitario: 0, tipo_componente: 'PRODUCTO', unidad_medida: 'UN', no_transformable: false, observacion: '' }
                         ], 
                         tiempos: [] 
                       });
@@ -717,6 +742,7 @@ export default function FamiliasReemplazo() {
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Producto Objetivo</th>
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Composición (BOM)</th>
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Tiempo Base (1 Persona)</th>
+                          <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Costo Maquila ($/ud)</th>
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Pruebas con Dotación</th>
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Estado</th>
                           <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Acciones</th>
@@ -727,6 +753,8 @@ export default function FamiliasReemplazo() {
                           const baseMin = r.tiempo_base_1p_min != null ? Number(r.tiempo_base_1p_min) : null;
                           const uBase = r.unidades_base_tiempo || 100;
                           const rate1p = baseMin && baseMin > 0 ? Math.round((uBase / baseMin) * 60) : null;
+                          const cMaq = Number(r.costo_maquila_estimado) || 0;
+                          const cHora = Number(r.costo_hora) || 0;
                           
                           return (
                             <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -771,6 +799,23 @@ export default function FamiliasReemplazo() {
                                   </div>
                                 ) : (
                                   <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>No registrado</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '12px 14px' }}>
+                                {cMaq > 0 ? (
+                                  <div>
+                                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#15803d' }}>
+                                      ${cMaq.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+                                    {cHora > 0 && (
+                                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
+                                        M.O: ${cHora.toLocaleString('es-CL')}/h
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Sin costo reg.</span>
                                 )}
                               </td>
 
@@ -894,6 +939,171 @@ export default function FamiliasReemplazo() {
                     </div>
                   </div>
 
+                  {/* ── CUADRO RESUMEN DE MAQUILA Y COSTOS POR INTEGRANTE ── */}
+                  {(() => {
+                    const hermanos = formData.miembros.filter(m => (m.tipo_componente || 'PRODUCTO') === 'PRODUCTO' && (m.codigo_femaco || '').trim());
+                    const materiales = formData.miembros.filter(m => m.tipo_componente === 'MATERIAL' && (m.codigo_femaco || '').trim());
+                    
+                    const costoInsumosUnit = materiales.reduce((sum, m) => sum + ((Number(m.cantidad_por_unidad) || 0) * (Number(m.costo_unitario) || 0)), 0);
+                    
+                    const cHora = Number(formData.costo_hora) || 0;
+                    const tBaseMin = Number(formData.tiempo_base_1p_min) || 0;
+                    const uBase = Number(formData.unidades_base_tiempo) || 100;
+                    const velUdsHora = tBaseMin > 0 ? (uBase / tBaseMin) * 60 : 0;
+                    const costoManoObraUnit = velUdsHora > 0 && cHora > 0 ? (cHora / velUdsHora) : 0;
+                    const costoMaquilaTotal = costoInsumosUnit + costoManoObraUnit;
+
+                    return (
+                      <div className="card" style={{ padding: '22px', background: '#ffffff', borderRadius: '10px', border: '1.5px solid #0284c7', boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '1.3rem' }}>📊</span>
+                              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a', fontWeight: 800 }}>
+                                Cuadro Resumen de Maquila y Costos por Integrante
+                              </h3>
+                            </div>
+                            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.86rem' }}>
+                              Calculado automáticamente en tiempo real según los productos hermanos, materiales adicionales y el costo por hora ingresado.
+                            </p>
+                          </div>
+
+                          {/* Mini indicadores del cálculo */}
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Costo Insumos: </span>
+                              <b style={{ color: '#0369a1' }}>${costoInsumosUnit.toFixed(2)} / ud</b>
+                            </div>
+                            <div style={{ padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}>
+                              <span style={{ color: '#64748b', fontWeight: 600 }}>Mano de Obra: </span>
+                              <b style={{ color: '#7e22ce' }}>${costoManoObraUnit.toFixed(2)} / ud</b>
+                            </div>
+                            <div style={{ padding: '6px 14px', background: '#ecfdf5', borderRadius: '6px', border: '1.5px solid #10b981', fontSize: '0.85rem' }}>
+                              <span style={{ color: '#065f46', fontWeight: 700 }}>Total Maquila: </span>
+                              <b style={{ color: '#15803d', fontSize: '1rem' }}>${costoMaquilaTotal.toFixed(2)} / ud</b>
+                            </div>
+                          </div>
+                        </div>
+
+                        {hermanos.length === 0 ? (
+                          <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', background: '#f8fafc', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
+                            Agrega productos hermanos abajo en la sección de <b>Composición (BOM)</b> para ver con quiénes se puede maquilar cada integrante y el desglose de costos.
+                          </div>
+                        ) : (
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                              <thead>
+                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800 }}>SKU Integrante</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800 }}>Descripción Producto</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Costo SKU ($)</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800 }}>¿Con quiénes se puede maquilar?</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Insumos ($)</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>M.O. ($)</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Costo Maquila</th>
+                                  <th style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Costo Terminado Est.</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {hermanos.map((h, idx) => {
+                                  // Hermanos transformables que pueden originar este producto
+                                  const compatibles = hermanos.filter(other => other.codigo_femaco !== h.codigo_femaco && !other.no_transformable);
+                                  const costoBaseH = Number(h.costo_unitario) || 0;
+
+                                  return (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#fcfcfd' }}>
+                                      <td style={{ padding: '10px 12px', fontWeight: 800, color: '#0369a1', fontFamily: 'monospace', fontSize: '0.92rem' }}>
+                                        {h.codigo_femaco}
+                                        {formData.producto_objetivo === h.codigo_femaco && (
+                                          <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', background: '#dcfce7', color: '#15803d', borderRadius: '4px', fontWeight: 700 }}>
+                                            🎯 Objetivo
+                                          </span>
+                                        )}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', color: '#1e293b', fontWeight: 600 }}>
+                                        {h.nombre_componente || '(Sin nombre)'}
+                                        {h.no_transformable && (
+                                          <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>
+                                            ⚠️ No transformable (solo receptor)
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: costoBaseH > 0 ? '#0f172a' : '#94a3b8' }}>
+                                        {costoBaseH > 0 ? `$${costoBaseH.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px' }}>
+                                        {compatibles.length === 0 ? (
+                                          <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                            {hermanos.length === 1 ? 'Solo 1 producto en familia' : 'Sin otros hermanos transformables'}
+                                          </span>
+                                        ) : (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            {compatibles.map((comp, cIdx) => (
+                                              <span key={cIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#0369a1', background: '#e0f2fe', padding: '2px 7px', borderRadius: '4px', fontWeight: 600, width: 'fit-content' }}>
+                                                <span>🔄</span> Con <b>{comp.codigo_femaco}</b> (prop. {comp.cantidad_por_unidad}:1)
+                                                {Number(comp.costo_unitario) > 0 && (
+                                                  <span style={{ color: '#0284c7', fontSize: '0.74rem' }}>
+                                                    [Base: ${Number(comp.costo_unitario).toLocaleString('es-CL')}]
+                                                  </span>
+                                                )}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', textAlign: 'right', color: '#475569', fontWeight: 600 }}>
+                                        ${costoInsumosUnit.toFixed(2)}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', textAlign: 'right', color: '#7e22ce', fontWeight: 600 }}>
+                                        ${costoManoObraUnit.toFixed(2)}
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                        <span style={{ display: 'inline-block', padding: '3px 8px', background: '#ecfdf5', color: '#15803d', borderRadius: '6px', fontWeight: 800, fontSize: '0.92rem' }}>
+                                          ${costoMaquilaTotal.toFixed(2)}
+                                        </span>
+                                      </td>
+
+                                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                        {compatibles.length > 0 ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                            {compatibles.map((comp, cIdx) => {
+                                              const cComp = Number(comp.costo_unitario) || 0;
+                                              const qComp = Number(comp.cantidad_por_unidad) || 1;
+                                              const finalEst = (cComp * qComp) + costoMaquilaTotal;
+                                              return (
+                                                <div key={cIdx} style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>
+                                                  {cComp > 0 ? (
+                                                    <span>${finalEst.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>(de {comp.codigo_femaco})</span></span>
+                                                  ) : (
+                                                    <span style={{ color: '#64748b' }}>Base {comp.codigo_femaco} + ${costoMaquilaTotal.toFixed(2)}</span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                                            Base + ${costoMaquilaTotal.toFixed(2)}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* SECCIÓN 2: Estructura de Componentes, Materiales y Proporciones (BOM) */}
                   <div className="card" style={{ padding: '22px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
@@ -934,26 +1144,26 @@ export default function FamiliasReemplazo() {
 
                     {/* Banner explicativo de la proporción */}
                     <div style={{ padding: '12px 16px', background: '#f8fafc', borderLeft: '4px solid #0284c7', borderRadius: '6px', marginBottom: '16px', fontSize: '0.88rem', color: '#334155', lineHeight: 1.5 }}>
-                      <strong>ℹ️ Cómo funciona la proporción:</strong> Especifica cuántas unidades se requieren de cada componente para obtener <b>1 unidad terminada</b>.<br/>
+                      <strong>ℹ️ Cómo funciona la proporción y costos:</strong> Especifica cuántas unidades se requieren de cada componente para obtener <b>1 unidad terminada</b> e indica su costo por unidad.<br/>
                       <em>Ejemplo:</em> Para hacer 1 unidad del Producto B se requieren <b>3 unidades</b> del Producto A, <b>1</b> Etiqueta XXXXX y <b>2</b> Mangas de celofán.
                       <span style={{ display: 'block', marginTop: '6px', color: '#b45309', fontWeight: 600 }}>
-                        🏷️ <b>Materiales e Insumos:</b> Se seleccionan del catálogo creado en el módulo <a href="#/materiales-maquila" style={{ color: '#0284c7', textDecoration: 'underline' }}>Materiales Maquila</a>, donde también puedes subir el Excel de inventario (columnas <code>sku</code>, <code>descripcion</code>, <code>categoria</code> y <code>unidades</code>).
+                        🏷️ <b>Materiales e Insumos:</b> Se seleccionan del catálogo creado en el módulo <a href="#/materiales-maquila" style={{ color: '#0284c7', textDecoration: 'underline' }}>Materiales Maquila</a>, donde también puedes subir el Excel de inventario con costos (columnas <code>sku</code>, <code>descripcion</code>, <code>categoria</code>, <code>unidades</code> y <code>costo</code>).
                       </span>
                     </div>
-
-                    {/* Tabla de Componentes y Proporciones */}
                     <div style={{ overflowX: 'auto', marginBottom: '16px' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
                         <thead>
                           <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                            <th style={{ padding: '10px 12px', width: '150px' }}>Tipo de Ítem</th>
-                            <th style={{ padding: '10px 12px', width: '240px' }}>Código Interno / Material *</th>
+                            <th style={{ padding: '10px 12px', width: '130px' }}>Tipo de Ítem</th>
+                            <th style={{ padding: '10px 12px', width: '220px' }}>Código Interno / Material *</th>
                             <th style={{ padding: '10px 12px' }}>Descripción / Insumo y Stock</th>
-                            <th style={{ padding: '10px 12px', width: '140px', textAlign: 'center' }}>Proporción (Cant. requerida) *</th>
-                            <th style={{ padding: '10px 12px', width: '90px', textAlign: 'center' }}>Unidad</th>
-                            <th style={{ padding: '10px 12px', width: '130px', textAlign: 'center' }}>No Transformable</th>
-                            <th style={{ padding: '10px 12px', width: '180px' }}>Observaciones</th>
-                            <th style={{ padding: '10px 12px', width: '60px', textAlign: 'center' }}>Acción</th>
+                            <th style={{ padding: '10px 12px', width: '110px', textAlign: 'center' }}>Proporción *</th>
+                            <th style={{ padding: '10px 12px', width: '80px', textAlign: 'center' }}>Unidad</th>
+                            <th style={{ padding: '10px 12px', width: '120px', textAlign: 'center' }}>Costo Unit. ($)</th>
+                            <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right' }}>Subtotal ($)</th>
+                            <th style={{ padding: '10px 12px', width: '120px', textAlign: 'center' }}>No Transformable</th>
+                            <th style={{ padding: '10px 12px', width: '160px' }}>Observaciones</th>
+                            <th style={{ padding: '10px 12px', width: '50px', textAlign: 'center' }}>Acción</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1006,6 +1216,7 @@ export default function FamiliasReemplazo() {
                                           if (mat) {
                                             newMembers[i].nombre_componente = mat.nombre || '';
                                             newMembers[i].unidad_medida = mat.unidad_medida || 'UN';
+                                            newMembers[i].costo_unitario = Number(mat.costo_unitario) || 0;
                                           }
                                           setFormData({ ...formData, miembros: newMembers });
                                         }}
@@ -1023,7 +1234,7 @@ export default function FamiliasReemplazo() {
                                         <option value="">-- Seleccionar Material Creado --</option>
                                         {materialesMaquila.map(mat => (
                                           <option key={mat.id || mat.sku} value={mat.sku}>
-                                            {mat.sku} - {mat.nombre} ({mat.stock_actual || 0} {mat.unidad_medida || 'UN'})
+                                            {mat.sku} - {mat.nombre} ({mat.stock_actual || 0} {mat.unidad_medida || 'UN'}) - ${Number(mat.costo_unitario || 0).toFixed(2)}
                                           </option>
                                         ))}
                                       </select>
@@ -1086,7 +1297,7 @@ export default function FamiliasReemplazo() {
                                       min="0.01"
                                       value={m.cantidad_por_unidad ?? 1.0}
                                       onChange={e => updateMiembro(i, 'cantidad_por_unidad', e.target.value)}
-                                      style={{ width: '80px', padding: '6px 8px', textAlign: 'center', borderRadius: '4px', border: '1.5px solid #0284c7', fontWeight: 800, color: '#0284c7' }}
+                                      style={{ width: '70px', padding: '6px 6px', textAlign: 'center', borderRadius: '4px', border: '1.5px solid #0284c7', fontWeight: 800, color: '#0284c7' }}
                                       title="Cantidad requerida para 1 unidad terminada"
                                       required
                                     />
@@ -1102,6 +1313,28 @@ export default function FamiliasReemplazo() {
                                     style={{ width: '100%', padding: '6px 4px', textAlign: 'center', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.82rem', fontWeight: 600 }}
                                     placeholder="UN"
                                   />
+                                </td>
+
+                                {/* Costo Unitario por SKU / Material */}
+                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>$</span>
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      min="0"
+                                      value={m.costo_unitario ?? 0}
+                                      onChange={e => updateMiembro(i, 'costo_unitario', e.target.value)}
+                                      style={{ width: '75px', padding: '6px 6px', textAlign: 'right', borderRadius: '4px', border: '1.5px solid #16a34a', fontWeight: 700, color: '#16a34a' }}
+                                      title="Costo unitario por SKU o insumo"
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </td>
+
+                                {/* Subtotal Costo */}
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                                  ${((Number(m.cantidad_por_unidad) || 0) * (Number(m.costo_unitario) || 0)).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
 
                                 {/* No transformable */}
@@ -1123,7 +1356,7 @@ export default function FamiliasReemplazo() {
                                 <td style={{ padding: '8px 10px' }}>
                                   <input 
                                     type="text" 
-                                    value={m.observacion || ''}
+                                    value={m.observacion || ''} 
                                     onChange={e => updateMiembro(i, 'observacion', e.target.value)}
                                     style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
                                     placeholder="Notas específicas..."
@@ -1146,7 +1379,7 @@ export default function FamiliasReemplazo() {
                           })}
                           {formData.miembros.length === 0 && (
                             <tr>
-                              <td colSpan="8" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+                              <td colSpan="10" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
                                 Agrega integrantes con los botones superiores (+ Producto Hermano o + Material / Insumo).
                               </td>
                             </tr>
@@ -1164,7 +1397,7 @@ export default function FamiliasReemplazo() {
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           {formData.miembros.map((m, idx) => (
                             <span key={idx} style={{ background: '#ffffff', padding: '4px 10px', borderRadius: '4px', border: '1px solid #86efac', color: '#15803d', fontWeight: 600 }}>
-                              {m.cantidad_por_unidad} {m.unidad_medida || 'UN'} × <b>{m.codigo_femaco || 'CÓD'}</b> {m.nombre_componente && `(${m.nombre_componente})`}
+                              {m.cantidad_por_unidad} {m.unidad_medida || 'UN'} × <b>{m.codigo_femaco || 'CÓD'}</b> {m.nombre_componente && `(${m.nombre_componente})`} {Number(m.costo_unitario) > 0 && <span style={{ color: '#16a34a', fontWeight: 700 }}>[${Number(m.costo_unitario).toFixed(2)}]</span>}
                             </span>
                           ))}
                         </div>
@@ -1177,10 +1410,10 @@ export default function FamiliasReemplazo() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
                       <div>
                         <h2 style={{ margin: '0 0 4px', fontSize: '1.25rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>⏱️</span> Tiempos de Maquila y Rendimiento (Productividad por Operarios)
+                          <span>⏱️</span> Tiempos de Maquila, Productividad y Costo por Hora
                         </h2>
                         <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
-                          Ingresa cuánto tiempo se demora 1 persona en maquilar 100 unidades, y registra las pruebas con dotaciones de 3, 4, 6 o más personas.
+                          Ingresa cuánto demora 1 persona para 100 unidades y el costo por hora de mano de obra. Con esto se calcula automáticamente el costo por unidad en el cuadro resumen.
                         </p>
                       </div>
 
@@ -1193,11 +1426,11 @@ export default function FamiliasReemplazo() {
                       </button>
                     </div>
 
-                    {/* Subsección: Tiempo Base 1 Persona */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', padding: '16px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                    {/* Subsección: Tiempo Base 1 Persona y Costo por Hora */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', padding: '16px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
                       <div>
                         <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#0f172a' }}>
-                          Tiempo que demora 1 PERSONA para maquilar 100 unidades (minutos):
+                          Tiempo que demora 1 PERSONA para 100 unidades:
                         </label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <input 
@@ -1206,7 +1439,7 @@ export default function FamiliasReemplazo() {
                             min="0"
                             value={formData.tiempo_base_1p_min} 
                             onChange={e => setFormData({ ...formData, tiempo_base_1p_min: e.target.value })}
-                            style={{ width: '130px', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #0284c7', fontSize: '1.1rem', fontWeight: 800, color: '#0284c7' }}
+                            style={{ width: '120px', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #0284c7', fontSize: '1.1rem', fontWeight: 800, color: '#0284c7' }}
                             placeholder="Ej: 45"
                           />
                           <span style={{ fontWeight: 600, color: '#475569' }}>minutos / 100 uds</span>
@@ -1216,28 +1449,52 @@ export default function FamiliasReemplazo() {
                         </span>
                       </div>
 
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 700, marginBottom: '6px', color: '#0f172a' }}>
+                          Costo Mano de Obra por Hora ($ / hora):
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 800, color: '#16a34a', fontSize: '1.1rem' }}>$</span>
+                          <input 
+                            type="number" 
+                            step="100"
+                            min="0"
+                            value={formData.costo_hora} 
+                            onChange={e => setFormData({ ...formData, costo_hora: e.target.value })}
+                            style={{ width: '130px', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #16a34a', fontSize: '1.1rem', fontWeight: 800, color: '#16a34a' }}
+                            placeholder="Ej: 15000"
+                          />
+                          <span style={{ fontWeight: 600, color: '#475569' }}>pesos / hora</span>
+                        </div>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                          Se divide entre la velocidad (uds/h) para calcular el costo por unidad.
+                        </span>
+                      </div>
+
                       {/* Tarjeta de cálculo automático base */}
-                      {formData.tiempo_base_1p_min && Number(formData.tiempo_base_1p_min) > 0 && (
+                      {formData.tiempo_base_1p_min && Number(formData.tiempo_base_1p_min) > 0 ? (
                         <div style={{ padding: '12px 16px', background: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                            Rendimiento Calculado Base (1 Persona)
+                            Rendimiento y Costo Calculado (1 Persona)
                           </div>
-                          <div style={{ display: 'flex', gap: '16px', marginTop: '4px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '14px', marginTop: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
                             <div>
                               <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>
                                 {Math.round((Number(formData.unidades_base_tiempo || 100) / Number(formData.tiempo_base_1p_min)) * 60)}
                               </span>
                               <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}> uds / hora</span>
                             </div>
-                            <div>
-                              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7' }}>
-                                {(Number(formData.tiempo_base_1p_min) / Number(formData.unidades_base_tiempo || 100)).toFixed(2)}
-                              </span>
-                              <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}> min / unidad</span>
-                            </div>
+                            {Number(formData.costo_hora) > 0 && (
+                              <div style={{ borderLeft: '2px solid #e2e8f0', paddingLeft: '12px' }}>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#7e22ce' }}>
+                                  ${(Number(formData.costo_hora) / ((Number(formData.unidades_base_tiempo || 100) / Number(formData.tiempo_base_1p_min)) * 60)).toFixed(2)}
+                                </span>
+                                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}> M.O. / ud</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Subsección: Pruebas con Múltiples Personas */}

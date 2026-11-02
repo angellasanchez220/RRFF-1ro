@@ -149,10 +149,13 @@ def run_migrations():
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS tipo_componente TEXT DEFAULT 'PRODUCTO'",
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS nombre_componente TEXT",
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS unidad_medida TEXT DEFAULT 'UN'",
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS costo_unitario NUMERIC(12,2) DEFAULT 0",
 
         "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS tiempo_base_1p_min NUMERIC(10,2)",
         "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS unidades_base_tiempo INTEGER DEFAULT 100",
         "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS producto_objetivo TEXT",
+        "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS costo_hora NUMERIC(12,2) DEFAULT 0",
+        "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS costo_maquila_estimado NUMERIC(12,2) DEFAULT 0",
 
         # ── Maquila: Mediciones y pruebas de tiempos por dotación de personas ──
         """

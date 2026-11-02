@@ -21,6 +21,7 @@ export default function MaterialesMaquila() {
     categoria: 'ETIQUETA',
     unidad_medida: 'UN',
     stock_actual: 0,
+    costo_unitario: 0,
     observaciones: '',
     activo: true
   });
@@ -72,6 +73,7 @@ export default function MaterialesMaquila() {
       categoria: 'ETIQUETA',
       unidad_medida: 'UN',
       stock_actual: 0,
+      costo_unitario: 0,
       observaciones: '',
       activo: true
     });
@@ -87,6 +89,7 @@ export default function MaterialesMaquila() {
       categoria: mat.categoria || 'INSUMO',
       unidad_medida: mat.unidad_medida || 'UN',
       stock_actual: mat.stock_actual ?? 0,
+      costo_unitario: mat.costo_unitario ?? 0,
       observaciones: mat.observaciones || '',
       activo: mat.activo !== false
     });
@@ -100,10 +103,15 @@ export default function MaterialesMaquila() {
 
     setSaving(true);
     try {
+      const payload = {
+        ...formMaterial,
+        stock_actual: Number(formMaterial.stock_actual) || 0,
+        costo_unitario: Number(formMaterial.costo_unitario) || 0
+      };
       if (editingMaterial) {
-        await api.updateMaterialMaquila(editingMaterial.id, formMaterial);
+        await api.updateMaterialMaquila(editingMaterial.id, payload);
       } else {
-        await api.createMaterialMaquila(formMaterial);
+        await api.createMaterialMaquila(payload);
       }
       setModalOpen(false);
       loadData();
@@ -130,11 +138,11 @@ export default function MaterialesMaquila() {
 
   function handleDownloadPlantilla() {
     try {
-      const csvContent = "\uFEFFsku,descripcion,categoria,unidades\n" +
-        "ETIQ-50X30,Etiqueta adhesiva 50x30 mm,ETIQUETA,1500\n" +
-        "MANGA-CEL-20CM,Manga de celofán transparente 20 cm,MANGA,3200\n" +
-        "BOLSA-POLI-10X15,Bolsa polietileno 10x15 cm con cierre,EMPAQUE,850\n" +
-        "CAJA-MAESTRA-100U,Caja de cartón master para 100 unidades,EMPAQUE,45\n";
+      const csvContent = "\uFEFFsku,descripcion,categoria,unidades,costo\n" +
+        "ETIQ-50X30,Etiqueta adhesiva 50x30 mm,ETIQUETA,1500,15.50\n" +
+        "MANGA-CEL-20CM,Manga de celofán transparente 20 cm,MANGA,3200,25.00\n" +
+        "BOLSA-POLI-10X15,Bolsa polietileno 10x15 cm con cierre,EMPAQUE,850,12.00\n" +
+        "CAJA-MAESTRA-100U,Caja de cartón master para 100 unidades,EMPAQUE,45,180.00\n";
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -150,11 +158,11 @@ export default function MaterialesMaquila() {
   }
 
   function handleCopyExampleToClipboard() {
-    const tableText = "sku\tdescripcion\tcategoria\tunidades\n" +
-      "ETIQ-50X30\tEtiqueta adhesiva 50x30 mm\tETIQUETA\t1500\n" +
-      "MANGA-CEL-20CM\tManga de celofán transparente 20 cm\tMANGA\t3200\n" +
-      "BOLSA-POLI-10X15\tBolsa polietileno 10x15 cm con cierre\tEMPAQUE\t850\n" +
-      "CAJA-MAESTRA-100U\tCaja de cartón master para 100 unidades\tEMPAQUE\t45";
+    const tableText = "sku\tdescripcion\tcategoria\tunidades\tcosto\n" +
+      "ETIQ-50X30\tEtiqueta adhesiva 50x30 mm\tETIQUETA\t1500\t15.50\n" +
+      "MANGA-CEL-20CM\tManga de celofán transparente 20 cm\tMANGA\t3200\t25.00\n" +
+      "BOLSA-POLI-10X15\tBolsa polietileno 10x15 cm con cierre\tEMPAQUE\t850\t12.00\n" +
+      "CAJA-MAESTRA-100U\tCaja de cartón master para 100 unidades\tEMPAQUE\t45\t180.00";
     navigator.clipboard.writeText(tableText).then(() => {
       setCopiedHint(true);
       setTimeout(() => setCopiedHint(false), 3000);
@@ -212,6 +220,7 @@ export default function MaterialesMaquila() {
   // KPIs
   const totalItems = materiales.length;
   const totalStockUds = materiales.reduce((acc, m) => acc + (Number(m.stock_actual) || 0), 0);
+  const totalValorizado = materiales.reduce((acc, m) => acc + ((Number(m.stock_actual) || 0) * (Number(m.costo_unitario) || 0)), 0);
   const quiebresCount = materiales.filter(m => (Number(m.stock_actual) || 0) <= 0).length;
 
   return (
@@ -230,7 +239,7 @@ export default function MaterialesMaquila() {
               </div>
               <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.92rem' }}>
                 Catálogo exclusivo e inventario de materiales adicionales (etiquetas, mangas de celofán, adhesivos, empaques).
-                Los materiales creados aquí quedan automáticamente disponibles para ser seleccionados en las recetas de maquila.
+                Los materiales creados aquí quedan automáticamente disponibles para ser seleccionados en las recetas de maquila con sus respectivos costos.
               </p>
             </div>
 
@@ -240,7 +249,7 @@ export default function MaterialesMaquila() {
                 className="btn-secondary"
                 onClick={handleDownloadPlantilla}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
-                title="Descargar plantilla con columnas: sku, descripcion, categoria, unidades"
+                title="Descargar plantilla con columnas: sku, descripcion, categoria, unidades, costo"
               >
                 <span>📄</span> Plantilla Excel / CSV
               </button>
@@ -294,6 +303,16 @@ export default function MaterialesMaquila() {
               </div>
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
                 Unidades físicas en inventario
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '16px 20px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: '4px solid #f59e0b', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Valorizado Inventario</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#b45309', marginTop: '4px' }}>
+                ${Math.round(totalValorizado).toLocaleString('es-CL')}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
+                Valorización según costo unitario
               </div>
             </div>
 
@@ -375,7 +394,9 @@ export default function MaterialesMaquila() {
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Nombre del Material / Insumo</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Categoría</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Unidad</th>
-                      <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Stock Actual (Unidades)</th>
+                      <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Stock Actual</th>
+                      <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Costo Unit. ($)</th>
+                      <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Total Valor ($)</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Observaciones</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Estado</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Acciones</th>
@@ -384,6 +405,8 @@ export default function MaterialesMaquila() {
                   <tbody>
                     {filteredMateriales.map((m, idx) => {
                       const stockNum = Number(m.stock_actual) || 0;
+                      const costoNum = Number(m.costo_unitario) || 0;
+                      const valorTotal = stockNum * costoNum;
                       const isQuiebre = stockNum <= 0;
 
                       return (
@@ -430,6 +453,14 @@ export default function MaterialesMaquila() {
                                 </span>
                               )}
                             </div>
+                          </td>
+
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                            ${costoNum.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#16a34a' }}>
+                            ${Math.round(valorTotal).toLocaleString('es-CL')}
                           </td>
 
                           <td style={{ padding: '12px 14px', color: '#475569', fontSize: '0.82rem' }}>
@@ -560,23 +591,40 @@ export default function MaterialesMaquila() {
                     </div>
                   </div>
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
-                      Stock Actual / Inventario Disponible (Unidades):
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={formMaterial.stock_actual}
-                      onChange={e => setFormMaterial({ ...formMaterial, stock_actual: e.target.value })}
-                      style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #0284c7', fontSize: '1.1rem', fontWeight: 800, color: '#0284c7' }}
-                      placeholder="0"
-                    />
-                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      También puedes actualizar masivamente el stock subiendo el Excel simple de inventario.
-                    </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
+                        Stock Actual (Unidades):
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={formMaterial.stock_actual}
+                        onChange={e => setFormMaterial({ ...formMaterial, stock_actual: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #0284c7', fontSize: '1.05rem', fontWeight: 800, color: '#0284c7' }}
+                        placeholder="0"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
+                        Costo Unitario ($ / unidad):
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formMaterial.costo_unitario}
+                        onChange={e => setFormMaterial({ ...formMaterial, costo_unitario: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #16a34a', fontSize: '1.05rem', fontWeight: 800, color: '#16a34a' }}
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '-8px' }}>
+                    Ingresa las existencias y el costo unitario del material. Estos datos se usan automáticamente al calcular costos en recetas de maquila.
+                  </span>
 
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
@@ -685,6 +733,7 @@ export default function MaterialesMaquila() {
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 2<br/><span style={{ color: '#0284c7' }}>descripcion</span></th>
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 3<br/><span style={{ color: '#0284c7' }}>categoria</span></th>
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 4<br/><span style={{ color: '#0284c7' }}>unidades</span></th>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 5<br/><span style={{ color: '#16a34a' }}>costo</span></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -693,18 +742,21 @@ export default function MaterialesMaquila() {
                           <td style={{ padding: '6px 8px', color: '#475569' }}>Etiqueta adhesiva 50x30 mm</td>
                           <td style={{ padding: '6px 8px' }}><span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>ETIQUETA</span></td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>1500</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>$15.50</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>MANGA-CEL-20CM</td>
                           <td style={{ padding: '6px 8px', color: '#475569' }}>Manga de celofán termoencogible</td>
                           <td style={{ padding: '6px 8px' }}><span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>MANGA</span></td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>3200</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>$25.00</td>
                         </tr>
                         <tr>
                           <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>BOLSA-POLI-10X15</td>
                           <td style={{ padding: '6px 8px', color: '#475569' }}>Bolsa polietileno con cierre</td>
                           <td style={{ padding: '6px 8px' }}><span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>EMPAQUE</span></td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>850</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>$12.00</td>
                         </tr>
                       </tbody>
                     </table>
@@ -712,6 +764,7 @@ export default function MaterialesMaquila() {
 
                   <div style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
                     • <b>Categorías válidas:</b> <code>ETIQUETA</code>, <code>MANGA</code>, <code>EMPAQUE</code>, <code>INSUMO</code> u <code>OTRO</code> (si se omite se asigna INSUMO).<br/>
+                    • <b>Columna costo:</b> Costo unitario por unidad del insumo (ej: 15.50). Actualiza la valorización y alimenta el costo automático en recetas de maquila.<br/>
                     • <b>Formatos admitidos:</b> <code>.xlsx</code>, <code>.xls</code> o <code>.csv</code>.
                   </div>
                 </div>

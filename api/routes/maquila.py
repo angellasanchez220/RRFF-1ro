@@ -59,6 +59,8 @@ def get_recetas():
                     r.fecha_actualizacion,
                     r.tiempo_base_1p_min,
                     COALESCE(r.unidades_base_tiempo, 100) as unidades_base_tiempo,
+                    COALESCE(r.costo_hora, 0) as costo_hora,
+                    COALESCE(r.costo_maquila_estimado, 0) as costo_maquila_estimado,
                     r.producto_objetivo,
                     (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id) as cantidad_miembros,
                     (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id AND COALESCE(c.tipo_componente, 'PRODUCTO') = 'PRODUCTO') as cantidad_productos,
@@ -69,6 +71,8 @@ def get_recetas():
             """), conn)
             
             df_recetas['fecha_actualizacion'] = df_recetas['fecha_actualizacion'].astype(str)
+            df_recetas['costo_hora'] = df_recetas['costo_hora'].fillna(0).astype(float)
+            df_recetas['costo_maquila_estimado'] = df_recetas['costo_maquila_estimado'].fillna(0).astype(float)
             return {"data": df_recetas.to_dict(orient="records")}
         except Exception as e:
             return {"data": [], "error": str(e)}
@@ -91,6 +95,7 @@ def get_receta(receta_id: int):
                     COALESCE(c.cantidad_por_unidad, 1.0) AS cantidad_por_unidad,
                     COALESCE(c.tipo_componente, 'PRODUCTO') AS tipo_componente,
                     COALESCE(c.unidad_medida, 'UN') AS unidad_medida,
+                    COALESCE(c.costo_unitario, 0) AS costo_unitario,
                     c.no_transformable,
                     COALESCE(c.observacion, '') AS observacion
                 FROM receta_maquila_componentes c
@@ -122,11 +127,14 @@ def get_receta(receta_id: int):
                 receta_dict['tiempo_base_1p_min'] = float(receta_dict['tiempo_base_1p_min'])
             if receta_dict.get('unidades_base_tiempo') is None:
                 receta_dict['unidades_base_tiempo'] = 100
+            receta_dict['costo_hora'] = float(receta_dict.get('costo_hora') or 0)
+            receta_dict['costo_maquila_estimado'] = float(receta_dict.get('costo_maquila_estimado') or 0)
             
             comps = componentes.to_dict(orient="records")
             for c in comps:
                 c['no_transformable'] = bool(c['no_transformable'])
                 c['cantidad_por_unidad'] = float(c['cantidad_por_unidad'])
+                c['costo_unitario'] = float(c.get('costo_unitario') or 0)
                 
             receta_dict['miembros'] = comps
 
@@ -164,6 +172,20 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
     except Exception:
         unidades_base_tiempo = 100
 
+    try:
+        costo_hora = float(body.get("costo_hora", 0) or 0)
+        if costo_hora < 0:
+            costo_hora = 0.0
+    except Exception:
+        costo_hora = 0.0
+
+    try:
+        costo_maquila_estimado = float(body.get("costo_maquila_estimado", 0) or 0)
+        if costo_maquila_estimado < 0:
+            costo_maquila_estimado = 0.0
+    except Exception:
+        costo_maquila_estimado = 0.0
+
     miembros = body.get("miembros", [])
     tiempos = body.get("tiempos", [])
     
@@ -188,9 +210,10 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
             result = conn.execute(text("""
                 INSERT INTO recetas_maquila (
                     sku_maquilable, descripcion, activa,
-                    tiempo_base_1p_min, unidades_base_tiempo, producto_objetivo
+                    tiempo_base_1p_min, unidades_base_tiempo,
+                    costo_hora, costo_maquila_estimado, producto_objetivo
                 )
-                VALUES (:sku, :desc, :activa, :tbase, :ubase, :pobj)
+                VALUES (:sku, :desc, :activa, :tbase, :ubase, :chora, :cmest, :pobj)
                 RETURNING id
             """), {
                 "sku": sku_dummy, 
@@ -198,6 +221,8 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                 "activa": activa,
                 "tbase": tiempo_base_1p_min,
                 "ubase": unidades_base_tiempo,
+                "chora": costo_hora,
+                "cmest": costo_maquila_estimado,
                 "pobj": producto_objetivo
             })
             
@@ -212,6 +237,13 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                 except Exception:
                     qty = Decimal("1.0")
 
+                try:
+                    costo_u = Decimal(str(m.get("costo_unitario", 0) or 0))
+                    if costo_u < 0:
+                        costo_u = Decimal("0.0")
+                except Exception:
+                    costo_u = Decimal("0.0")
+
                 tipo = str(m.get("tipo_componente") or "PRODUCTO").strip().upper()
                 nombre_c = str(m.get("nombre_componente") or m.get("nombre_producto") or "").strip()
                 um = str(m.get("unidad_medida") or "UN").strip()
@@ -221,9 +253,9 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (
                         receta_id, sku_componente, cantidad_por_unidad, no_transformable,
-                        tipo_componente, nombre_componente, unidad_medida, observacion
+                        tipo_componente, nombre_componente, unidad_medida, costo_unitario, observacion
                     )
-                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :obs)
+                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou, :obs)
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
@@ -232,6 +264,7 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                     "tipo": tipo,
                     "nombre": nombre_c,
                     "um": um,
+                    "costou": costo_u,
                     "obs": obs
                 })
 
@@ -286,6 +319,20 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
     except Exception:
         unidades_base_tiempo = 100
 
+    try:
+        costo_hora = float(body.get("costo_hora", 0) or 0)
+        if costo_hora < 0:
+            costo_hora = 0.0
+    except Exception:
+        costo_hora = 0.0
+
+    try:
+        costo_maquila_estimado = float(body.get("costo_maquila_estimado", 0) or 0)
+        if costo_maquila_estimado < 0:
+            costo_maquila_estimado = 0.0
+    except Exception:
+        costo_maquila_estimado = 0.0
+
     miembros = body.get("miembros", [])
     tiempos = body.get("tiempos", [])
     
@@ -310,6 +357,8 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                     activa = :activa, 
                     tiempo_base_1p_min = :tbase,
                     unidades_base_tiempo = :ubase,
+                    costo_hora = :chora,
+                    costo_maquila_estimado = :cmest,
                     producto_objetivo = :pobj,
                     fecha_actualizacion = NOW()
                 WHERE id = :id
@@ -318,6 +367,8 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                 "activa": activa, 
                 "tbase": tiempo_base_1p_min,
                 "ubase": unidades_base_tiempo,
+                "chora": costo_hora,
+                "cmest": costo_maquila_estimado,
                 "pobj": producto_objetivo,
                 "id": receta_id
             })
@@ -333,6 +384,13 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                 except Exception:
                     qty = Decimal("1.0")
 
+                try:
+                    costo_u = Decimal(str(m.get("costo_unitario", 0) or 0))
+                    if costo_u < 0:
+                        costo_u = Decimal("0.0")
+                except Exception:
+                    costo_u = Decimal("0.0")
+
                 tipo = str(m.get("tipo_componente") or "PRODUCTO").strip().upper()
                 nombre_c = str(m.get("nombre_componente") or m.get("nombre_producto") or "").strip()
                 um = str(m.get("unidad_medida") or "UN").strip()
@@ -342,9 +400,9 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (
                         receta_id, sku_componente, cantidad_por_unidad, no_transformable,
-                        tipo_componente, nombre_componente, unidad_medida, observacion
+                        tipo_componente, nombre_componente, unidad_medida, costo_unitario, observacion
                     )
-                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :obs)
+                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou, :obs)
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
@@ -353,6 +411,7 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                     "tipo": tipo,
                     "nombre": nombre_c,
                     "um": um,
+                    "costou": costo_u,
                     "obs": obs
                 })
 
