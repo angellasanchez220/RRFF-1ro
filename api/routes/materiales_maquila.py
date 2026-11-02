@@ -214,8 +214,8 @@ def delete_material(material_id: int, authorization: str = Header(None)):
 @router.post("/upload-inventario")
 async def upload_inventario_materiales(file: UploadFile = File(...), authorization: str = Header(None)):
     """
-    Sube un Excel simple de inventario de materiales con columnas 'sku' y 'unidades'.
-    Actualiza el stock de los materiales existentes y crea los que no existan.
+    Sube un Excel de inventario de materiales con columnas 'sku', 'descripcion' y 'unidades'.
+    Actualiza el stock y descripción de los materiales existentes y crea los que no existan.
     """
     _require_admin(authorization)
 
@@ -235,12 +235,14 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
     if df.empty:
         raise HTTPException(status_code=400, detail="El archivo subido está vacío")
 
-    # Mapeo flexible de columnas para 'sku' y 'unidades'
+    # Mapeo flexible de columnas para 'sku', 'descripcion' y 'unidades'
     col_map = {}
     for c in df.columns:
         norm = str(c).strip().lower()
         if norm in ["sku", "codigo", "código", "item", "material", "cod_material"]:
             col_map["sku"] = c
+        elif norm in ["descripcion", "descripción", "detalle", "nombre", "desc", "descripcion_material"]:
+            col_map["descripcion"] = c
         elif norm in ["unidades", "unidad", "stock", "cantidad", "cant", "stock_actual", "inventario", "uds"]:
             col_map["unidades"] = c
 
@@ -257,6 +259,7 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
 
     sku_col = col_map["sku"]
     uds_col = col_map["unidades"]
+    desc_col = col_map.get("descripcion")
 
     actualizados = 0
     creados = 0
@@ -271,6 +274,8 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
 
             sku = str(raw_sku).strip().upper()
             raw_uds = row.get(uds_col)
+            raw_desc = row.get(desc_col) if desc_col else None
+            desc = str(raw_desc).strip() if (raw_desc is not None and not pd.isna(raw_desc) and str(raw_desc).strip().lower() != "nan") else ""
 
             try:
                 if pd.isna(raw_uds):
@@ -290,22 +295,32 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             ).fetchone()
 
             if existing:
-                conn.execute(text("""
-                    UPDATE materiales_maquila
-                    SET stock_actual = :stock, fecha_actualizacion = NOW()
-                    WHERE id = :id
-                """), {"stock": uds, "id": existing[0]})
+                if desc:
+                    conn.execute(text("""
+                        UPDATE materiales_maquila
+                        SET stock_actual = :stock,
+                            nombre = :desc,
+                            descripcion = :desc,
+                            fecha_actualizacion = NOW()
+                        WHERE id = :id
+                    """), {"stock": uds, "desc": desc, "id": existing[0]})
+                else:
+                    conn.execute(text("""
+                        UPDATE materiales_maquila
+                        SET stock_actual = :stock, fecha_actualizacion = NOW()
+                        WHERE id = :id
+                    """), {"stock": uds, "id": existing[0]})
                 actualizados += 1
             else:
-                # Crear nuevo material con ese stock
-                nombre_defecto = f"Material {sku}"
+                # Crear nuevo material con ese stock y descripción
+                nombre_defecto = desc if desc else f"Material {sku}"
                 conn.execute(text("""
                     INSERT INTO materiales_maquila (
-                        sku, nombre, unidad_medida, stock_actual, categoria, observaciones
+                        sku, nombre, descripcion, unidad_medida, stock_actual, categoria, observaciones
                     ) VALUES (
-                        :sku, :nombre, 'UN', :stock, 'INSUMO', 'Creado vía carga masiva de inventario'
+                        :sku, :nombre, :desc, 'UN', :stock, 'INSUMO', 'Creado vía carga masiva de inventario'
                     )
-                """), {"sku": sku, "nombre": nombre_defecto, "stock": uds})
+                """), {"sku": sku, "nombre": nombre_defecto, "desc": desc, "stock": uds})
                 creados += 1
 
     return {
@@ -320,12 +335,12 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
 
 @router.get("/plantilla-excel")
 def download_plantilla_excel():
-    """Descarga la plantilla Excel con las dos columnas requeridas: sku y unidades."""
+    """Descarga la plantilla Excel con las tres columnas requeridas: sku, descripcion y unidades."""
     df_sample = pd.DataFrame([
-        {"sku": "ETIQ-50X30", "unidades": 1500},
-        {"sku": "MANGA-CEL-20CM", "unidades": 3200},
-        {"sku": "BOLSA-POLI-10X15", "unidades": 850},
-        {"sku": "CAJA-MAESTRA-100U", "unidades": 45}
+        {"sku": "ETIQ-50X30", "descripcion": "Etiqueta adhesiva 50x30 mm", "unidades": 1500},
+        {"sku": "MANGA-CEL-20CM", "descripcion": "Manga de celofán transparente 20 cm", "unidades": 3200},
+        {"sku": "BOLSA-POLI-10X15", "descripcion": "Bolsa polietileno 10x15 cm con cierre", "unidades": 850},
+        {"sku": "CAJA-MAESTRA-100U", "descripcion": "Caja de cartón master para 100 unidades", "unidades": 45}
     ])
 
     output = io.BytesIO()

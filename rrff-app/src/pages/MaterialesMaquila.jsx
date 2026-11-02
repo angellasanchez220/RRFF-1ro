@@ -218,7 +218,7 @@ export default function MaterialesMaquila() {
                 className="btn-secondary"
                 onClick={handleDownloadPlantilla}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
-                title="Descargar plantilla Excel con columnas 'sku' y 'unidades'"
+                title="Descargar plantilla Excel con columnas: sku, descripcion, unidades"
               >
                 <span>📄</span> Plantilla Excel
               </button>
@@ -615,10 +615,22 @@ export default function MaterialesMaquila() {
                 <h2 style={{ margin: '0 0 6px', fontSize: '1.3rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>📤</span> Carga Masiva de Inventario de Materiales
                 </h2>
-                <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.4 }}>
-                  Sube un archivo Excel simple (.xlsx o .xls) que contenga únicamente dos columnas: <b>sku</b> y <b>unidades</b>.
-                  Actualizará el stock de los existentes y registrará los nuevos automáticamente.
+                <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.4 }}>
+                  Sube un archivo Excel (.xlsx o .xls) con las columnas: <b>sku</b>, <b>descripcion</b> y <b>unidades</b>.
+                  Actualizará el stock y nombre de los materiales existentes y creará los nuevos automáticamente.
                 </p>
+
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontWeight: 700, color: '#334155' }}>
+                    1. sku
+                  </span>
+                  <span style={{ fontSize: '0.78rem', background: '#fef3c7', padding: '4px 8px', borderRadius: '4px', border: '1px solid #fde68a', fontWeight: 700, color: '#92400e' }}>
+                    2. descripcion
+                  </span>
+                  <span style={{ fontSize: '0.78rem', background: '#e0f2fe', padding: '4px 8px', borderRadius: '4px', border: '1px solid #bae6fd', fontWeight: 700, color: '#0369a1' }}>
+                    3. unidades
+                  </span>
+                </div>
 
                 {/* Banner Plantilla */}
                 <div style={{ padding: '12px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
