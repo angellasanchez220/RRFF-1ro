@@ -75,6 +75,7 @@ def build_maquila_families(conn, lookup_dict):
         FROM recetas_maquila r
         JOIN receta_maquila_componentes c ON c.receta_id = r.id
         WHERE r.activa = True AND r.sku_maquilable LIKE 'FAM-%'
+          AND COALESCE(c.tipo_componente, 'PRODUCTO') = 'PRODUCTO'
     """), conn)
     
     # Construir grafo de adyacencia no dirigido

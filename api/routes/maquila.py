@@ -30,32 +30,40 @@ def _check_descontinuados(conn, codigos):
     if not codigos:
         return
     rows = conn.execute(text("""
-        SELECT codigo_femaco, estado
+        SELECT codigo_femaco, sku, estado
         FROM planificacion_sop
-        WHERE codigo_femaco = ANY(:codigos)
+        WHERE codigo_femaco = ANY(:codigos) OR sku = ANY(:codigos)
     """), {"codigos": codigos}).fetchall()
 
-    encontrados = {str(r[0]).strip().upper() for r in rows}
-    faltantes = sorted(set(codigos) - encontrados)
-    if faltantes:
-        raise ValueError(
-            f"Los siguientes códigos internos no existen: {', '.join(faltantes)}"
-        )
+    descontinuados = []
+    for r in rows:
+        st = str(r[2] or "").strip().upper()
+        if st in ["DESCONTINUADO", "DESCONTINUADOS", "OBSOLETO", "INACTIVO", "INACTIVOS"]:
+            descontinuados.append(str(r[0] or r[1]))
 
-    descontinuados = [str(r[0]) for r in rows if str(r[1]).upper() in ["DESCONTINUADO", "DESCONTINUADOS"]]
     if descontinuados:
-        bad_codigos = ", ".join(descontinuados)
-        raise ValueError(f"Los siguientes códigos internos están descontinuados: {bad_codigos}")
+        bad_codigos = ", ".join(sorted(set(descontinuados)))
+        raise ValueError(f"Los siguientes códigos están descontinuados en catálogo: {bad_codigos}")
 
 @router.get("/recetas")
 def get_recetas():
-    # Internamente llamamos "recetas" a la ruta por compatibilidad, pero representan Familias
+    # Internamente llamamos "recetas" a la ruta por compatibilidad, pero representan Familias y Recetas de Maquila
     with engine.connect() as conn:
         try:
             df_recetas = pd.read_sql(text("""
                 SELECT 
-                    r.id, r.sku_maquilable as identificador, r.descripcion as nombre_familia, r.activa, r.fecha_actualizacion,
-                    (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id) as cantidad_miembros
+                    r.id, 
+                    r.sku_maquilable as identificador, 
+                    r.descripcion as nombre_familia, 
+                    r.activa, 
+                    r.fecha_actualizacion,
+                    r.tiempo_base_1p_min,
+                    COALESCE(r.unidades_base_tiempo, 100) as unidades_base_tiempo,
+                    r.producto_objetivo,
+                    (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id) as cantidad_miembros,
+                    (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id AND COALESCE(c.tipo_componente, 'PRODUCTO') = 'PRODUCTO') as cantidad_productos,
+                    (SELECT COUNT(*) FROM receta_maquila_componentes c WHERE c.receta_id = r.id AND COALESCE(c.tipo_componente, 'PRODUCTO') != 'PRODUCTO') as cantidad_materiales,
+                    (SELECT COUNT(*) FROM receta_maquila_tiempos t WHERE t.receta_id = r.id) as cantidad_pruebas_tiempo
                 FROM recetas_maquila r
                 ORDER BY r.id DESC
             """), conn)
@@ -71,33 +79,66 @@ def get_receta(receta_id: int):
         try:
             receta = conn.execute(text("SELECT * FROM recetas_maquila WHERE id = :id"), {"id": receta_id}).fetchone()
             if not receta:
-                raise HTTPException(status_code=404, detail="Familia no encontrada")
+                raise HTTPException(status_code=404, detail="Familia o receta no encontrada")
                 
             componentes = pd.read_sql(text("""
                 SELECT 
                     c.id,
                     c.sku_componente AS codigo_femaco,
                     p.sku,
+                    COALESCE(NULLIF(TRIM(c.nombre_componente), ''), NULLIF(TRIM(p.nombre_producto), ''), c.sku_componente) AS nombre_producto,
+                    COALESCE(NULLIF(TRIM(c.nombre_componente), ''), NULLIF(TRIM(p.nombre_producto), ''), '') AS nombre_componente,
+                    COALESCE(c.cantidad_por_unidad, 1.0) AS cantidad_por_unidad,
+                    COALESCE(c.tipo_componente, 'PRODUCTO') AS tipo_componente,
+                    COALESCE(c.unidad_medida, 'UN') AS unidad_medida,
                     c.no_transformable,
-                    p.nombre_producto
+                    COALESCE(c.observacion, '') AS observacion
                 FROM receta_maquila_componentes c
                 LEFT JOIN planificacion_sop p
                        ON TRIM(p.codigo_femaco) = TRIM(c.sku_componente)
+                       OR TRIM(p.sku) = TRIM(c.sku_componente)
                 WHERE c.receta_id = :id
+                ORDER BY c.id ASC
+            """), conn, params={"id": receta_id})
+
+            tiempos = pd.read_sql(text("""
+                SELECT 
+                    id,
+                    receta_id,
+                    cantidad_personas,
+                    tiempo_minutos,
+                    COALESCE(unidades_base, 100) AS unidades_base,
+                    COALESCE(observaciones, '') AS observaciones,
+                    fecha_registro
+                FROM receta_maquila_tiempos
+                WHERE receta_id = :id
+                ORDER BY cantidad_personas ASC, id ASC
             """), conn, params={"id": receta_id})
             
             receta_dict = dict(receta._mapping)
-            receta_dict['fecha_creacion'] = str(receta_dict['fecha_creacion'])
-            receta_dict['fecha_actualizacion'] = str(receta_dict['fecha_actualizacion'])
+            receta_dict['fecha_creacion'] = str(receta_dict.get('fecha_creacion'))
+            receta_dict['fecha_actualizacion'] = str(receta_dict.get('fecha_actualizacion'))
+            if receta_dict.get('tiempo_base_1p_min') is not None:
+                receta_dict['tiempo_base_1p_min'] = float(receta_dict['tiempo_base_1p_min'])
+            if receta_dict.get('unidades_base_tiempo') is None:
+                receta_dict['unidades_base_tiempo'] = 100
             
             comps = componentes.to_dict(orient="records")
-            # Convertir booleanos
             for c in comps:
                 c['no_transformable'] = bool(c['no_transformable'])
+                c['cantidad_por_unidad'] = float(c['cantidad_por_unidad'])
                 
             receta_dict['miembros'] = comps
+
+            t_list = tiempos.to_dict(orient="records")
+            for t in t_list:
+                t['tiempo_minutos'] = float(t['tiempo_minutos'])
+                t['fecha_registro'] = str(t['fecha_registro'])
+            receta_dict['tiempos'] = t_list
             
             return receta_dict
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -107,18 +148,35 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
     
     nombre_familia = body.get("nombre_familia", "").strip()
     activa = body.get("activa", True)
+    producto_objetivo = body.get("producto_objetivo", "").strip() or None
+    
+    tiempo_base_1p_min = body.get("tiempo_base_1p_min")
+    if tiempo_base_1p_min is not None and str(tiempo_base_1p_min).strip() != "":
+        try:
+            tiempo_base_1p_min = float(tiempo_base_1p_min)
+        except (ValueError, TypeError):
+            tiempo_base_1p_min = None
+    else:
+        tiempo_base_1p_min = None
+
+    try:
+        unidades_base_tiempo = int(body.get("unidades_base_tiempo") or 100)
+    except Exception:
+        unidades_base_tiempo = 100
+
     miembros = body.get("miembros", [])
+    tiempos = body.get("tiempos", [])
     
     if not nombre_familia:
-        raise HTTPException(status_code=400, detail="Falta el nombre de la familia")
-    if not miembros or len(miembros) < 2:
-        raise HTTPException(status_code=400, detail="Debe haber al menos dos códigos internos en la familia")
+        raise HTTPException(status_code=400, detail="Falta el nombre de la familia o receta")
+    if not miembros:
+        raise HTTPException(status_code=400, detail="Debe ingresar al menos un integrante o material en la receta")
         
     codigos_miembros = [_codigo_miembro(m) for m in miembros]
     if any(not codigo for codigo in codigos_miembros):
-        raise HTTPException(status_code=400, detail="Todos los integrantes deben tener código interno")
+        raise HTTPException(status_code=400, detail="Todos los integrantes y materiales deben tener código")
     if len(codigos_miembros) != len(set(codigos_miembros)):
-        raise HTTPException(status_code=400, detail="Hay códigos internos duplicados en la familia")
+        raise HTTPException(status_code=400, detail="Hay códigos duplicados en la receta")
 
     # Identificador dummy para la base de datos
     sku_dummy = f"FAM-{uuid.uuid4().hex[:16].upper()}"
@@ -128,23 +186,77 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
             _check_descontinuados(conn, codigos_miembros)
                 
             result = conn.execute(text("""
-                INSERT INTO recetas_maquila (sku_maquilable, descripcion, activa)
-                VALUES (:sku, :desc, :activa)
+                INSERT INTO recetas_maquila (
+                    sku_maquilable, descripcion, activa,
+                    tiempo_base_1p_min, unidades_base_tiempo, producto_objetivo
+                )
+                VALUES (:sku, :desc, :activa, :tbase, :ubase, :pobj)
                 RETURNING id
-            """), {"sku": sku_dummy, "desc": nombre_familia, "activa": activa})
+            """), {
+                "sku": sku_dummy, 
+                "desc": nombre_familia, 
+                "activa": activa,
+                "tbase": tiempo_base_1p_min,
+                "ubase": unidades_base_tiempo,
+                "pobj": producto_objetivo
+            })
             
             receta_id = result.fetchone()[0]
             
             for m, codigo in zip(miembros, codigos_miembros):
+                qty_val = m.get("cantidad_por_unidad")
+                try:
+                    qty = Decimal(str(qty_val)) if qty_val is not None and str(qty_val).strip() != "" else Decimal("1.0")
+                    if qty <= 0:
+                        qty = Decimal("1.0")
+                except Exception:
+                    qty = Decimal("1.0")
+
+                tipo = str(m.get("tipo_componente") or "PRODUCTO").strip().upper()
+                nombre_c = str(m.get("nombre_componente") or m.get("nombre_producto") or "").strip()
+                um = str(m.get("unidad_medida") or "UN").strip()
+                obs = str(m.get("observacion") or "").strip()
+                nt = bool(m.get("no_transformable", False))
+
                 conn.execute(text("""
-                    INSERT INTO receta_maquila_componentes (receta_id, sku_componente, cantidad_por_unidad, no_transformable)
-                    VALUES (:rid, :skuc, :qty, :nt)
+                    INSERT INTO receta_maquila_componentes (
+                        receta_id, sku_componente, cantidad_por_unidad, no_transformable,
+                        tipo_componente, nombre_componente, unidad_medida, observacion
+                    )
+                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :obs)
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
-                    "qty": Decimal("1.0"),
-                    "nt": bool(m.get("no_transformable", False))
+                    "qty": qty,
+                    "nt": nt,
+                    "tipo": tipo,
+                    "nombre": nombre_c,
+                    "um": um,
+                    "obs": obs
                 })
+
+            for t in tiempos:
+                try:
+                    p_num = int(t.get("cantidad_personas") or 1)
+                    t_min = float(t.get("tiempo_minutos") or 0)
+                    ub = int(t.get("unidades_base") or unidades_base_tiempo or 100)
+                    t_obs = str(t.get("observaciones") or "").strip()
+                    if p_num > 0 and t_min > 0:
+                        conn.execute(text("""
+                            INSERT INTO receta_maquila_tiempos (
+                                receta_id, cantidad_personas, tiempo_minutos, unidades_base, observaciones
+                            )
+                            VALUES (:rid, :p, :t, :ub, :obs)
+                        """), {
+                            "rid": receta_id,
+                            "p": p_num,
+                            "t": t_min,
+                            "ub": ub,
+                            "obs": t_obs
+                        })
+                except Exception:
+                    pass
+
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -158,16 +270,35 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
     
     nombre_familia = body.get("nombre_familia", "").strip()
     activa = body.get("activa", True)
-    miembros = body.get("miembros", [])
+    producto_objetivo = body.get("producto_objetivo", "").strip() or None
     
-    if not nombre_familia or not miembros or len(miembros) < 2:
-        raise HTTPException(status_code=400, detail="Datos incompletos o menos de 2 miembros")
+    tiempo_base_1p_min = body.get("tiempo_base_1p_min")
+    if tiempo_base_1p_min is not None and str(tiempo_base_1p_min).strip() != "":
+        try:
+            tiempo_base_1p_min = float(tiempo_base_1p_min)
+        except (ValueError, TypeError):
+            tiempo_base_1p_min = None
+    else:
+        tiempo_base_1p_min = None
+
+    try:
+        unidades_base_tiempo = int(body.get("unidades_base_tiempo") or 100)
+    except Exception:
+        unidades_base_tiempo = 100
+
+    miembros = body.get("miembros", [])
+    tiempos = body.get("tiempos", [])
+    
+    if not nombre_familia:
+        raise HTTPException(status_code=400, detail="Falta el nombre de la familia o receta")
+    if not miembros:
+        raise HTTPException(status_code=400, detail="Debe ingresar al menos un integrante o material en la receta")
         
     codigos_miembros = [_codigo_miembro(m) for m in miembros]
     if any(not codigo for codigo in codigos_miembros):
-        raise HTTPException(status_code=400, detail="Todos los integrantes deben tener código interno")
+        raise HTTPException(status_code=400, detail="Todos los integrantes y materiales deben tener código")
     if len(codigos_miembros) != len(set(codigos_miembros)):
-        raise HTTPException(status_code=400, detail="Hay códigos internos duplicados en la familia")
+        raise HTTPException(status_code=400, detail="Hay códigos duplicados en la receta")
 
     try:
         with engine.begin() as conn:
@@ -175,28 +306,120 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
             
             conn.execute(text("""
                 UPDATE recetas_maquila 
-                SET descripcion = :desc, activa = :activa, fecha_actualizacion = NOW()
+                SET descripcion = :desc, 
+                    activa = :activa, 
+                    tiempo_base_1p_min = :tbase,
+                    unidades_base_tiempo = :ubase,
+                    producto_objetivo = :pobj,
+                    fecha_actualizacion = NOW()
                 WHERE id = :id
-            """), {"desc": nombre_familia, "activa": activa, "id": receta_id})
+            """), {
+                "desc": nombre_familia, 
+                "activa": activa, 
+                "tbase": tiempo_base_1p_min,
+                "ubase": unidades_base_tiempo,
+                "pobj": producto_objetivo,
+                "id": receta_id
+            })
             
             conn.execute(text("DELETE FROM receta_maquila_componentes WHERE receta_id = :id"), {"id": receta_id})
             
             for m, codigo in zip(miembros, codigos_miembros):
+                qty_val = m.get("cantidad_por_unidad")
+                try:
+                    qty = Decimal(str(qty_val)) if qty_val is not None and str(qty_val).strip() != "" else Decimal("1.0")
+                    if qty <= 0:
+                        qty = Decimal("1.0")
+                except Exception:
+                    qty = Decimal("1.0")
+
+                tipo = str(m.get("tipo_componente") or "PRODUCTO").strip().upper()
+                nombre_c = str(m.get("nombre_componente") or m.get("nombre_producto") or "").strip()
+                um = str(m.get("unidad_medida") or "UN").strip()
+                obs = str(m.get("observacion") or "").strip()
+                nt = bool(m.get("no_transformable", False))
+
                 conn.execute(text("""
-                    INSERT INTO receta_maquila_componentes (receta_id, sku_componente, cantidad_por_unidad, no_transformable)
-                    VALUES (:rid, :skuc, :qty, :nt)
+                    INSERT INTO receta_maquila_componentes (
+                        receta_id, sku_componente, cantidad_por_unidad, no_transformable,
+                        tipo_componente, nombre_componente, unidad_medida, observacion
+                    )
+                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :obs)
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
-                    "qty": Decimal("1.0"),
-                    "nt": bool(m.get("no_transformable", False))
+                    "qty": qty,
+                    "nt": nt,
+                    "tipo": tipo,
+                    "nombre": nombre_c,
+                    "um": um,
+                    "obs": obs
                 })
+
+            # Sincronizar tiempos
+            conn.execute(text("DELETE FROM receta_maquila_tiempos WHERE receta_id = :id"), {"id": receta_id})
+            for t in tiempos:
+                try:
+                    p_num = int(t.get("cantidad_personas") or 1)
+                    t_min = float(t.get("tiempo_minutos") or 0)
+                    ub = int(t.get("unidades_base") or unidades_base_tiempo or 100)
+                    t_obs = str(t.get("observaciones") or "").strip()
+                    if p_num > 0 and t_min > 0:
+                        conn.execute(text("""
+                            INSERT INTO receta_maquila_tiempos (
+                                receta_id, cantidad_personas, tiempo_minutos, unidades_base, observaciones
+                            )
+                            VALUES (:rid, :p, :t, :ub, :obs)
+                        """), {
+                            "rid": receta_id,
+                            "p": p_num,
+                            "t": t_min,
+                            "ub": ub,
+                            "obs": t_obs
+                        })
+                except Exception:
+                    pass
+
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
             
     return {"ok": True, "familia_id": receta_id}
+
+@router.post("/recetas/{receta_id}/tiempos")
+def add_receta_tiempo(receta_id: int, body: dict = Body(...), authorization: str = Header(None)):
+    """Permite registrar una nueva prueba de tiempo con N personas para una receta dada."""
+    _require_admin(authorization)
+    try:
+        p = int(body.get("cantidad_personas", 1))
+        t = float(body.get("tiempo_minutos", 0))
+        ub = int(body.get("unidades_base", 100))
+        obs = str(body.get("observaciones", "")).strip()
+        if p <= 0 or t <= 0:
+            raise HTTPException(400, "Cantidad de personas y tiempo deben ser mayores a 0")
+        with engine.begin() as conn:
+            row = conn.execute(text("""
+                INSERT INTO receta_maquila_tiempos (receta_id, cantidad_personas, tiempo_minutos, unidades_base, observaciones)
+                VALUES (:rid, :p, :t, :ub, :obs)
+                RETURNING id, fecha_registro
+            """), {"rid": receta_id, "p": p, "t": t, "ub": ub, "obs": obs}).fetchone()
+            return {"ok": True, "id": row[0], "fecha_registro": str(row[1])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@router.delete("/recetas/{receta_id}/tiempos/{tiempo_id}")
+def delete_receta_tiempo(receta_id: int, tiempo_id: int, authorization: str = Header(None)):
+    """Elimina un registro de prueba de tiempo."""
+    _require_admin(authorization)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM receta_maquila_tiempos WHERE id = :tid AND receta_id = :rid"), {"tid": tiempo_id, "rid": receta_id})
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 @router.patch("/recetas/{receta_id}/estado")
 def toggle_receta_estado(receta_id: int, body: dict = Body(...), authorization: str = Header(None)):
@@ -224,6 +447,7 @@ def delete_receta(receta_id: int, authorization: str = Header(None)):
             if not row:
                 raise ValueError("Familia no encontrada")
                 
+            conn.execute(text("DELETE FROM receta_maquila_tiempos WHERE receta_id = :id"), {"id": receta_id})
             conn.execute(text("DELETE FROM receta_maquila_componentes WHERE receta_id = :id"), {"id": receta_id})
             conn.execute(text("DELETE FROM recetas_maquila WHERE id = :id"), {"id": receta_id})
             
@@ -249,7 +473,7 @@ def _calcular_distribucion_homogenea_data(conn):
                COALESCE(c.no_transformable, FALSE) AS no_transformable
         FROM recetas_maquila r
         JOIN receta_maquila_componentes c ON c.receta_id = r.id
-        WHERE r.activa = TRUE
+        WHERE r.activa = TRUE AND COALESCE(c.tipo_componente, 'PRODUCTO') = 'PRODUCTO'
         ORDER BY r.id DESC
     """), conn)
 

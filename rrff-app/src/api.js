@@ -310,6 +310,92 @@ export async function deleteReceta(id) {
   return res.json();
 }
 
+export async function addRecetaTiempo(recetaId, data) {
+  const res = await fetch(`${BASE}/maquila/recetas/${recetaId}/tiempos`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error agregando medición de tiempo');
+  return res.json();
+}
+
+export async function deleteRecetaTiempo(recetaId, tiempoId) {
+  const res = await fetch(`${BASE}/maquila/recetas/${recetaId}/tiempos/${tiempoId}`, {
+    method: 'DELETE', headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error eliminando medición de tiempo');
+  return res.json();
+}
+
+// ── Materiales Maquila ────────────────────────────────────────────────────────
+
+export async function fetchMaterialesMaquila({ search = '', categoria = 'ALL', solo_activos = false } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.append('search', search);
+  if (categoria && categoria !== 'ALL') params.append('categoria', categoria);
+  if (solo_activos) params.append('solo_activos', 'true');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${BASE}/materiales-maquila${query}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar materiales de maquila');
+  return res.json();
+}
+
+export async function fetchMaterialMaquilaDetail(id) {
+  const res = await fetch(`${BASE}/materiales-maquila/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al obtener material');
+  return res.json();
+}
+
+export async function createMaterialMaquila(data) {
+  const res = await fetch(`${BASE}/materiales-maquila`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error al crear material');
+  return res.json();
+}
+
+export async function updateMaterialMaquila(id, data) {
+  const res = await fetch(`${BASE}/materiales-maquila/${id}`, {
+    method: 'PUT', headers: authHeaders(), body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error al actualizar material');
+  return res.json();
+}
+
+export async function deleteMaterialMaquila(id) {
+  const res = await fetch(`${BASE}/materiales-maquila/${id}`, {
+    method: 'DELETE', headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error al eliminar material');
+  return res.json();
+}
+
+export async function uploadInventarioMateriales(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/materiales-maquila/upload-inventario`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error((await res.json()).detail || 'Error al subir archivo de inventario');
+  return res.json();
+}
+
+export async function downloadPlantillaMaterialesExcel() {
+  const res = await fetch(`${BASE}/materiales-maquila/plantilla-excel`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al descargar plantilla');
+  const blob = await res.blob();
+  return { blob, filename: 'Plantilla_Inventario_Materiales_Maquila.xlsx' };
+}
+
+export async function downloadExportMaterialesExcel() {
+  const res = await fetch(`${BASE}/materiales-maquila/export-excel`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al exportar inventario de materiales');
+  const blob = await res.blob();
+  return { blob, filename: 'Materiales_Maquila_Inventario.xlsx' };
+}
+
+
 
 // ── Órdenes Maquila ──────────────────────────────────────────────────────────
 

@@ -143,9 +143,64 @@ def run_migrations():
         # ── Maquila: Índice único para receta activa ─────────────────────────
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_receta_activa ON recetas_maquila (sku_maquilable) WHERE activa = TRUE",
 
-        # ── Maquila: Forzar tipo NUMERIC ─────────────────────────────────────
+        # ── Maquila: Forzar tipo NUMERIC y nuevas columnas de recetas y componentes ──
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS no_transformable BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE receta_maquila_componentes ALTER COLUMN cantidad_por_unidad TYPE NUMERIC(12,4)",
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS tipo_componente TEXT DEFAULT 'PRODUCTO'",
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS nombre_componente TEXT",
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS unidad_medida TEXT DEFAULT 'UN'",
+
+        "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS tiempo_base_1p_min NUMERIC(10,2)",
+        "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS unidades_base_tiempo INTEGER DEFAULT 100",
+        "ALTER TABLE recetas_maquila ADD COLUMN IF NOT EXISTS producto_objetivo TEXT",
+
+        # ── Maquila: Mediciones y pruebas de tiempos por dotación de personas ──
+        """
+        CREATE TABLE IF NOT EXISTS receta_maquila_tiempos (
+            id                  SERIAL PRIMARY KEY,
+            receta_id           INTEGER NOT NULL REFERENCES recetas_maquila(id) ON DELETE CASCADE,
+            cantidad_personas   INTEGER NOT NULL,
+            tiempo_minutos      NUMERIC(10,2) NOT NULL,
+            unidades_base       INTEGER DEFAULT 100,
+            observaciones       TEXT,
+            fecha_registro      TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_receta_tiempos_receta_id ON receta_maquila_tiempos(receta_id)",
+
+        # ── Materiales e Insumos de Maquila (Catálogo e Inventario propio) ────
+        """
+        CREATE TABLE IF NOT EXISTS materiales_maquila (
+            id                  SERIAL PRIMARY KEY,
+            sku                 TEXT NOT NULL UNIQUE,
+            nombre              TEXT NOT NULL,
+            descripcion         TEXT,
+            categoria           TEXT DEFAULT 'INSUMO',
+            unidad_medida       TEXT DEFAULT 'UN',
+            stock_actual        NUMERIC(12,2) DEFAULT 0,
+            costo_unitario      NUMERIC(12,2) DEFAULT 0,
+            observaciones       TEXT,
+            activo              BOOLEAN DEFAULT TRUE,
+            fecha_creacion      TIMESTAMP DEFAULT NOW(),
+            fecha_actualizacion TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_materiales_maquila_sku ON materiales_maquila(sku)",
+        "ALTER TABLE materiales_maquila ADD COLUMN IF NOT EXISTS stock_actual NUMERIC(12,2) DEFAULT 0",
+        "ALTER TABLE materiales_maquila ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'INSUMO'",
+        "ALTER TABLE materiales_maquila ADD COLUMN IF NOT EXISTS unidad_medida TEXT DEFAULT 'UN'",
+        "ALTER TABLE materiales_maquila ADD COLUMN IF NOT EXISTS observaciones TEXT",
+        """
+        INSERT INTO materiales_maquila (sku, nombre, unidad_medida, categoria)
+        SELECT DISTINCT 
+            sku_componente, 
+            COALESCE(NULLIF(TRIM(nombre_componente), ''), sku_componente), 
+            COALESCE(NULLIF(TRIM(unidad_medida), ''), 'UN'),
+            'INSUMO'
+        FROM receta_maquila_componentes
+        WHERE tipo_componente = 'MATERIAL' AND sku_componente IS NOT NULL AND TRIM(sku_componente) != ''
+        ON CONFLICT (sku) DO NOTHING
+        """,
 
         # ── Órdenes de Maquila ───────────────────────────────────────────────
         """
