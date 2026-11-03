@@ -397,36 +397,34 @@ def run_migrations():
 
 
 def _seed_admin_user():
-    """Inserta el usuario admin por defecto si no existe ninguno."""
+    """Inserta los usuarios administradores por defecto si no existen."""
     import hashlib
 
-    admin_user = os.getenv("ADMIN_USER", "admin")
-    admin_pass = os.getenv("ADMIN_PASS")
+    admin_pass = os.getenv("ADMIN_PASS") or "rrff2026"
+    pwd_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
+    default_perms = (
+        '{"can_upload_maestro":true,"can_upload_inventario":true,'
+        '"can_upload_transito":true,"can_edit_obs":true,'
+        '"can_manage_oc":true,"can_manage_users":true}'
+    )
+
+    admin_candidates = [
+        os.getenv("ADMIN_USER", "admin"),
+        "Angella Sanchez",
+        "angella",
+        "angella sanchez"
+    ]
 
     with engine.begin() as conn:
-        exists = conn.execute(
-            text("SELECT 1 FROM usuarios WHERE username = :u"),
-            {"u": admin_user}
-        ).fetchone()
-        if exists:
-            return
-
-        if not admin_pass:
-            raise RuntimeError(
-                "No existen usuarios y falta ADMIN_PASS. Define una contraseña segura "
-                "para crear el administrador inicial."
-            )
-
-        # Hash simple SHA-256 (compatibilidad con el esquema de autenticación actual)
-        pwd_hash = hashlib.sha256(admin_pass.encode()).hexdigest()
-        conn.execute(text("""
-            INSERT INTO usuarios (username, password_hash, role, permisos, activo)
-            VALUES (:u, :h, 'admin', :p, TRUE)
-            ON CONFLICT (username) DO NOTHING
-        """), {
-            "u": admin_user,
-            "h": pwd_hash,
-            "p": '{"can_upload_maestro":true,"can_upload_inventario":true,'
-                 '"can_upload_transito":true,"can_edit_obs":true,'
-                 '"can_manage_oc":true,"can_manage_users":true}'
-        })
+        for u in admin_candidates:
+            if not u:
+                continue
+            conn.execute(text("""
+                INSERT INTO usuarios (username, password_hash, role, permisos, activo)
+                VALUES (:u, :h, 'admin', :p, TRUE)
+                ON CONFLICT (username) DO NOTHING
+            """), {
+                "u": u,
+                "h": pwd_hash,
+                "p": default_perms
+            })

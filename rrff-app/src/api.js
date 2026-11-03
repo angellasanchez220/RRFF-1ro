@@ -1,13 +1,76 @@
 // src/api.js — Cliente HTTP centralizado RRFF Soft v2.1
-let BASE = 'http://localhost:8000/api';
 
-if (window.location.hostname.includes('onrender.com')) {
-  // Autodescubrimiento del backend basado en la URL del frontend (Blueprint)
-  const apiHost = window.location.hostname.replace('rrff-frontend', 'rrff-api');
-  BASE = `https://${apiHost}/api`;
-} else if (import.meta.env.VITE_API_URL) {
-  const cleanUrl = import.meta.env.VITE_API_URL.replace(/\/$/, '');
-  BASE = cleanUrl.startsWith('http') ? `${cleanUrl}/api` : `https://${cleanUrl}/api`;
+export function getBaseApiUrl() {
+  // 1. Override manual en localStorage si el usuario o admin lo configuró
+  const localOverride = typeof localStorage !== 'undefined' ? localStorage.getItem('rrff_api_url') : null;
+  if (localOverride && localOverride.trim()) {
+    const clean = localOverride.trim().replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
+  }
+
+  // 2. Variable de entorno Vite (inyectada en build por Render Blueprint o .env)
+  const envUrl = import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL).trim() : '';
+  if (envUrl) {
+    const clean = envUrl.replace(/\/+$/, '');
+    const withProto = clean.startsWith('http://') || clean.startsWith('https://') ? clean : `https://${clean}`;
+    return withProto.endsWith('/api') ? withProto : `${withProto}/api`;
+  }
+
+  // 3. Autodescubrimiento en Render
+  if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+    const host = window.location.hostname;
+    if (host.includes('rrff-frontend')) {
+      const apiHost = host.replace('rrff-frontend', 'rrff-api');
+      return `https://${apiHost}/api`;
+    }
+    if (host.includes('frontend')) {
+      const apiHost = host.replace('frontend', 'api');
+      return `https://${apiHost}/api`;
+    }
+    return 'https://rrff-api.onrender.com/api';
+  }
+
+  // 4. Entorno de desarrollo local por defecto
+  return 'http://localhost:8000/api';
+}
+
+export function setCustomApiUrl(url) {
+  if (!url || !url.trim()) {
+    localStorage.removeItem('rrff_api_url');
+  } else {
+    let clean = url.trim().replace(/\/+$/, '');
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = `https://${clean}`;
+    }
+    localStorage.setItem('rrff_api_url', clean);
+  }
+  BASE = getBaseApiUrl();
+}
+
+let BASE = getBaseApiUrl();
+
+async function handleResponseJson(res, defaultErrorMsg = 'Error en el servidor') {
+  const text = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    if (text.trim().startsWith('<') || (res.headers.get('content-type') || '').includes('text/html')) {
+      if (res.status === 404) {
+        throw new Error(`Servidor API no encontrado (404 en ${res.url || BASE}). Verifica la URL del backend en Render.`);
+      }
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        throw new Error(`El servidor backend está iniciando (Cold Start de Render) o no responde (HTTP ${res.status}). Espera unos 30 segundos y reintenta.`);
+      }
+      throw new Error(`El servidor respondió con HTML en lugar de JSON (HTTP ${res.status}). Comprueba que el backend esté en ejecución.`);
+    }
+    throw new Error(text.slice(0, 150) || defaultErrorMsg);
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.detail || defaultErrorMsg);
+  }
+  return data;
 }
 
 export function getToken() {
@@ -34,7 +97,7 @@ export async function checkAuth() {
     if (res.status === 401) window.dispatchEvent(new Event('session-expired'));
     throw new Error('No autorizado');
   }
-  return res.json();
+  return handleResponseJson(res, 'No autorizado');
 }
 
 async function apiFetch(url, options = {}) {
@@ -50,13 +113,18 @@ async function apiFetch(url, options = {}) {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function login(username, password) {
-  const res = await fetch(`${BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!res.ok) throw new Error((await res.json()).detail || 'Error de autenticación');
-  const data = await res.json();
+  let res;
+  try {
+    res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: (username || '').trim(), password }),
+    });
+  } catch (netErr) {
+    throw new Error(`No se pudo conectar al servidor backend (${BASE}). Revisa si el servicio está activo.`);
+  }
+
+  const data = await handleResponseJson(res, 'Usuario o contraseña incorrectos');
   // Persistir sesión
   localStorage.setItem('rrff_token', data.access_token);
   localStorage.setItem('rrff_role', data.role);
