@@ -802,7 +802,116 @@ def list_quiebres_historicos():
             ORDER BY d.fecha_quiebre DESC NULLS LAST, d.id DESC
         """), conn)
 
-        return {"data": _clean_df_records(df_q)}
+@router.get("/reportes/fill-rate")
+@router.get("/fill-rate")
+def get_reporte_fill_rate():
+    """
+    Reporte Comercial OTIF (On-Time In-Full) y Fill Rate por Cliente:
+    - Desempeño acumulado de despacho (Unidades Pedidas vs Despachadas).
+    - % Fill Rate por Cliente (Walmart, Sodimac, Cencosud, etc.).
+    - Tasa OTIF (Porcentaje de órdenes de compra entregadas 100% completas y sin quiebres).
+    - Top SKUs con mayor volumen de quiebre o venta perdida en el retail.
+    """
+    with engine.connect() as conn:
+        try:
+            # 1. Agrupado por cliente
+            df_cli = pd.read_sql(text("""
+                SELECT 
+                    COALESCE(NULLIF(TRIM(cliente), ''), 'CLIENTE GENERAL') AS cliente,
+                    COUNT(id) AS total_ocs,
+                    SUM(total_items) AS total_lineas,
+                    SUM(total_pedido_uds) AS total_pedidas,
+                    SUM(total_despachado_uds) AS total_despachadas,
+                    SUM(CASE WHEN quiebres_count = 0 AND parciales_count = 0 AND total_pedido_uds > 0 THEN 1 ELSE 0 END) AS ocs_perfectas,
+                    SUM(quiebres_count) AS total_quiebres,
+                    SUM(parciales_count) AS total_parciales
+                FROM ordenes_compra_registro
+                WHERE etapa = 'ENTREGA' OR total_despachado_uds > 0
+                GROUP BY COALESCE(NULLIF(TRIM(cliente), ''), 'CLIENTE GENERAL')
+                ORDER BY total_pedidas DESC
+            """), conn)
+
+            # 2. Top SKUs quebrados
+            df_skus = pd.read_sql(text("""
+                SELECT 
+                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '—') AS sku,
+                    COALESCE(NULLIF(TRIM(d.nombre_producto), ''), 'Producto Desconocido') AS nombre_producto,
+                    SUM(GREATEST(0, d.cantidad_pedida - d.cantidad_despachada)) AS unidades_no_entregadas,
+                    COUNT(d.id) AS veces_quebrado
+                FROM ordenes_compra_detalle d
+                JOIN ordenes_compra_registro r ON r.id = d.oc_id
+                WHERE d.quiebre_detectado = TRUE OR (d.cantidad_despachada < d.cantidad_pedida AND d.cantidad_pedida > 0)
+                GROUP BY 
+                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '—'),
+                    COALESCE(NULLIF(TRIM(d.nombre_producto), ''), 'Producto Desconocido')
+                ORDER BY unidades_no_entregadas DESC
+                LIMIT 10
+            """), conn)
+
+        except Exception as e:
+            return {"ok": False, "data": [], "error": str(e)}
+
+    clientes_res = []
+    tot_ped_global = 0.0
+    tot_desp_global = 0.0
+    tot_ocs_global = 0
+    tot_perf_global = 0
+
+    if not df_cli.empty:
+        for _, r in df_cli.iterrows():
+            ped = float(r["total_pedidas"] or 0)
+            desp = float(r["total_despachadas"] or 0)
+            ocs = int(r["total_ocs"] or 0)
+            perf = int(r["ocs_perfectas"] or 0)
+
+            tot_ped_global += ped
+            tot_desp_global += desp
+            tot_ocs_global += ocs
+            tot_perf_global += perf
+
+            fr = round((desp / ped * 100), 1) if ped > 0 else (100.0 if desp > 0 else 0.0)
+            otif = round((perf / ocs * 100), 1) if ocs > 0 else 0.0
+
+            clientes_res.append({
+                "cliente": str(r["cliente"]),
+                "total_ocs": ocs,
+                "total_pedidas": round(ped, 0),
+                "total_despachadas": round(desp, 0),
+                "unidades_pendientes": round(max(0, ped - desp), 0),
+                "fill_rate_pct": fr,
+                "ocs_perfectas": perf,
+                "otif_pct": otif,
+                "total_quiebres": int(r["total_quiebres"] or 0),
+                "total_parciales": int(r["total_parciales"] or 0)
+            })
+
+    top_skus = []
+    if not df_skus.empty:
+        for _, r in df_skus.iterrows():
+            top_skus.append({
+                "sku": str(r["sku"]),
+                "nombre_producto": str(r["nombre_producto"]),
+                "unidades_no_entregadas": float(r["unidades_no_entregadas"] or 0),
+                "veces_quebrado": int(r["veces_quebrado"] or 0)
+            })
+
+    fr_global = round((tot_desp_global / tot_ped_global * 100), 1) if tot_ped_global > 0 else 0.0
+    otif_global = round((tot_perf_global / tot_ocs_global * 100), 1) if tot_ocs_global > 0 else 0.0
+
+    return {
+        "ok": True,
+        "clientes": clientes_res,
+        "top_skus_quiebre": top_skus,
+        "resumen_global": {
+            "total_ocs_evaluadas": tot_ocs_global,
+            "total_pedidas_uds": round(tot_ped_global, 0),
+            "total_despachadas_uds": round(tot_desp_global, 0),
+            "unidades_deficit_total": round(max(0, tot_ped_global - tot_desp_global), 0),
+            "fill_rate_global_pct": fr_global,
+            "otif_global_pct": otif_global,
+            "ocs_perfectas_global": tot_perf_global
+        }
+    }
 
 
 @router.get("/{oc_id}")

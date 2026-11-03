@@ -35,9 +35,67 @@ export default function MaterialesMaquila() {
   const [uploadResult, setUploadResult] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Modal Kardex de Movimientos
+  const [kardexModalOpen, setKardexModalOpen] = useState(false);
+  const [kardexSku, setKardexSku] = useState('');
+  const [kardexData, setKardexData] = useState([]);
+  const [kardexLoading, setKardexLoading] = useState(false);
+  const [kardexFilterMov, setKardexFilterMov] = useState('ALL');
+
+  // Modal Ajuste Manual de Inventario
+  const [ajusteModalOpen, setAjusteModalOpen] = useState(false);
+  const [ajusteMaterial, setAjusteMaterial] = useState(null);
+  const [ajusteNuevoStock, setAjusteNuevoStock] = useState(0);
+  const [ajusteMotivo, setAjusteMotivo] = useState('');
+  const [ajusteSaving, setAjusteSaving] = useState(false);
+
   // Role
   const role = localStorage.getItem('rrff_role') || 'viewer';
   const isAdmin = role === 'admin';
+
+  async function handleOpenKardex(sku = '') {
+    setKardexSku(sku);
+    setKardexModalOpen(true);
+    setKardexLoading(true);
+    try {
+      const res = await api.fetchKardex({ tipo_entidad: 'MATERIAL', sku: sku || undefined });
+      setKardexData(res.data || []);
+    } catch (e) {
+      alert("Error cargando Kardex: " + e.message);
+    } finally {
+      setKardexLoading(false);
+    }
+  }
+
+  function handleOpenAjuste(mat) {
+    setAjusteMaterial(mat);
+    setAjusteNuevoStock(mat.stock_actual ?? 0);
+    setAjusteMotivo('Conteo físico y cuadratura de inventario');
+    setAjusteModalOpen(true);
+  }
+
+  async function handleSaveAjuste(e) {
+    e.preventDefault();
+    if (!ajusteMaterial) return;
+    if (ajusteNuevoStock < 0) return alert("El stock no puede ser negativo");
+    if (!ajusteMotivo.trim()) return alert("El motivo es obligatorio para auditoría");
+
+    setAjusteSaving(true);
+    try {
+      await api.registrarAjusteKardex({
+        tipo_entidad: 'MATERIAL',
+        sku: ajusteMaterial.sku,
+        nuevo_stock: Number(ajusteNuevoStock),
+        motivo: ajusteMotivo.trim()
+      });
+      setAjusteModalOpen(false);
+      loadData();
+    } catch (err) {
+      alert("Error al registrar ajuste: " + err.message);
+    } finally {
+      setAjusteSaving(false);
+    }
+  }
 
   useEffect(() => {
     loadData();
@@ -261,10 +319,11 @@ export default function MaterialesMaquila() {
 
               <button
                 className="btn-secondary"
-                onClick={handleExportExcel}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
+                onClick={() => handleOpenKardex('')}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#f8fafc', border: '1.5px solid #cbd5e1' }}
+                title="Auditoría completa de movimientos de inventario"
               >
-                <span>📥</span> Exportar Excel
+                <span>📜</span> Kardex de Movimientos
               </button>
 
               {isAdmin && (
@@ -506,11 +565,27 @@ export default function MaterialesMaquila() {
                           </td>
 
                           <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => handleOpenKardex(m.sku)}
+                                style={{ padding: '5px 8px', fontSize: '0.78rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                title="Ver historial de movimientos en Kardex"
+                              >
+                                📜 Kardex
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleOpenAjuste(m)}
+                                  style={{ padding: '5px 8px', fontSize: '0.78rem', background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                  title="Ajuste manual por conteo físico"
+                                >
+                                  ⚖️ Ajustar
+                                </button>
+                              )}
                               {isAdmin && (
                                 <button
                                   onClick={() => handleOpenEdit(m)}
-                                  style={{ padding: '5px 10px', fontSize: '0.8rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                  style={{ padding: '5px 8px', fontSize: '0.78rem', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                   title="Editar material"
                                 >
                                   ✏️ Editar
@@ -519,7 +594,7 @@ export default function MaterialesMaquila() {
                               {isAdmin && (
                                 <button
                                   onClick={() => handleDeleteMaterial(m)}
-                                  style={{ padding: '5px 8px', fontSize: '0.8rem', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '4px', cursor: 'pointer' }}
+                                  style={{ padding: '5px 8px', fontSize: '0.78rem', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '4px', cursor: 'pointer' }}
                                   title="Eliminar material"
                                 >
                                   🗑️
@@ -882,6 +957,172 @@ export default function MaterialesMaquila() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* ── MODAL AJUSTE MANUAL DE INVENTARIO ── */}
+          {ajusteModalOpen && ajusteMaterial && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+              <div style={{ background: '#ffffff', borderRadius: '12px', width: '100%', maxWidth: '520px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: 700 }}>
+                    ⚖️ Ajuste Manual de Inventario (Kardex)
+                  </h3>
+                  <button onClick={() => setAjusteModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+                </div>
+                <form onSubmit={handleSaveAjuste} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ padding: '12px', background: '#f1f5f9', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem' }}>{ajusteMaterial.sku} — {ajusteMaterial.nombre}</div>
+                    <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '4px' }}>
+                      Stock actual en sistema: <b style={{ color: '#0369a1' }}>{(ajusteMaterial.stock_actual ?? 0).toLocaleString()} {ajusteMaterial.unidad_medida}</b>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      Nuevo Stock Físico Verificado ({ajusteMaterial.unidad_medida}) *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={ajusteNuevoStock}
+                      onChange={e => setAjusteNuevoStock(e.target.value)}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontSize: '1.1rem', fontWeight: 700 }}
+                    />
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                      Diferencia resultante: <b style={{ color: (Number(ajusteNuevoStock) - (ajusteMaterial.stock_actual ?? 0)) >= 0 ? '#16a34a' : '#dc2626' }}>
+                        {(Number(ajusteNuevoStock) - (ajusteMaterial.stock_actual ?? 0)) >= 0 ? '+' : ''}{(Number(ajusteNuevoStock) - (ajusteMaterial.stock_actual ?? 0)).toLocaleString()} {ajusteMaterial.unidad_medida}
+                      </b>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      Motivo o Justificación del Ajuste (Obligatorio) *
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={ajusteMotivo}
+                      onChange={e => setAjusteMotivo(e.target.value)}
+                      placeholder="Ej. Conteo físico de fin de mes, regularización por roturas en bodega, etc."
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontSize: '0.88rem' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                    <button type="button" className="btn-secondary" onClick={() => setAjusteModalOpen(false)}>Cancelar</button>
+                    <button type="submit" className="btn-primary" disabled={ajusteSaving} style={{ padding: '9px 24px', fontWeight: 700, background: '#16a34a', borderColor: '#16a34a' }}>
+                      {ajusteSaving ? 'Registrando...' : 'Confirmar y Guardar en Kardex'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ── MODAL KARDEX DE MOVIMIENTOS ── */}
+          {kardexModalOpen && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px' }}>
+              <div style={{ background: '#ffffff', borderRadius: '12px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a', fontWeight: 800 }}>
+                      📜 Kardex de Movimientos de Insumos
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                      {kardexSku ? `Mostrando trazabilidad histórica de SKU: ${kardexSku}` : 'Historial consolidado de movimientos de todos los insumos'}
+                    </div>
+                  </div>
+                  <button onClick={() => setKardexModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+                </div>
+
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', background: '#f8fafc' }}>
+                  <select
+                    value={kardexFilterMov}
+                    onChange={e => setKardexFilterMov(e.target.value)}
+                    style={{ padding: '8px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontWeight: 600, fontSize: '0.85rem', background: '#fff' }}
+                  >
+                    <option value="ALL">Todos los Movimientos</option>
+                    <option value="SALIDA_MAQUILA">Salida por Maquila (OT)</option>
+                    <option value="ENTRADA_COMPRA">Entrada por Compra</option>
+                    <option value="MERMA_MAQUILA">Merma / Desperdicio</option>
+                    <option value="AJUSTE_INVENTARIO">Ajuste de Conteo Físico</option>
+                  </select>
+
+                  {kardexSku && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => handleOpenKardex('')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600 }}
+                    >
+                      Ver Todos los SKUs
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                  {kardexLoading ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Consultando libro de Kardex...</div>
+                  ) : kardexData.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No hay registros de movimientos para los filtros seleccionados.</div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>Fecha/Hora</th>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>SKU</th>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>Tipo Movimiento</th>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>Ref. Documento</th>
+                          <th style={{ padding: '10px 12px', color: '#475569', textAlign: 'right' }}>Cantidad</th>
+                          <th style={{ padding: '10px 12px', color: '#475569', textAlign: 'right' }}>Saldo Anterior</th>
+                          <th style={{ padding: '10px 12px', color: '#475569', textAlign: 'right' }}>Nuevo Saldo</th>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>Motivo / Detalle</th>
+                          <th style={{ padding: '10px 12px', color: '#475569' }}>Usuario</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {kardexData
+                          .filter(k => kardexFilterMov === 'ALL' || k.tipo_movimiento === kardexFilterMov)
+                          .map((k, i) => {
+                            const cant = Number(k.cantidad) || 0;
+                            const isPositive = cant > 0 && k.tipo_movimiento !== 'MERMA_MAQUILA';
+                            const isMerma = k.tipo_movimiento === 'MERMA_MAQUILA';
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: isMerma ? '#fff1f2' : (i % 2 === 0 ? '#fff' : '#fcfcfc') }}>
+                                <td style={{ padding: '10px 12px', color: '#64748b' }}>{k.fecha_movimiento?.substring(0, 16)}</td>
+                                <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{k.sku}</td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <span style={{
+                                    padding: '3px 8px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700,
+                                    background: isMerma ? '#ffe4e6' : (isPositive ? '#dcfce7' : '#f1f5f9'),
+                                    color: isMerma ? '#be123c' : (isPositive ? '#166534' : '#475569')
+                                  }}>
+                                    {k.tipo_movimiento}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0369a1' }}>{k.referencia_doc || '—'}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: isMerma ? '#e11d48' : (isPositive ? '#16a34a' : '#b91c1c') }}>
+                                  {cant > 0 ? `+${cant.toLocaleString()}` : cant.toLocaleString()}
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748b' }}>{Number(k.saldo_anterior || 0).toLocaleString()}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{Number(k.saldo_nuevo || 0).toLocaleString()}</td>
+                                <td style={{ padding: '10px 12px', color: '#475569' }}>{k.motivo || '—'}</td>
+                                <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.8rem' }}>{k.usuario || 'admin'}</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div style={{ padding: '14px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn-secondary" onClick={() => setKardexModalOpen(false)}>Cerrar Kardex</button>
+                </div>
               </div>
             </div>
           )}

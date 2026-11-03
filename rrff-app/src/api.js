@@ -597,3 +597,80 @@ export async function downloadMaquilaDistribucionExcel() {
   return { blob, filename };
 }
 
+// ── Kardex de Inventario & Movimientos ─────────────────────────────────────────
+
+export async function fetchKardex(params = {}) {
+  const q = new URLSearchParams();
+  if (params.sku) q.append('sku', params.sku);
+  if (params.tipo_entidad) q.append('tipo_entidad', params.tipo_entidad);
+  if (params.tipo_movimiento) q.append('tipo_movimiento', params.tipo_movimiento);
+  if (params.desde) q.append('desde', params.desde);
+  if (params.hasta) q.append('hasta', params.hasta);
+  if (params.limit) q.append('limit', params.limit);
+
+  const res = await fetch(`${BASE}/kardex?${q.toString()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al consultar Kardex');
+  return res.json();
+}
+
+export async function registrarAjusteKardex(body) {
+  const res = await fetch(`${BASE}/kardex/ajuste`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Error al registrar ajuste en Kardex');
+  }
+  return res.json();
+}
+
+// ── Reporte de Mermas y Scrap en Maquila ──────────────────────────────────────
+
+export async function fetchMermasMaquila() {
+  const res = await fetch(`${BASE}/maquila/ordenes/reportes/mermas`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al obtener reporte de mermas de maquila');
+  return res.json();
+}
+
+// ── MRP de Insumos de Maquila ─────────────────────────────────────────────────
+
+export async function fetchMrpMateriales() {
+  const res = await fetch(`${BASE}/materiales-maquila/mrp-necesidades`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar MRP de insumos de maquila');
+  return res.json();
+}
+
+// ── Torre de Control Financiera & Matriz de Riesgos S&OP ─────────────────────
+
+export async function fetchResumenEjecutivo() {
+  const res = await fetch(`${BASE}/sop/resumen-ejecutivo`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al cargar resumen ejecutivo S&OP');
+  return res.json();
+}
+
+// ── Generador Directo de Órdenes a Proveedor (PO) ─────────────────────────────
+
+export async function generarPoProveedor(body) {
+  const res = await fetch(`${BASE}/sop/generar-po`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Error al generar Orden de Compra a Proveedor');
+  }
+  return res.json();
+}
+
+// ── Desempeño Comercial: OTIF & Fill Rate por Cliente ─────────────────────────
+
+export async function fetchFillRate() {
+  const res = await fetch(`${BASE}/ordenes-compra/reportes/fill-rate`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al obtener reporte OTIF y Fill Rate');
+  return res.json();
+}
+
+

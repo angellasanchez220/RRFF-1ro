@@ -1,6 +1,6 @@
 // src/pages/Dashboard.jsx
 import { useState, useEffect, useMemo } from 'react';
-import { fetchSOP, downloadRrffExcel } from '../api';
+import { fetchSOP, fetchResumenEjecutivo, downloadRrffExcel } from '../api';
 import SkuCard from '../components/SkuCard';
 
 const NIVELES = ['ROJO','NARANJA','AMARILLO','AZUL','MORADO','VERDE'];
@@ -34,6 +34,10 @@ export default function Dashboard() {
   const [lastFetch, setLastFetch] = useState(null);
   const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
 
+  // Torre de Control Financiera & Matriz de Riesgos
+  const [resumenEjecutivo, setResumenEjecutivo] = useState(null);
+  const [showTorreControl, setShowTorreControl] = useState(true);
+
   // Filtros — vacíos = sin restricción (muestra todos)
   const [fCat,     setFCat]     = useState('');
   const [fSub,     setFSub]     = useState('');
@@ -51,6 +55,13 @@ export default function Dashboard() {
       const res = await fetchSOP({ includeDiscontinued: true });
       setAllData(res.data || []);
       setLastFetch(new Date().toLocaleTimeString('es-CL'));
+
+      try {
+        const resEjec = await fetchResumenEjecutivo();
+        if (resEjec && resEjec.ok) setResumenEjecutivo(resEjec.resumen);
+      } catch (errEjec) {
+        console.warn("No se pudo cargar resumen ejecutivo:", errEjec);
+      }
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -69,6 +80,13 @@ export default function Dashboard() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
+    fetchResumenEjecutivo()
+      .then(resEjec => {
+        if (cancelled) return;
+        if (resEjec && resEjec.ok) setResumenEjecutivo(resEjec.resumen);
+      })
+      .catch(() => {});
 
     return () => { cancelled = true; };
   }, []);
@@ -388,6 +406,121 @@ export default function Dashboard() {
             </button>
           </div>
         )}
+
+        {/* ── TORRE DE CONTROL FINANCIERA & MATRIZ DE RIESGOS S&OP ── */}
+        {!loading && !error && resumenEjecutivo && (
+          <div style={{ marginBottom: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div 
+              onClick={() => setShowTorreControl(!showTorreControl)}
+              style={{ padding: '12px 18px', background: '#f8fafc', borderBottom: showTorreControl ? '1px solid #e2e8f0' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.2rem' }}>💼</span>
+                <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem' }}>
+                  Torre de Control Financiera & Matriz de Riesgos S&OP
+                </span>
+                <span style={{ fontSize: '0.75rem', background: '#e2e8f0', color: '#475569', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                  {resumenEjecutivo.total_skus_activos} SKUs Activos
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  Valor Inventario:{' '}
+                  <b style={{ color: '#0f172a' }}>
+                    ${Number(resumenEjecutivo.valor_inventario_costo || 0).toLocaleString('es-CL')}
+                  </b>
+                </span>
+                <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {showTorreControl ? '▲ Ocultar' : '▼ Expandir'}
+                </span>
+              </div>
+            </div>
+
+            {showTorreControl && (
+              <div style={{ padding: 18 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 14 }}>
+                  {/* Card 1: Capital Inmovilizado / Stock Total */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #3b82f6' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Capital en Bodega
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1e293b', margin: '4px 0' }}>
+                      ${Number(resumenEjecutivo.valor_inventario_costo || 0).toLocaleString('es-CL')}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                      {Number(resumenEjecutivo.stock_total_unidades || 0).toLocaleString('es-CL')} unidades físicas
+                    </div>
+                  </div>
+
+                  {/* Card 2: Sobre-Stock Inmovilizado */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #8b5cf6' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Sobre-Stock (Azul/Verde/Morado)
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#6d28d9', margin: '4px 0' }}>
+                      {Number(resumenEjecutivo.unidades_sobrestock || 0).toLocaleString('es-CL')} uds
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#7c3aed' }}>
+                      <b>{resumenEjecutivo.pct_sobrestock}%</b> del inventario en exceso
+                    </div>
+                  </div>
+
+                  {/* Card 3: Capital en Riesgo de Quiebre */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #f97316' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Riesgo de Quiebre (Rojo/Naranja)
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#c2410c', margin: '4px 0' }}>
+                      {Number(resumenEjecutivo.unidades_riesgo_quiebre || 0).toLocaleString('es-CL')} uds
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#ea580c' }}>
+                      <b>{resumenEjecutivo.pct_riesgo_quiebre}%</b> del stock en nivel crítico
+                    </div>
+                  </div>
+
+                  {/* Card 4: Venta Perdida Proyectada */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #ef4444' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Venta Perdida Proy. (30 Días)
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#b91c1c', margin: '4px 0' }}>
+                      {Number(resumenEjecutivo.venta_perdida_proyectada_uds || 0).toLocaleString('es-CL')} uds
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#dc2626' }}>
+                      Demanda insatisfecha por quiebres ROJOS
+                    </div>
+                  </div>
+
+                  {/* Card 5: Cobertura DOH */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #06b6d4' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      DOH (Days on Hand)
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0e7490', margin: '4px 0' }}>
+                      {resumenEjecutivo.doh_global_dias} días
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#0891b2' }}>
+                      ~{resumenEjecutivo.cobertura_meses_promedio} meses de cobertura global
+                    </div>
+                  </div>
+
+                  {/* Card 6: Disponibilidad */}
+                  <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #10b981' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Disponibilidad de Catálogo
+                    </div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#047857', margin: '4px 0' }}>
+                      {resumenEjecutivo.tasa_disponibilidad_pct}%
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#059669' }}>
+                      {resumenEjecutivo.skus_quebrados_count} SKUs actualmente quebrados
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {!loading && !error && filtered.map(p => (
           <SkuCard
             key={p.sku || p.codigo_femaco}

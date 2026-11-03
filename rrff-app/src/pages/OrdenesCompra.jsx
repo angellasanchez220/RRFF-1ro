@@ -47,6 +47,10 @@ export default function OrdenesCompra() {
     DESCONTINUADO: false, // Por defecto no mostrar descontinuados
   });
 
+  // Reporte Comercial OTIF y Fill Rate por Cliente
+  const [fillRateData, setFillRateData] = useState(null);
+  const [fillRateLoading, setFillRateLoading] = useState(false);
+
   useEffect(() => {
     loadOcs();
   }, []);
@@ -73,6 +77,20 @@ export default function OrdenesCompra() {
       alert("Error al cargar historial de quiebres: " + err.message);
     } finally {
       setQuiebresLoading(false);
+    }
+  }
+
+  async function loadFillRate() {
+    setFillRateLoading(true);
+    try {
+      const res = await api.fetchFillRate();
+      if (res && res.ok) {
+        setFillRateData(res);
+      }
+    } catch (err) {
+      alert("Error al cargar auditoría OTIF y Fill Rate: " + err.message);
+    } finally {
+      setFillRateLoading(false);
     }
   }
 
@@ -291,6 +309,21 @@ export default function OrdenesCompra() {
             }}
           >
             ⏱ Auditoría Histórica de Quiebres y Tiempo de Recuperación
+          </button>
+          <button
+            style={{
+              background: 'none', border: 'none', padding: '10px 16px', cursor: 'pointer',
+              fontSize: '1rem', fontWeight: 600,
+              color: activeTab === 'fillrate' ? '#1976d2' : '#888',
+              borderBottom: activeTab === 'fillrate' ? '3px solid #1976d2' : 'none',
+              display: 'flex', alignItems: 'center', gap: 6
+            }}
+            onClick={() => {
+              setActiveTab('fillrate');
+              loadFillRate();
+            }}
+          >
+            📈 Desempeño Comercial: OTIF & Fill Rate
           </button>
         </div>
 
@@ -688,6 +721,161 @@ export default function OrdenesCompra() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 3: DESEMPEÑO COMERCIAL: OTIF & FILL RATE POR CLIENTE ── */}
+        {activeTab === 'fillrate' && (
+          <div className="card" style={{ padding: '24px' }}>
+            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h2 style={{ margin: '0 0 6px', fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📈</span> Auditoría Comercial de Despacho: OTIF & Fill Rate
+                </h2>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
+                  Métricas de cumplimiento ante clientes clave (Walmart, Sodimac, Cencosud, etc.), tasa de órdenes perfectas y ranking de quiebres.
+                </p>
+              </div>
+              <button
+                onClick={loadFillRate}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                ↻ Actualizar Métricas
+              </button>
+            </div>
+
+            {fillRateLoading ? (
+              <div className="loader-wrap"><div className="spinner" /></div>
+            ) : !fillRateData ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+                Haz clic en actualizar para cargar las métricas de despacho.
+              </div>
+            ) : (
+              <div>
+                {/* RESUMEN GLOBAL CARDS */}
+                {fillRateData.resumen_global && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                    <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #1976d2' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Fill Rate Global</span>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, margin: '6px 0', color: fillRateData.resumen_global.fill_rate_global_pct >= 95 ? '#15803d' : '#ea580c' }}>
+                        {fillRateData.resumen_global.fill_rate_global_pct}%
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {Number(fillRateData.resumen_global.total_despachadas_uds).toLocaleString()} de {Number(fillRateData.resumen_global.total_pedidas_uds).toLocaleString()} uds
+                      </span>
+                    </div>
+
+                    <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #7c3aed' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Tasa OTIF Global</span>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, margin: '6px 0', color: '#6d28d9' }}>
+                        {fillRateData.resumen_global.otif_global_pct}%
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {fillRateData.resumen_global.ocs_perfectas_global} de {fillRateData.resumen_global.total_ocs_evaluadas} OCs 100% completas
+                      </span>
+                    </div>
+
+                    <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #ef4444' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Déficit no Entregado</span>
+                      <div style={{ fontSize: '2rem', fontWeight: 800, margin: '6px 0', color: '#b91c1c' }}>
+                        {Number(fillRateData.resumen_global.unidades_deficit_total).toLocaleString()} uds
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>
+                        Venta o despacho perdido en el retail
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* TABLA CLIENTES */}
+                <h3 style={{ fontSize: '1.05rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🏢 Desempeño por Cliente
+                </h3>
+                <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 28 }}>
+                  <table className="preview-table" style={{ margin: 0, border: 'none', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th style={{ textAlign: 'center' }}>Órdenes</th>
+                        <th style={{ textAlign: 'right' }}>Uds Pedidas</th>
+                        <th style={{ textAlign: 'right' }}>Uds Despachadas</th>
+                        <th style={{ textAlign: 'right', background: '#fef2f2', color: '#991b1b' }}>Déficit (Uds)</th>
+                        <th style={{ textAlign: 'center' }}>Fill Rate (%)</th>
+                        <th style={{ textAlign: 'center' }}>Órdenes Perfectas</th>
+                        <th style={{ textAlign: 'center' }}>OTIF (%)</th>
+                        <th style={{ textAlign: 'center' }}>Quiebres</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fillRateData.clientes && fillRateData.clientes.map(cli => (
+                        <tr key={cli.cliente}>
+                          <td><b>{cli.cliente}</b></td>
+                          <td style={{ textAlign: 'center' }}>{cli.total_ocs}</td>
+                          <td style={{ textAlign: 'right' }}>{Number(cli.total_pedidas).toLocaleString('es-CL')}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(cli.total_despachadas).toLocaleString('es-CL')}</td>
+                          <td style={{ textAlign: 'right', color: cli.unidades_pendientes > 0 ? '#dc2626' : '#16a34a', fontWeight: 700, background: '#fef2f2' }}>
+                            {cli.unidades_pendientes > 0 ? `-${Number(cli.unidades_pendientes).toLocaleString('es-CL')}` : '0'}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 800,
+                              background: cli.fill_rate_pct >= 95 ? '#dcfce7' : cli.fill_rate_pct >= 85 ? '#fef3c7' : '#fee2e2',
+                              color: cli.fill_rate_pct >= 95 ? '#15803d' : cli.fill_rate_pct >= 85 ? '#b45309' : '#b91c1c'
+                            }}>
+                              {cli.fill_rate_pct}%
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>{cli.ocs_perfectas} / {cli.total_ocs}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: cli.otif_pct >= 90 ? '#15803d' : '#475569' }}>
+                            {cli.otif_pct}%
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {cli.total_quiebres > 0 ? (
+                              <span style={{ color: '#dc2626', fontWeight: 700 }}>🚨 {cli.total_quiebres}</span>
+                            ) : (
+                              <span style={{ color: '#16a34a' }}>0</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* TOP SKUS QUIEBRE */}
+                <h3 style={{ fontSize: '1.05rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🚨 Top 10 Productos con Mayor Volumen de Quiebre en Clientes
+                </h3>
+                <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <table className="preview-table" style={{ margin: 0, border: 'none', width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>Nombre del Producto</th>
+                        <th style={{ textAlign: 'right', color: '#991b1b' }}>Unidades No Entregadas</th>
+                        <th style={{ textAlign: 'center' }}>Veces Quebrado en OCs</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fillRateData.top_skus_quiebre && fillRateData.top_skus_quiebre.map(s => (
+                        <tr key={s.sku}>
+                          <td><b>{s.sku}</b></td>
+                          <td style={{ fontSize: '0.85rem' }}>{s.nombre_producto}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#dc2626' }}>
+                            {Number(s.unidades_no_entregadas).toLocaleString('es-CL')} uds
+                          </td>
+                          <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                            <span style={{ background: '#fef2f2', color: '#b91c1c', padding: '2px 8px', borderRadius: 10, fontSize: '0.8rem' }}>
+                              {s.veces_quebrado} veces
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

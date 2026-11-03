@@ -72,6 +72,122 @@ def list_materiales(search: str = None, categoria: str = None, solo_activos: boo
             return {"ok": False, "data": [], "error": str(e)}
 
 
+@router.get("/mrp-necesidades")
+def get_mrp_necesidades_materiales():
+    """
+    Calcula el MRP de reposición para todos los materiales e insumos de maquila:
+    1. Stock actual en bodega.
+    2. Stock mínimo (punto de reorden).
+    3. Insumos comprometidos en órdenes de maquila aprobadas y pendientes de liquidar.
+    4. Balance neto proyectado = stock_actual - insumos_comprometidos.
+    5. Necesidad de compra = MAX(0, stock_minimo - balance_neto).
+    6. Clasificación de urgencia: CRITICO (déficit sobre órdenes), ALERTA (bajo mínimo), OK.
+    """
+    with engine.connect() as conn:
+        try:
+            # 1. Obtener materiales activos
+            mat_df = pd.read_sql(text("""
+                SELECT id, sku, nombre, descripcion, categoria, unidad_medida, 
+                       stock_actual, stock_minimo, costo_unitario, observaciones
+                FROM materiales_maquila
+                WHERE activo = TRUE
+                ORDER BY categoria, sku ASC
+            """), conn)
+
+            # 2. Calcular insumos comprometidos en órdenes de maquila pendientes
+            comp_df = pd.read_sql(text("""
+                SELECT 
+                    UPPER(TRIM(c.sku_componente)) AS sku,
+                    SUM(d.cantidad_a_maquilar * c.cantidad_por_unidad) AS comprometido,
+                    COUNT(DISTINCT o.id) AS ordenes_pendientes_count,
+                    ARRAY_AGG(DISTINCT o.numero_oc) AS ordenes_afectadas
+                FROM ordenes_maquila o
+                JOIN orden_maquila_detalle d ON d.orden_id = o.id
+                JOIN recetas_maquila r ON r.activa = TRUE AND (r.sku_maquilable = d.sku OR r.id = d.receta_maquila_id)
+                JOIN receta_maquila_componentes c ON c.receta_id = r.id AND c.tipo_componente = 'MATERIAL'
+                WHERE o.activa = TRUE 
+                  AND o.estado_procesamiento != 'Liquidada'
+                  AND d.cantidad_a_maquilar > 0
+                GROUP BY UPPER(TRIM(c.sku_componente))
+            """), conn)
+
+            comp_dict = {}
+            if not comp_df.empty:
+                for _, r in comp_df.iterrows():
+                    sku_key = str(r["sku"]).strip().upper()
+                    comp_dict[sku_key] = {
+                        "comprometido": float(r["comprometido"] or 0),
+                        "ordenes_count": int(r["ordenes_pendientes_count"] or 0),
+                        "ordenes_afectadas": list(r["ordenes_afectadas"] or [])
+                    }
+
+            items = []
+            total_presupuesto = 0.0
+            criticos_count = 0
+            alerta_count = 0
+
+            for _, row in mat_df.iterrows():
+                sku = str(row["sku"]).strip().upper()
+                stock_act = float(row["stock_actual"] or 0)
+                stock_min = float(row["stock_minimo"] or 0)
+                costo_u = float(row["costo_unitario"] or 0)
+
+                comp_info = comp_dict.get(sku, {"comprometido": 0.0, "ordenes_count": 0, "ordenes_afectadas": []})
+                comprometido = comp_info["comprometido"]
+                balance_neto = stock_act - comprometido
+
+                if balance_neto < 0:
+                    urgencia = "CRITICO"
+                    criticos_count += 1
+                elif balance_neto < stock_min or stock_act <= stock_min:
+                    urgencia = "ALERTA"
+                    alerta_count += 1
+                else:
+                    urgencia = "OK"
+
+                # Sugerencia de compra: reponer déficit y alcanzar stock de seguridad
+                sugerencia_compra = max(0.0, (stock_min - balance_neto)) if (balance_neto < stock_min) else 0.0
+                costo_compra = round(sugerencia_compra * costo_u, 2)
+                total_presupuesto += costo_compra
+
+                items.append({
+                    "id": int(row["id"]),
+                    "sku": sku,
+                    "nombre": str(row["nombre"] or ""),
+                    "categoria": str(row["categoria"] or "INSUMO"),
+                    "unidad_medida": str(row["unidad_medida"] or "UN"),
+                    "costo_unitario": costo_u,
+                    "stock_actual": stock_act,
+                    "stock_minimo": stock_min,
+                    "comprometido_ordenes": round(comprometido, 2),
+                    "ordenes_pendientes": comp_info["ordenes_count"],
+                    "ordenes_afectadas": comp_info["ordenes_afectadas"],
+                    "balance_proyectado": round(balance_neto, 2),
+                    "sugerencia_compra": round(sugerencia_compra, 2),
+                    "costo_estimado_compra": costo_compra,
+                    "urgencia": urgencia,
+                    "observaciones": str(row["observaciones"] or "")
+                })
+
+            # Ordenar primero CRITICO, luego ALERTA, luego OK
+            order_map = {"CRITICO": 0, "ALERTA": 1, "OK": 2}
+            items.sort(key=lambda x: (order_map.get(x["urgencia"], 3), -x["sugerencia_compra"]))
+
+            return {
+                "ok": True,
+                "data": items,
+                "resumen": {
+                    "total_materiales": len(items),
+                    "criticos": criticos_count,
+                    "alerta": alerta_count,
+                    "ok": len(items) - criticos_count - alerta_count,
+                    "presupuesto_total_compra": round(total_presupuesto, 2)
+                }
+            }
+        except Exception as e:
+            return {"ok": False, "data": [], "error": str(e)}
+
+
 @router.get("/{material_id}")
 def get_material(material_id: int):
     """Detalle de un material de maquila."""

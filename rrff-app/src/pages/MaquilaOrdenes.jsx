@@ -23,6 +23,15 @@ export default function MaquilaOrdenes({ isAdmin }) {
   const [liquidarLoading, setLiquidarLoading] = useState(false);
   const [liquidarHermanoMap, setLiquidarHermanoMap] = useState({});
   const [liquidarObs, setLiquidarObs] = useState('');
+  const [liquidarMermasInsumos, setLiquidarMermasInsumos] = useState({});
+  const [liquidarMermaProducto, setLiquidarMermaProducto] = useState(0);
+  const [liquidarMotivoMerma, setLiquidarMotivoMerma] = useState('');
+
+  // Modal Reporte Mermas
+  const [mermasModalOpen, setMermasModalOpen] = useState(false);
+  const [mermasData, setMermasData] = useState([]);
+  const [mermasResumen, setMermasResumen] = useState(null);
+  const [mermasLoading, setMermasLoading] = useState(false);
 
   useEffect(() => {
     if (view === 'list') {
@@ -126,6 +135,20 @@ export default function MaquilaOrdenes({ isAdmin }) {
     }
   }
 
+  async function handleOpenMermas() {
+    setMermasModalOpen(true);
+    setMermasLoading(true);
+    try {
+      const res = await api.fetchMermasMaquila();
+      setMermasData(res.data || []);
+      setMermasResumen(res.resumen || null);
+    } catch (e) {
+      alert("Error al cargar reporte de mermas: " + e.message);
+    } finally {
+      setMermasLoading(false);
+    }
+  }
+
   function handleOpenLiquidar() {
     if (!activeOc) return;
     // Precargar selección por defecto del primer hermano con stock para cada producto a maquilar
@@ -136,13 +159,16 @@ export default function MaquilaOrdenes({ isAdmin }) {
       }
     });
     setLiquidarHermanoMap(map);
+    setLiquidarMermasInsumos({});
+    setLiquidarMermaProducto(0);
+    setLiquidarMotivoMerma('');
     setLiquidarObs(`Liquidación de OC ${activeOc.meta.numero_oc} procesada en planta`);
     setLiquidarModalOpen(true);
   }
 
   async function handleConfirmLiquidar() {
     if (!activeOc) return;
-    if (!window.confirm("¿Confirmas la liquidación de esta maquila? Se descontarán los materiales de 'materiales_maquila', se descontarán los productos hermanos de origen y se sumará el producto terminado en 'planificacion_sop'.")) {
+    if (!window.confirm("¿Confirmas la liquidación de esta maquila? Se descontarán los materiales de 'materiales_maquila' (consumo + mermas), se descontarán los productos hermanos de origen y se sumará el producto terminado en 'planificacion_sop'.")) {
       return;
     }
 
@@ -150,7 +176,10 @@ export default function MaquilaOrdenes({ isAdmin }) {
     try {
       const res = await api.liquidarOrdenMaquila(activeOc.meta.id, {
         hermano_seleccionado: liquidarHermanoMap,
-        observaciones: liquidarObs
+        observaciones: liquidarObs,
+        mermas_insumos: liquidarMermasInsumos,
+        merma_producto_origen: Number(liquidarMermaProducto) || 0,
+        motivo_merma: liquidarMotivoMerma.trim()
       });
       alert(res.mensaje || "Maquila liquidada e inventarios actualizados con éxito");
       setLiquidarModalOpen(false);
@@ -182,24 +211,35 @@ export default function MaquilaOrdenes({ isAdmin }) {
             </p>
           </div>
 
-          {isAdmin && (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-              <input 
-                type="file" 
-                accept=".csv" 
-                onChange={(e) => setFile(e.target.files[0])} 
-                style={{ fontSize: '0.85rem' }}
-              />
-              <button 
-                className="btn-primary" 
-                onClick={handleImportPreview} 
-                disabled={!file || loading}
-                style={{ padding: '8px 16px', fontWeight: 700, fontSize: '0.88rem' }}
-              >
-                {loading ? 'Analizando...' : 'Analizar OC (CSV)'}
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              className="btn-secondary"
+              onClick={handleOpenMermas}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
+              title="Auditoría de mermas y scrap registrados"
+            >
+              <span>📉</span> Reporte Mermas & Scrap
+            </button>
+
+            {isAdmin && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={(e) => setFile(e.target.files[0])} 
+                  style={{ fontSize: '0.85rem' }}
+                />
+                <button 
+                  className="btn-primary" 
+                  onClick={handleImportPreview} 
+                  disabled={!file || loading}
+                  style={{ padding: '8px 16px', fontWeight: 700, fontSize: '0.88rem' }}
+                >
+                  {loading ? 'Analizando...' : 'Analizar OC (CSV)'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         {error && <div className="alert-box" style={{ background: '#ffebee', color: '#c62828', padding: '12px 16px', borderRadius: '6px', marginBottom: '16px' }}>{error}</div>}
@@ -1073,6 +1113,58 @@ export default function MaquilaOrdenes({ isAdmin }) {
             ))}
           </div>
 
+          {/* Mermas Reales en Planta */}
+          <div style={{ background: '#fff1f2', border: '1.5px solid #fecdd3', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ fontWeight: 800, color: '#9f1239', fontSize: '0.9rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>📉</span> Registro de Mermas y Scrap en Planta (Opcional):
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#881337', marginBottom: '4px' }}>
+                  Merma de Producto Origen (uds dañadas):
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={liquidarMermaProducto}
+                  onChange={e => setLiquidarMermaProducto(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1.5px solid #fda4af', fontWeight: 700 }}
+                  placeholder="0"
+                />
+              </div>
+
+              {componentes && componentes.filter(c => c.tipo === 'MATERIAL').map(mat => (
+                <div key={mat.sku}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#881337', marginBottom: '4px' }}>
+                    Merma {mat.sku} ({mat.nombre?.substring(0, 20)}...):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={liquidarMermasInsumos[mat.sku] || ''}
+                    onChange={e => setLiquidarMermasInsumos({ ...liquidarMermasInsumos, [mat.sku]: Number(e.target.value) || 0 })}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1.5px solid #fda4af', fontWeight: 700 }}
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#881337', marginBottom: '4px' }}>
+                Motivo / Causa de la Merma:
+              </label>
+              <input
+                type="text"
+                value={liquidarMotivoMerma}
+                onChange={e => setLiquidarMotivoMerma(e.target.value)}
+                placeholder="Ej. Calibración de mangas, etiquetas rasgadas por bobina defectuosa"
+                style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1.5px solid #fda4af', fontSize: '0.84rem' }}
+              />
+            </div>
+          </div>
+
           {/* Observaciones */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '4px' }}>
@@ -1083,7 +1175,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               value={liquidarObs}
               onChange={e => setLiquidarObs(e.target.value)}
               style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontSize: '0.88rem' }}
-              placeholder="Ej: Lote finalizado conforme en turno mañana, sin mermas"
+              placeholder="Ej: Lote finalizado conforme en turno mañana"
             />
           </div>
 
@@ -1111,6 +1203,109 @@ export default function MaquilaOrdenes({ isAdmin }) {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 6. MODAL REPORTE DE MERMAS Y SCRAP
+  // ─────────────────────────────────────────────────────────────────────────────
+  function renderMermasModal() {
+    if (!mermasModalOpen) return null;
+
+    return (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+      }}>
+        <div style={{
+          width: '94%', maxWidth: '960px', background: '#ffffff', borderRadius: '12px',
+          padding: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', maxHeight: '90vh', display: 'flex', flexDirection: 'column'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+            <div>
+              <h2 style={{ margin: '0 0 4px', fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
+                📉 Reporte Histórico de Mermas y Scrap de Maquila
+              </h2>
+              <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                Control y auditoría de desperdicios registrados al liquidar cada orden de trabajo
+              </div>
+            </div>
+            <button onClick={() => setMermasModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+          </div>
+
+          {/* Tarjetas resumen */}
+          {mermasResumen && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+              <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>UDS TERMINADAS</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a' }}>{mermasResumen.unidades_producidas?.toLocaleString()}</div>
+              </div>
+              <div style={{ padding: '12px 14px', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                <div style={{ fontSize: '0.74rem', color: '#9f1239', fontWeight: 700 }}>MERMAS PRODUCTO (UDS)</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#e11d48' }}>{mermasResumen.mermas_producto_uds?.toLocaleString()}</div>
+              </div>
+              <div style={{ padding: '12px 14px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                <div style={{ fontSize: '0.74rem', color: '#92400e', fontWeight: 700 }}>TASA DE MERMA REAL</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#b45309' }}>{mermasResumen.tasa_merma_pct}%</div>
+              </div>
+              <div style={{ padding: '12px 14px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                <div style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 700 }}>COSTO TOTAL MERMAS</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#15803d' }}>${Math.round(mermasResumen.costo_total_mermas || 0).toLocaleString('es-CL')}</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {mermasLoading ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Cargando reporte de mermas...</div>
+            ) : mermasData.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No se han registrado mermas en las liquidaciones procesadas.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '10px 12px' }}>Fecha</th>
+                    <th style={{ padding: '10px 12px' }}>OC</th>
+                    <th style={{ padding: '10px 12px' }}>SKU Producido</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Cant. Producida</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Merma Prod.</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Scrap</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Costo Merma</th>
+                    <th style={{ padding: '10px 12px' }}>Motivo</th>
+                    <th style={{ padding: '10px 12px' }}>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mermasData.map((m, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: m.merma_unidades_producto > 0 ? '#fff1f2' : '#ffffff' }}>
+                      <td style={{ padding: '10px 12px', color: '#64748b' }}>{m.fecha_registro}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0369a1' }}>{m.numero_oc}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600 }}>{m.sku_producido}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{m.cantidad_producida?.toLocaleString()}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: m.merma_unidades_producto > 0 ? '#e11d48' : '#64748b' }}>
+                        {m.merma_unidades_producto?.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>
+                        {m.tasa_merma_pct}%
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#16a34a' }}>
+                        ${Math.round(m.costo_merma_total || 0).toLocaleString('es-CL')}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#475569' }}>{m.motivo_merma || 'Sin observaciones'}</td>
+                      <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.8rem' }}>{m.usuario}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+            <button className="btn-secondary" onClick={() => setMermasModalOpen(false)}>Cerrar Reporte</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="ordenes-maquila" style={{ width: '100%' }}>
       {view === 'list' && renderList()}
@@ -1118,6 +1313,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
       {view === 'detail' && renderDetail()}
       {renderOtModal()}
       {renderLiquidarModal()}
+      {renderMermasModal()}
     </div>
   );
 }

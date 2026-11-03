@@ -22,6 +22,7 @@ import pandas as pd
 
 from api.db import engine
 from api.routes.auth import decode_token, _get_auth_header
+from api.routes.kardex import registrar_movimiento_kardex
 from src.services.maquila_service import (
     build_maquila_families,
     build_product_lookup_by_internal_code,
@@ -732,3 +733,206 @@ def save_observacion(
                     fecha_modificacion=NOW()
         """), {"s": sku, "o": obs, "u": usuario})
     return {"ok": True, "sku": sku}
+
+
+# ── RESUMEN EJECUTIVO / TORRE DE CONTROL FINANCIERA ───────────────────────────
+@router.get("/resumen-ejecutivo")
+def get_resumen_ejecutivo():
+    """
+    Torre de Control Financiera & Matriz de Riesgos S&OP:
+    - Capital Total en Bodega ($) y en Unidades.
+    - Distribución por nivel de alerta (Rojo, Naranja, Amarillo, Azul, Morado, Verde).
+    - Capital en Sobre-Stock (Morado/Verde).
+    - Capital en Riesgo de Quiebre (Rojo/Naranja).
+    - Venta Perdida Proyectada a 30 días ($) por quiebres en SKUs ROJO.
+    - DOH (Days on Hand / Días de Cobertura Global).
+    - Fill Rate / Disponibilidad de Catálogo (% SKUs activos con stock).
+    """
+    with engine.connect() as conn:
+        try:
+            df = pd.read_sql(text("""
+                SELECT p.sku, p.codigo_femaco, p.nombre_producto, p.categoria, p.stock_act, 
+                       p.nivel_alerta, p.total_4_sem_verificado, p.ritmo_mensual_verificado,
+                       COALESCE(d.costo_compra, 0) AS costo_compra,
+                       COALESCE(d.condicion, p.estado) AS estado
+                FROM planificacion_sop p
+                LEFT JOIN dim_productos d ON d.sku = p.sku
+                WHERE UPPER(TRIM(COALESCE(d.condicion, p.estado, ''))) NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
+            """), conn)
+        except Exception:
+            try:
+                df = pd.read_sql(text("""
+                    SELECT sku, codigo_femaco, nombre_producto, categoria, stock_act, 
+                           nivel_alerta, total_4_sem_verificado, ritmo_mensual_verificado,
+                           0 AS costo_compra, estado
+                    FROM planificacion_sop
+                    WHERE UPPER(TRIM(COALESCE(estado, ''))) NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
+                """), conn)
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+    if df.empty:
+        return {"ok": True, "resumen": {}}
+
+    total_skus = len(df)
+    stock_total_uds = float(df["stock_act"].fillna(0).sum())
+    
+    # Niveles de alerta
+    niveles_count = {
+        "ROJO": int((df["nivel_alerta"] == "ROJO").sum()),
+        "NARANJA": int((df["nivel_alerta"] == "NARANJA").sum()),
+        "AMARILLO": int((df["nivel_alerta"] == "AMARILLO").sum()),
+        "AZUL": int((df["nivel_alerta"] == "AZUL").sum()),
+        "MORADO": int((df["nivel_alerta"] == "MORADO").sum()),
+        "VERDE": int((df["nivel_alerta"] == "VERDE").sum()),
+    }
+
+    # Sobre-stock y riesgo de quiebre
+    uds_sobrestock = float(df[df["nivel_alerta"].isin(["AZUL", "MORADO", "VERDE"])]["stock_act"].fillna(0).sum())
+    uds_riesgo_quiebre = float(df[df["nivel_alerta"].isin(["ROJO", "NARANJA"])]["stock_act"].fillna(0).sum())
+
+    # Ritmo mensual total y venta perdida
+    ritmo_col = "total_4_sem_verificado" if "total_4_sem_verificado" in df.columns else "ritmo_mensual_verificado"
+    ritmo_mensual_total = float(df[ritmo_col].fillna(0).sum())
+    ritmo_diario_total = ritmo_mensual_total / 30.0 if ritmo_mensual_total > 0 else 1.0
+
+    doh_global = round(stock_total_uds / ritmo_diario_total, 1) if ritmo_diario_total > 0 else 0.0
+
+    # Venta perdida estimada a 30 días (SKUs en ROJO)
+    df_rojos = df[df["nivel_alerta"] == "ROJO"]
+    venta_perdida_uds = float(df_rojos[ritmo_col].fillna(0).sum())
+
+    # Tasa de disponibilidad
+    skus_con_stock = int((df["stock_act"].fillna(0) > 0).sum())
+    disponibilidad_pct = round((skus_con_stock / total_skus) * 100, 1) if total_skus > 0 else 0.0
+
+    valor_total_costo = float((df["stock_act"].fillna(0) * df["costo_compra"].fillna(0)).sum())
+
+    return {
+        "ok": True,
+        "resumen": {
+            "total_skus_activos": total_skus,
+            "stock_total_unidades": round(stock_total_uds, 0),
+            "valor_inventario_costo": round(valor_total_costo, 2),
+            "niveles_count": niveles_count,
+            "unidades_sobrestock": round(uds_sobrestock, 0),
+            "unidades_riesgo_quiebre": round(uds_riesgo_quiebre, 0),
+            "pct_sobrestock": round((uds_sobrestock / stock_total_uds * 100), 1) if stock_total_uds > 0 else 0.0,
+            "pct_riesgo_quiebre": round((uds_riesgo_quiebre / stock_total_uds * 100), 1) if stock_total_uds > 0 else 0.0,
+            "doh_global_dias": doh_global,
+            "cobertura_meses_promedio": round(doh_global / 30.0, 1),
+            "venta_perdida_proyectada_uds": round(venta_perdida_uds, 0),
+            "tasa_disponibilidad_pct": disponibilidad_pct,
+            "skus_quebrados_count": niveles_count["ROJO"]
+        }
+    }
+
+
+# ── GENERADOR DIRECTO DE ÓRDENES DE COMPRA A PROVEEDOR ───────────────────────
+@router.post("/generar-po")
+def generar_orden_compra_proveedor(
+    body: dict = Body(...),
+    authorization: str = Header(None)
+):
+    """
+    Genera una Orden de Compra formal al Proveedor desde la pantalla de Compras:
+    - Inserta los ítems seleccionados directamente en 'control_embarques'.
+    - Quedan en estado 'EN_TRANSITO' y con origen 'SISTEMA_COMPRAS'.
+    - Registra el movimiento proyectado en Kardex.
+    - Se refleja inmediatamente en el S&OP y en la gestión de Embarques.
+    """
+    token = _get_auth_header(authorization)
+    payload = decode_token(token)
+    user = payload.get("sub", "compras")
+
+    proveedor = str(body.get("proveedor") or "").strip()
+    numero_oc = str(body.get("numero_oc") or "").strip().upper()
+    fecha_pedido = str(body.get("fecha_pedido") or date.today().isoformat()).strip()
+    fecha_eta = str(body.get("fecha_eta") or "").strip()
+    lead_time_dias = int(body.get("lead_time_dias") or 60)
+    observacion = str(body.get("observacion") or "").strip()
+    items = body.get("items") or []
+
+    if not numero_oc:
+        raise HTTPException(400, "El número de Orden de Compra (PO) es obligatorio")
+    if not items:
+        raise HTTPException(400, "Debes seleccionar al menos un SKU para generar la orden")
+    if not fecha_eta:
+        try:
+            f_ped = date.fromisoformat(fecha_pedido[:10])
+            fecha_eta = (f_ped + timedelta(days=lead_time_dias)).isoformat()
+        except:
+            fecha_eta = (date.today() + timedelta(days=60)).isoformat()
+
+    from decimal import Decimal
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM control_embarques WHERE codigo_envio = :c LIMIT 1"),
+            {"c": numero_oc}
+        ).fetchone()
+        if exists:
+            raise HTTPException(400, f"Ya existe una Orden de Compra o Envío registrado con el código '{numero_oc}'")
+
+        total_unidades = 0
+        total_monto = Decimal('0.0')
+        nombre_ped = f"{proveedor} - {numero_oc}" if proveedor else numero_oc
+
+        for it in items:
+            sku = str(it.get("sku") or "").strip()
+            if not sku:
+                continue
+            cant = int(round(float(it.get("cantidad") or 0)))
+            if cant <= 0:
+                continue
+            
+            costo_u = Decimal(str(it.get("costo_unitario") or 0))
+            subtotal = Decimal(str(cant)) * costo_u
+            cod_fem = str(it.get("codigo_femaco") or "").strip()
+            nom_prod = str(it.get("nombre_producto") or "").strip()
+
+            total_unidades += cant
+            total_monto += subtotal
+
+            conn.execute(text("""
+                INSERT INTO control_embarques (
+                    codigo_envio, nombre_pedido, sku, codigo_femaco, nombre_producto,
+                    cantidad, fecha_eta, fecha_disponibilidad_real, origen_eta,
+                    nombre_archivo, estado, observacion, proveedor,
+                    precio_unitario_compra, total_compra, origen_creacion, usuario_creacion
+                ) VALUES (
+                    :oc, :nped, :sku, :fem, :nom,
+                    :cant, :eta, :eta, 'SISTEMA_COMPRAS',
+                    'EMISION_DIRECTA', 'EN_TRANSITO', :obs, :prov,
+                    :pu, :tot, 'SISTEMA_COMPRAS', :user
+                )
+            """), {
+                "oc": numero_oc, "nped": nombre_ped, "sku": sku, "fem": cod_fem, "nom": nom_prod,
+                "cant": cant, "eta": fecha_eta[:10], "obs": observacion, "prov": proveedor,
+                "pu": float(costo_u), "tot": float(subtotal), "user": user
+            })
+
+            registrar_movimiento_kardex(
+                conn=conn,
+                tipo_entidad="PRODUCTO",
+                sku=sku,
+                nombre=nom_prod,
+                tipo_movimiento="ENTRADA_COMPRA",
+                referencia_doc=f"PO-{numero_oc}",
+                cantidad=cant,
+                saldo_anterior=0,
+                saldo_nuevo=cant,
+                costo_unitario=float(costo_u),
+                motivo=f"Orden de compra a proveedor {proveedor} (ETA: {fecha_eta[:10]})",
+                usuario=user
+            )
+
+    return {
+        "ok": True,
+        "numero_oc": numero_oc,
+        "proveedor": proveedor,
+        "fecha_eta": fecha_eta[:10],
+        "items_count": len(items),
+        "total_unidades": total_unidades,
+        "total_monto": float(total_monto),
+        "mensaje": f"Orden de Compra {numero_oc} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
+    }

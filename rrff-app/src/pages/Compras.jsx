@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchSOP } from '../api';
+import { fetchSOP, fetchMrpMateriales, generarPoProveedor } from '../api';
 import * as XLSX from 'xlsx';
 import SkuDetailModal from '../components/SkuDetailModal';
 
@@ -40,6 +40,7 @@ function getMonthLabel(d) {
 }
 
 export default function Compras() {
+  const [activeTab, setActiveTab] = useState('SOP'); // 'SOP' | 'MRP'
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -53,20 +54,58 @@ export default function Compras() {
   const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
   const [selectedSku, setSelectedSku] = useState(null);
 
+  // Estados para Emisión Directa de Orden de Compra (PO)
+  const [selectedSkusForPo, setSelectedSkusForPo] = useState(new Set());
+  const [showPoModal, setShowPoModal] = useState(false);
+  const [poForm, setPoForm] = useState({
+    numero_oc: '',
+    proveedor: 'PROVEEDOR PRINCIPAL',
+    fecha_pedido: new Date().toISOString().split('T')[0],
+    fecha_eta: '',
+    lead_time_dias: 60,
+    observacion: '',
+    items: []
+  });
+  const [submittingPo, setSubmittingPo] = useState(false);
+
+  // Estados para MRP de Insumos de Maquila
+  const [mrpData, setMrpData] = useState([]);
+  const [mrpResumen, setMrpResumen] = useState(null);
+  const [mrpLoading, setMrpLoading] = useState(false);
+  const [mrpFilter, setMrpFilter] = useState('ALL'); // 'ALL' | 'CRITICO' | 'ALERTA'
+
   const LEAD_TIME_DAYS = 60; // Días de tránsito (margen)
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const sopData = await fetchSOP();
-        setData(sopData.data || []); // El backend retorna { data: [...], total: N }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
+  const loadSopData = async () => {
+    setLoading(true);
+    try {
+      const sopData = await fetchSOP();
+      setData(sopData.data || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    loadData();
+  };
+
+  const loadMrpData = async () => {
+    setMrpLoading(true);
+    try {
+      const res = await fetchMrpMateriales();
+      if (res && res.ok) {
+        setMrpData(res.data || []);
+        setMrpResumen(res.resumen || null);
+      }
+    } catch (err) {
+      console.error("Error cargando MRP de insumos:", err);
+    } finally {
+      setMrpLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSopData();
+    loadMrpData();
   }, []);
 
   // ── APLICAR FILTROS GLOBALES ──
@@ -337,17 +376,158 @@ export default function Compras() {
     XLSX.writeFile(wb, 'Plan_de_Compras.xlsx');
   };
 
+  const handleOpenPoModal = (customItems = null) => {
+    let itemsToInclude = [];
+    if (customItems && customItems.length > 0) {
+      itemsToInclude = customItems;
+    } else if (selectedSkusForPo.size > 0) {
+      itemsToInclude = filteredData.filter(s => selectedSkusForPo.has(s.sku));
+    } else {
+      const urgentes = groupedSug['0000-URGENTE'] ? groupedSug['0000-URGENTE'].items : [];
+      if (urgentes.length === 0 && sugList.length === 0) {
+        alert("Selecciona al menos un SKU marcando su casilla para emitir una Orden de Compra.");
+        return;
+      }
+      itemsToInclude = urgentes.length > 0 ? urgentes : sugList.slice(0, 10);
+    }
+
+    const defaultEta = new Date();
+    defaultEta.setDate(defaultEta.getDate() + LEAD_TIME_DAYS);
+    const etaStr = defaultEta.toISOString().split('T')[0];
+    const poNum = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const itemsFormatted = itemsToInclude.map(s => {
+      const sug = Number(s.sugerencia_compra_inmediata_uds || s.compra_masiva_cny_uds || 100);
+      const moq = Number(s.moq || 1);
+      const roundedQty = moq > 1 ? Math.ceil(sug / moq) * moq : sug;
+      return {
+        sku: s.sku,
+        codigo_femaco: s.codigo_femaco || s.sku,
+        nombre_producto: s.nombre_producto || '',
+        cantidad: roundedQty > 0 ? roundedQty : 100,
+        moq: moq,
+        costo_unitario: Number(s.costo_compra || 0),
+        subtotal: (roundedQty > 0 ? roundedQty : 100) * Number(s.costo_compra || 0)
+      };
+    });
+
+    setPoForm({
+      numero_oc: poNum,
+      proveedor: 'PROVEEDOR PRINCIPAL',
+      fecha_pedido: new Date().toISOString().split('T')[0],
+      fecha_eta: etaStr,
+      lead_time_dias: LEAD_TIME_DAYS,
+      observacion: 'Emisión automática generada desde Plan de Compras S&OP',
+      items: itemsFormatted
+    });
+    setShowPoModal(true);
+  };
+
+  const handleUpdatePoItemQty = (index, newQty) => {
+    const val = Math.max(0, parseInt(newQty) || 0);
+    setPoForm(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = {
+        ...newItems[index],
+        cantidad: val,
+        subtotal: val * (newItems[index].costo_unitario || 0)
+      };
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleUpdatePoItemCosto = (index, newCosto) => {
+    const val = Math.max(0, parseFloat(newCosto) || 0);
+    setPoForm(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = {
+        ...newItems[index],
+        costo_unitario: val,
+        subtotal: (newItems[index].cantidad || 0) * val
+      };
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const handleRemovePoItem = (index) => {
+    setPoForm(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleConfirmSubmitPo = async (e) => {
+    e.preventDefault();
+    if (!poForm.numero_oc.trim()) {
+      alert("Por favor ingresa un código / número de Orden de Compra (PO).");
+      return;
+    }
+    if (!poForm.items || poForm.items.length === 0) {
+      alert("No hay ítems en la orden de compra.");
+      return;
+    }
+    setSubmittingPo(true);
+    try {
+      const res = await generarPoProveedor(poForm);
+      alert(`✅ ${res.mensaje || 'Orden de Compra emitida con éxito e inyectada a Tránsito.'}`);
+      setShowPoModal(false);
+      setSelectedSkusForPo(new Set());
+      loadSopData();
+    } catch (err) {
+      alert("Error al emitir orden de compra: " + err.message);
+    } finally {
+      setSubmittingPo(false);
+    }
+  };
+
+  const toggleSkuSelection = (sku) => {
+    setSelectedSkusForPo(prev => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku);
+      else next.add(sku);
+      return next;
+    });
+  };
+
+  const toggleGroupSelection = (groupItems) => {
+    setSelectedSkusForPo(prev => {
+      const next = new Set(prev);
+      const allSelected = groupItems.every(it => next.has(it.sku));
+      if (allSelected) {
+        groupItems.forEach(it => next.delete(it.sku));
+      } else {
+        groupItems.forEach(it => next.add(it.sku));
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="content-area">
       <main className="main-panel" style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>🛒 Plan de Compras</h1>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.85rem', color: '#666', background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
               <span>⏱ Lead time estándar de reposición: <b>5 meses</b></span>
               <span style={{ fontSize: '0.75rem', fontStyle: 'italic', marginTop: '2px' }}>Valor operativo provisional. Las ETA reales tienen prioridad cuando están disponibles.</span>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button
+                onClick={() => handleOpenPoModal()}
+                style={{
+                  padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none',
+                  borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: '0 2px 4px rgba(37,99,235,0.25)'
+                }}
+                title="Generar Orden de Compra formal para inyectar a Tránsito">
+                <span>📝 Emitir PO</span>
+                {selectedSkusForPo.size > 0 && (
+                  <span style={{ background: '#fff', color: '#2563eb', padding: '1px 7px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>
+                    {selectedSkusForPo.size}
+                  </span>
+                )}
+              </button>
               <button 
                 onClick={() => handleExportExcel(false)}
                 style={{ padding: '8px 16px', background: '#1d6b3e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>
@@ -362,11 +542,47 @@ export default function Compras() {
           </div>
         </div>
 
-        {/* ── ADVERTENCIA DE REGLAS ── */}
-        <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
-          <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            ⚠️ Precaución: Reglas de Cálculo del Motor
-          </h4>
+        {/* ── NAVEGACIÓN DE PESTAÑAS S&OP vs MRP ── */}
+        <div style={{ display: 'flex', gap: 12, borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
+          <button
+            onClick={() => setActiveTab('SOP')}
+            style={{
+              background: 'none', border: 'none', padding: '10px 18px', cursor: 'pointer',
+              fontSize: '1rem', fontWeight: 700,
+              color: activeTab === 'SOP' ? '#1d6b3e' : '#64748b',
+              borderBottom: activeTab === 'SOP' ? '3px solid #1d6b3e' : 'none'
+            }}>
+            🛒 Abastecimiento S&OP (Productos)
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('MRP');
+              if (mrpData.length === 0) loadMrpData();
+            }}
+            style={{
+              background: 'none', border: 'none', padding: '10px 18px', cursor: 'pointer',
+              fontSize: '1rem', fontWeight: 700,
+              color: activeTab === 'MRP' ? '#9333ea' : '#64748b',
+              borderBottom: activeTab === 'MRP' ? '3px solid #9333ea' : 'none',
+              display: 'flex', alignItems: 'center', gap: 6
+            }}>
+            <span>📦 MRP Insumos de Maquila</span>
+            {mrpResumen && mrpResumen.criticos > 0 && (
+              <span style={{ background: '#ef4444', color: '#fff', padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 800 }}>
+                {mrpResumen.criticos} críticos
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ── CONTENIDO PRINCIPAL: S&OP vs MRP ── */}
+        {activeTab === 'SOP' ? (
+          <>
+            {/* ── ADVERTENCIA DE REGLAS ── */}
+            <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚠️ Precaución: Reglas de Cálculo del Motor
+              </h4>
           <p style={{ margin: '0 0 8px 0' }}>Estas sugerencias de compra se generan de forma automática basándose en las siguientes reglas:</p>
           <ul style={{ margin: 0, paddingLeft: '20px' }}>
             <li><b>Target de Cobertura:</b> Las sugerencias buscan cubrir <b>5 meses</b> de inventario por defecto (Configurable globalmente, por SKU o categoría).</li>
@@ -556,6 +772,14 @@ export default function Compras() {
                         <table className="preview-table" style={{ margin: 0, border: 'none', borderRadius: 0 }}>
                           <thead>
                             <tr>
+                              <th style={{ width: 36, textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  title="Seleccionar todo el grupo"
+                                  checked={group.items.length > 0 && group.items.every(it => selectedSkusForPo.has(it.sku))}
+                                  onChange={() => toggleGroupSelection(group.items)}
+                                />
+                              </th>
                               <th>SKU / Cód. Femaco</th>
                               <th>Categoría</th>
                               <th>Estado & Maquila</th>
@@ -577,6 +801,13 @@ export default function Compras() {
                               
                               return (
                                 <tr key={s.sku} style={isMaq ? { background: '#fdfbfe' } : {}}>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedSkusForPo.has(s.sku)}
+                                      onChange={() => toggleSkuSelection(s.sku)}
+                                    />
+                                  </td>
                                   <td style={isMaq ? { borderLeft: '3px solid #9333ea' } : {}}>
                                     <div>
                                       <b>{s.sku}</b>
@@ -827,6 +1058,310 @@ export default function Compras() {
 
           </div>
         )}
+        </>
+      ) : (
+        /* ── VISTA MRP DE INSUMOS DE MAQUILA ── */
+        <div>
+          {/* KPI CARDS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
+            <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #9333ea', background: '#fff' }}>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Total Insumos</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#9333ea' }}>
+                {mrpResumen?.total_materiales || mrpData.length}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: '#666' }}>Etiquetas, mangas, cajas, insumos</span>
+            </div>
+
+            <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #ef4444', background: '#fff' }}>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Déficit Crítico 🔴</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#ef4444' }}>
+                {mrpResumen?.criticos || mrpData.filter(m => m.urgencia === 'CRITICO').length}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>Stock insuficiente vs órdenes activas</span>
+            </div>
+
+            <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #f59e0b', background: '#fff' }}>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Alerta de Stock 🟡</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#f59e0b' }}>
+                {mrpResumen?.alertas || mrpData.filter(m => m.urgencia === 'ALERTA').length}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: '#b45309' }}>Bajo stock mínimo de seguridad</span>
+            </div>
+
+            <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #10b981', background: '#fff' }}>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Presupuesto Reposición</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#10b981' }}>
+                ${Number(mrpResumen?.presupuesto_reposicion_total || 0).toLocaleString('es-CL')}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: '#047857' }}>Para cubrir órdenes y stock mín.</span>
+            </div>
+          </div>
+
+          {/* TOOLBAR */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setMrpFilter('ALL')}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, border: '1px solid #cbd5e1', cursor: 'pointer',
+                  background: mrpFilter === 'ALL' ? '#9333ea' : '#fff', color: mrpFilter === 'ALL' ? '#fff' : '#475569',
+                  fontWeight: 600, fontSize: '0.85rem'
+                }}>
+                Todos ({mrpData.length})
+              </button>
+              <button
+                onClick={() => setMrpFilter('CRITICO')}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, border: '1px solid #fca5a5', cursor: 'pointer',
+                  background: mrpFilter === 'CRITICO' ? '#ef4444' : '#fff', color: mrpFilter === 'CRITICO' ? '#fff' : '#dc2626',
+                  fontWeight: 600, fontSize: '0.85rem'
+                }}>
+                🔴 Críticos ({mrpData.filter(m => m.urgencia === 'CRITICO').length})
+              </button>
+              <button
+                onClick={() => setMrpFilter('ALERTA')}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, border: '1px solid #fde68a', cursor: 'pointer',
+                  background: mrpFilter === 'ALERTA' ? '#f59e0b' : '#fff', color: mrpFilter === 'ALERTA' ? '#fff' : '#b45309',
+                  fontWeight: 600, fontSize: '0.85rem'
+                }}>
+                🟡 Alertas ({mrpData.filter(m => m.urgencia === 'ALERTA').length})
+              </button>
+            </div>
+
+            <button
+              onClick={loadMrpData}
+              style={{ padding: '6px 14px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+              ↻ Actualizar Necesidades MRP
+            </button>
+          </div>
+
+          {/* TABLA MRP */}
+          {mrpLoading ? (
+            <div className="loader-wrap"><div className="spinner" /></div>
+          ) : mrpData.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', background: '#fff', borderRadius: 8, color: '#888', border: '1px solid var(--border)' }}>
+              No hay materiales registrados en el módulo de Maquila.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
+              <table className="preview-table" style={{ margin: 0, border: 'none' }}>
+                <thead>
+                  <tr>
+                    <th>SKU / Insumo</th>
+                    <th>Categoría</th>
+                    <th>Stock Físico</th>
+                    <th style={{ background: '#fef2f2', color: '#991b1b' }}>Comprometido en Maquilas</th>
+                    <th style={{ background: '#f8fafc' }}>Balance Proyectado</th>
+                    <th>Stock Mínimo</th>
+                    <th style={{ background: '#eff6ff', color: '#1e40af' }}>Sugerencia Reorden</th>
+                    <th>Costo Unitario</th>
+                    <th>Costo Estimado</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mrpData
+                    .filter(m => mrpFilter === 'ALL' || m.urgencia === mrpFilter)
+                    .map(m => (
+                      <tr key={m.sku}>
+                        <td>
+                          <div><b>{m.sku}</b></div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{m.nombre}</div>
+                        </td>
+                        <td><span style={{ fontSize: '0.75rem', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{m.categoria}</span></td>
+                        <td><b>{Number(m.stock_actual).toLocaleString('es-CL')}</b> {m.unidad_medida}</td>
+                        <td style={{ background: '#fef2f2', color: '#991b1b' }}>
+                          <b>{Number(m.comprometido_ordenes).toLocaleString('es-CL')}</b> {m.unidad_medida}
+                          {m.ordenes_pendientes > 0 && (
+                            <div style={{ fontSize: '0.72rem', color: '#b91c1c' }}>
+                              en {m.ordenes_pendientes} orden(es)
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ background: '#f8fafc', fontWeight: 'bold', color: m.balance_proyectado < 0 ? '#dc2626' : '#1e293b' }}>
+                          {Number(m.balance_proyectado).toLocaleString('es-CL')} {m.unidad_medida}
+                        </td>
+                        <td>{Number(m.stock_minimo).toLocaleString('es-CL')} {m.unidad_medida}</td>
+                        <td style={{ background: '#eff6ff', fontWeight: 'bold', color: '#1d4ed8' }}>
+                          {m.sugerencia_compra > 0 ? `${Number(m.sugerencia_compra).toLocaleString('es-CL')} ${m.unidad_medida}` : '—'}
+                        </td>
+                        <td>${Number(m.costo_unitario).toLocaleString('es-CL')}</td>
+                        <td>${Number(m.costo_estimado_compra).toLocaleString('es-CL')}</td>
+                        <td>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 'bold',
+                            background: m.urgencia === 'CRITICO' ? '#fee2e2' : m.urgencia === 'ALERTA' ? '#fef3c7' : '#dcfce7',
+                            color: m.urgencia === 'CRITICO' ? '#b91c1c' : m.urgencia === 'ALERTA' ? '#b45309' : '#15803d'
+                          }}>
+                            {m.urgencia === 'CRITICO' ? '🔴 CRÍTICO' : m.urgencia === 'ALERTA' ? '🟡 ALERTA' : '🟢 OK'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── MODAL: GENERADOR DIRECTO DE ORDEN DE COMPRA (PO) ── */}
+      {showPoModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 12, maxWidth: 960, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📝 Emisión Directa de Orden de Compra (PO)
+                </h2>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Inyecta automáticamente los ítems a Control de Embarques (Tránsito) y al Kardex
+                </span>
+              </div>
+              <button onClick={() => setShowPoModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+            </div>
+
+            <form onSubmit={handleConfirmSubmitPo}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
+                    Código / N° de PO *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={poForm.numero_oc}
+                    onChange={e => setPoForm({ ...poForm, numero_oc: e.target.value.toUpperCase() })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
+                    Proveedor
+                  </label>
+                  <input
+                    type="text"
+                    value={poForm.proveedor}
+                    onChange={e => setPoForm({ ...poForm, proveedor: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
+                    Fecha Estimada Arribo (ETA)
+                  </label>
+                  <input
+                    type="date"
+                    value={poForm.fecha_eta}
+                    onChange={e => setPoForm({ ...poForm, fecha_eta: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
+                  Observaciones / Notas
+                </label>
+                <input
+                  type="text"
+                  value={poForm.observacion}
+                  onChange={e => setPoForm({ ...poForm, observacion: e.target.value })}
+                  placeholder="Ej: Despacho marítimo, contenedor 40ft..."
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              {/* TABLA ITEMS */}
+              <div style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                <table className="preview-table" style={{ margin: 0, width: '100%' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <th>SKU</th>
+                      <th>Producto</th>
+                      <th style={{ width: 140 }}>Cantidad a Pedir</th>
+                      <th>MOQ / Caja</th>
+                      <th style={{ width: 120 }}>Costo Unit. ($)</th>
+                      <th>Subtotal</th>
+                      <th style={{ width: 40 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {poForm.items.map((it, idx) => (
+                      <tr key={it.sku}>
+                        <td><b>{it.sku}</b></td>
+                        <td style={{ fontSize: '0.8rem', maxWidth: 220 }}>{it.nombre_producto}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            value={it.cantidad}
+                            onChange={e => handleUpdatePoItemQty(idx, e.target.value)}
+                            style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', fontWeight: 700, boxSizing: 'border-box' }}
+                          />
+                        </td>
+                        <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          {it.moq > 1 ? `${it.moq} uds/caja` : '—'}
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={it.costo_unitario}
+                            onChange={e => handleUpdatePoItemCosto(idx, e.target.value)}
+                            style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', boxSizing: 'border-box' }}
+                          />
+                        </td>
+                        <td style={{ fontWeight: 700 }}>
+                          ${Number(it.subtotal || 0).toLocaleString('es-CL')}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePoItem(idx)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold' }}>
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* TOTALES */}
+              <div style={{ background: '#f1f5f9', padding: '12px 16px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <span style={{ fontSize: '0.9rem', color: '#475569' }}>
+                  Total Ítems: <b>{poForm.items.length} SKUs</b> | Unidades Totales:{' '}
+                  <b>{poForm.items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0).toLocaleString('es-CL')} uds</b>
+                </span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
+                  Monto Total: ${poForm.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0).toLocaleString('es-CL')}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPoModal(false)}
+                  style={{ padding: '9px 18px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingPo}
+                  style={{ padding: '9px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
+                  {submittingPo ? 'Inyectando a Tránsito...' : '🚀 Confirmar y Emitir a Tránsito'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       </main>
       {selectedSku && <SkuDetailModal skuData={selectedSku} onClose={() => setSelectedSku(null)} allProducts={data} />}
     </div>

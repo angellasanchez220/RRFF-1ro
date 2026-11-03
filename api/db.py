@@ -339,6 +339,47 @@ def run_migrations():
         "CREATE INDEX IF NOT EXISTS idx_oc_detalle_sku ON ordenes_compra_detalle(sku)",
         "CREATE INDEX IF NOT EXISTS idx_oc_detalle_cod_femaco ON ordenes_compra_detalle(codigo_femaco)",
         "ALTER TABLE ordenes_compra_registro ADD COLUMN IF NOT EXISTS estado_oc TEXT DEFAULT ''",
+
+        # ── Kardex de Inventario y Movimientos (Trazabilidad Total) ─────────
+        """
+        CREATE TABLE IF NOT EXISTS inventario_kardex_movimientos (
+            id                  SERIAL PRIMARY KEY,
+            tipo_entidad        TEXT NOT NULL,
+            sku                 TEXT NOT NULL,
+            nombre              TEXT,
+            tipo_movimiento     TEXT NOT NULL,
+            referencia_doc      TEXT,
+            cantidad            NUMERIC(12,2) NOT NULL,
+            saldo_anterior      NUMERIC(12,2) NOT NULL,
+            saldo_nuevo         NUMERIC(12,2) NOT NULL,
+            costo_unitario      NUMERIC(12,2) DEFAULT 0,
+            motivo              TEXT,
+            usuario             TEXT,
+            fecha_movimiento    TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_kardex_sku ON inventario_kardex_movimientos(sku)",
+        "CREATE INDEX IF NOT EXISTS idx_kardex_tipo_entidad ON inventario_kardex_movimientos(tipo_entidad)",
+        "CREATE INDEX IF NOT EXISTS idx_kardex_fecha ON inventario_kardex_movimientos(fecha_movimiento)",
+
+        # ── Columnas de Mermas en Liquidaciones de Maquila ──────────────────
+        "ALTER TABLE maquila_liquidaciones_historial ADD COLUMN IF NOT EXISTS merma_insumos_json TEXT",
+        "ALTER TABLE maquila_liquidaciones_historial ADD COLUMN IF NOT EXISTS merma_unidades_producto NUMERIC(12,2) DEFAULT 0",
+        "ALTER TABLE maquila_liquidaciones_historial ADD COLUMN IF NOT EXISTS costo_merma_total NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE maquila_liquidaciones_historial ADD COLUMN IF NOT EXISTS motivo_merma TEXT",
+
+        # ── Columnas de Órdenes a Proveedores generadas en Compras ──────────
+        "ALTER TABLE control_embarques ADD COLUMN IF NOT EXISTS proveedor TEXT",
+        "ALTER TABLE control_embarques ADD COLUMN IF NOT EXISTS precio_unitario_compra NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE control_embarques ADD COLUMN IF NOT EXISTS total_compra NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE control_embarques ADD COLUMN IF NOT EXISTS origen_creacion TEXT DEFAULT 'EXCEL'",
+        "ALTER TABLE control_embarques ADD COLUMN IF NOT EXISTS usuario_creacion TEXT",
+
+        # ── Parámetros de Compra Avanzados en dim_productos ─────────────────
+        "ALTER TABLE dim_productos ADD COLUMN IF NOT EXISTS moq INTEGER DEFAULT 1",
+        "ALTER TABLE dim_productos ADD COLUMN IF NOT EXISTS lead_time_dias INTEGER DEFAULT 60",
+        "ALTER TABLE dim_productos ADD COLUMN IF NOT EXISTS proveedor_habitual TEXT",
+        "ALTER TABLE dim_productos ADD COLUMN IF NOT EXISTS costo_compra NUMERIC(12,2) DEFAULT 0",
     ]
 
 

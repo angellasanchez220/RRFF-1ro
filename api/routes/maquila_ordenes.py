@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from api.db import engine
 from api.routes.auth import decode_token, _get_auth_header
+from api.routes.kardex import registrar_movimiento_kardex
 
 router = APIRouter()
 
@@ -546,7 +547,99 @@ def listar_ordenes(authorization: str = Header(None)):
             "sku_count": r.sku_count,
             "maq_count": r.maq_count
         })
-    return {"data": out}
+@router.get("/reportes/mermas")
+@router.get("/mermas")
+def get_reporte_mermas():
+    """
+    Reporte consolidado de mermas y desperdicios (scrap) registrados en liquidaciones de maquila.
+    Permite auditar el % de merma real vs estándar y el impacto en costos.
+    """
+    with engine.connect() as conn:
+        try:
+            df = pd.read_sql(text("""
+                SELECT 
+                    h.id,
+                    h.orden_id,
+                    h.numero_oc,
+                    h.sku_producido,
+                    h.cantidad_producida,
+                    h.sku_origen,
+                    h.cantidad_origen_usada,
+                    COALESCE(h.merma_unidades_producto, 0) AS merma_unidades_producto,
+                    COALESCE(h.merma_insumos_json, '[]') AS merma_insumos_json,
+                    COALESCE(h.costo_merma_total, 0) AS costo_merma_total,
+                    COALESCE(h.motivo_merma, '') AS motivo_merma,
+                    h.usuario,
+                    h.fecha_registro
+                FROM maquila_liquidaciones_historial h
+                ORDER BY h.fecha_registro DESC
+            """), conn)
+        except Exception as e:
+            return {"ok": False, "data": [], "error": str(e)}
+
+    if df.empty:
+        return {
+            "ok": True,
+            "data": [],
+            "resumen": {
+                "total_registros": 0,
+                "unidades_producidas": 0.0,
+                "mermas_producto_uds": 0.0,
+                "tasa_merma_pct": 0.0,
+                "costo_total_mermas": 0.0
+            }
+        }
+
+    records = []
+    tot_prod = 0.0
+    tot_merma_prod = 0.0
+    tot_costo_merma = 0.0
+
+    for _, r in df.iterrows():
+        c_prod = float(r["cantidad_producida"] or 0)
+        m_prod = float(r["merma_unidades_producto"] or 0)
+        c_merma = float(r["costo_merma_total"] or 0)
+
+        tot_prod += c_prod
+        tot_merma_prod += m_prod
+        tot_costo_merma += c_merma
+
+        tasa_item = round((m_prod / (c_prod + m_prod) * 100), 2) if (c_prod + m_prod) > 0 else 0.0
+
+        try:
+            insumos_mermados = json.loads(str(r["merma_insumos_json"] or "[]"))
+        except:
+            insumos_mermados = []
+
+        records.append({
+            "id": int(r["id"]),
+            "orden_id": int(r["orden_id"] or 0),
+            "numero_oc": str(r["numero_oc"] or "—"),
+            "sku_producido": str(r["sku_producido"] or ""),
+            "cantidad_producida": c_prod,
+            "sku_origen": str(r["sku_origen"] or "—"),
+            "merma_unidades_producto": m_prod,
+            "tasa_merma_pct": tasa_item,
+            "insumos_mermados": insumos_mermados,
+            "costo_merma_total": round(c_merma, 2),
+            "motivo_merma": str(r["motivo_merma"] or ""),
+            "usuario": str(r["usuario"] or "admin"),
+            "fecha_registro": str(r["fecha_registro"])[:16] if r["fecha_registro"] else ""
+        })
+
+    tasa_global = round((tot_merma_prod / (tot_prod + tot_merma_prod) * 100), 2) if (tot_prod + tot_merma_prod) > 0 else 0.0
+
+    return {
+        "ok": True,
+        "data": records,
+        "resumen": {
+            "total_registros": len(records),
+            "unidades_producidas": round(tot_prod, 2),
+            "mermas_producto_uds": round(tot_merma_prod, 2),
+            "tasa_merma_pct": tasa_global,
+            "costo_total_mermas": round(tot_costo_merma, 2)
+        }
+    }
 
 
 @router.get("/{id}")
@@ -846,17 +939,30 @@ def recalcular_orden(id: int, authorization: str = Header(None)):
 def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(None)):
     """
     Ejecuta la liquidación de la orden de maquila:
-    1. Descuenta los materiales utilizados de 'materiales_maquila'.
-    2. Descuenta los productos hermanos utilizados de 'planificacion_sop'.
+    1. Descuenta los materiales utilizados de 'materiales_maquila' (teórico + mermas).
+    2. Descuenta los productos hermanos utilizados de 'planificacion_sop' (teórico + mermas).
     3. Suma los productos terminados obtenidos a 'planificacion_sop'.
-    4. Marca la orden como 'Liquidada' y registra la auditoría (kardex) en 'maquila_liquidaciones_historial'.
+    4. Registra cada movimiento en el Kardex auditado ('inventario_kardex_movimientos').
+    5. Guarda el historial con costo y detalle de mermas en 'maquila_liquidaciones_historial'.
+    6. Marca la orden como 'Liquidada'.
     """
     user_payload = _require_admin(authorization)
     user = user_payload.get("sub", "admin")
     
     observaciones = str(body.get("observaciones") or "").strip()
-    # Mapeo manual opcional: { sku_producido: sku_origen_usado }
     hermano_seleccionado = body.get("hermano_seleccionado") or {}
+    
+    # Mermas reales reportadas por planta
+    raw_mermas_insumos = body.get("mermas_insumos") or {}
+    if isinstance(raw_mermas_insumos, list):
+        mermas_insumos_dict = {str(item.get("sku")).strip().upper(): float(item.get("cantidad") or 0) for item in raw_mermas_insumos if item.get("sku")}
+    elif isinstance(raw_mermas_insumos, dict):
+        mermas_insumos_dict = {str(k).strip().upper(): float(v or 0) for k, v in raw_mermas_insumos.items()}
+    else:
+        mermas_insumos_dict = {}
+
+    merma_producto_origen = float(body.get("merma_producto_origen") or 0)
+    motivo_merma = str(body.get("motivo_merma") or "").strip()
 
     with engine.begin() as conn:
         oc = conn.execute(text("SELECT * FROM ordenes_maquila WHERE id = :id"), {"id": id}).fetchone()
@@ -873,6 +979,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
 
         items_liquidados = []
         total_costo_liquidado = Decimal('0.0')
+        total_costo_merma = Decimal('0.0')
 
         for d in det:
             sku_prod = d.sku
@@ -888,58 +995,186 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
             hermanos_disp = m.get("hermanos", [])
             sku_orig = hermano_seleccionado.get(sku_prod)
             if not sku_orig and hermanos_disp:
-                # Elegir el primer hermano con stock suficiente, o el primero disponible
                 hermano_con_stock = next((h for h in hermanos_disp if master.get(h["sku"], {}).get("stock_act", 0) >= cant_a_maq), hermanos_disp[0])
                 sku_orig = hermano_con_stock["sku"]
 
             cant_orig_usada = Decimal(str(cant_a_maq))
+            cant_merma_prod = Decimal(str(merma_producto_origen))
+            cant_total_orig = cant_orig_usada + cant_merma_prod
 
-            # Descontar hermano origen en planificacion_sop
+            # 1. Descontar hermano origen en planificacion_sop + registrar Kardex
             if sku_orig:
+                row_orig = conn.execute(text("""
+                    SELECT stock_act, nombre_producto 
+                    FROM planificacion_sop 
+                    WHERE sku = :sku OR codigo_femaco = :sku
+                """), {"sku": sku_orig}).fetchone()
+                
+                saldo_ant_orig = float(row_orig.stock_act or 0) if row_orig else 0.0
+                nom_orig = row_orig.nombre_producto if row_orig else sku_orig
+                saldo_nuevo_orig = max(0.0, saldo_ant_orig - float(cant_total_orig))
+
                 conn.execute(text("""
                     UPDATE planificacion_sop
-                    SET stock_act = GREATEST(0, stock_act - :qty)
+                    SET stock_act = :st
                     WHERE sku = :sku OR codigo_femaco = :sku
-                """), {"qty": float(cant_orig_usada), "sku": sku_orig})
+                """), {"st": saldo_nuevo_orig, "sku": sku_orig})
 
-            # Sumar producto terminado en planificacion_sop
+                # Kardex: Salida estándar por maquila
+                registrar_movimiento_kardex(
+                    conn=conn,
+                    tipo_entidad="PRODUCTO",
+                    sku=sku_orig,
+                    nombre=nom_orig,
+                    tipo_movimiento="SALIDA_MAQUILA",
+                    referencia_doc=f"OT-{oc.numero_oc}",
+                    cantidad=-float(cant_orig_usada),
+                    saldo_anterior=saldo_ant_orig,
+                    saldo_nuevo=saldo_ant_orig - float(cant_orig_usada),
+                    costo_unitario=0.0,
+                    motivo=f"Consumo para producir {cant_a_maq} uds de {sku_prod}",
+                    usuario=user
+                )
+
+                # Kardex: Merma de producto origen si hubo
+                if float(cant_merma_prod) > 0:
+                    registrar_movimiento_kardex(
+                        conn=conn,
+                        tipo_entidad="PRODUCTO",
+                        sku=sku_orig,
+                        nombre=nom_orig,
+                        tipo_movimiento="MERMA_MAQUILA",
+                        referencia_doc=f"OT-{oc.numero_oc}",
+                        cantidad=-float(cant_merma_prod),
+                        saldo_anterior=saldo_ant_orig - float(cant_orig_usada),
+                        saldo_nuevo=saldo_nuevo_orig,
+                        costo_unitario=0.0,
+                        motivo=motivo_merma or "Merma en línea de maquila",
+                        usuario=user
+                    )
+
+            # 2. Sumar producto terminado en planificacion_sop + registrar Kardex
+            row_prod = conn.execute(text("""
+                SELECT stock_act, nombre_producto 
+                FROM planificacion_sop 
+                WHERE sku = :sku OR codigo_femaco = :sku
+            """), {"sku": sku_prod}).fetchone()
+
+            saldo_ant_prod = float(row_prod.stock_act or 0) if row_prod else 0.0
+            nom_prod = row_prod.nombre_producto if row_prod else sku_prod
+            saldo_nuevo_prod = saldo_ant_prod + float(cant_a_maq)
+
             conn.execute(text("""
                 UPDATE planificacion_sop
-                SET stock_act = stock_act + :qty
+                SET stock_act = :st
                 WHERE sku = :sku OR codigo_femaco = :sku
-            """), {"qty": float(cant_a_maq), "sku": sku_prod})
+            """), {"st": saldo_nuevo_prod, "sku": sku_prod})
 
-            # Descontar insumos en materiales_maquila
+            registrar_movimiento_kardex(
+                conn=conn,
+                tipo_entidad="PRODUCTO",
+                sku=sku_prod,
+                nombre=nom_prod,
+                tipo_movimiento="ENTRADA_MAQUILA",
+                referencia_doc=f"OT-{oc.numero_oc}",
+                cantidad=float(cant_a_maq),
+                saldo_anterior=saldo_ant_prod,
+                saldo_nuevo=saldo_nuevo_prod,
+                costo_unitario=0.0,
+                motivo=f"Producto terminado finalizado en OT-{oc.numero_oc}",
+                usuario=user
+            )
+
+            # 3. Descontar insumos en materiales_maquila (teórico + mermas) + Kardex
             insumos_usados = []
+            insumos_mermados_list = []
+
             for mat in m.get("materiales", []):
-                mat_sku = mat["sku"]
+                mat_sku = str(mat["sku"]).strip().upper()
                 mat_qty = mat["qty"] * cant_a_maq
-                costo_u = Decimal(str(mat["costo_unitario"] or materiales_dict.get(mat_sku, {}).get("costo_unitario", 0)))
-                costo_tot = mat_qty * costo_u
-                total_costo_liquidado += costo_tot
+                merma_mat_qty = float(mermas_insumos_dict.get(mat_sku, 0))
+
+                row_mat = conn.execute(text("""
+                    SELECT stock_actual, nombre, costo_unitario 
+                    FROM materiales_maquila 
+                    WHERE UPPER(sku) = :sku
+                """), {"sku": mat_sku}).fetchone()
+
+                saldo_ant_mat = float(row_mat.stock_actual or 0) if row_mat else 0.0
+                nom_mat = row_mat.nombre if row_mat else mat_sku
+                costo_u = Decimal(str(row_mat.costo_unitario if row_mat else (mat.get("costo_unitario") or 0)))
+
+                costo_tot_consumo = mat_qty * costo_u
+                costo_tot_merma = Decimal(str(merma_mat_qty)) * costo_u
+
+                total_costo_liquidado += costo_tot_consumo
+                total_costo_merma += costo_tot_merma
+
+                cant_total_mat = float(mat_qty) + merma_mat_qty
+                saldo_nuevo_mat = max(0.0, saldo_ant_mat - cant_total_mat)
 
                 conn.execute(text("""
                     UPDATE materiales_maquila
-                    SET stock_actual = GREATEST(0, stock_actual - :qty),
-                        fecha_actualizacion = NOW()
+                    SET stock_actual = :st, fecha_actualizacion = NOW()
                     WHERE UPPER(sku) = :sku
-                """), {"qty": float(mat_qty), "sku": mat_sku.upper()})
+                """), {"st": saldo_nuevo_mat, "sku": mat_sku})
+
+                # Kardex: Consumo estándar insumo
+                registrar_movimiento_kardex(
+                    conn=conn,
+                    tipo_entidad="MATERIAL",
+                    sku=mat_sku,
+                    nombre=nom_mat,
+                    tipo_movimiento="SALIDA_MAQUILA",
+                    referencia_doc=f"OT-{oc.numero_oc}",
+                    cantidad=-float(mat_qty),
+                    saldo_anterior=saldo_ant_mat,
+                    saldo_nuevo=saldo_ant_mat - float(mat_qty),
+                    costo_unitario=float(costo_u),
+                    motivo=f"Insumo utilizado para maquilar {cant_a_maq} uds de {sku_prod}",
+                    usuario=user
+                )
+
+                # Kardex: Merma de insumo si hubo
+                if merma_mat_qty > 0:
+                    registrar_movimiento_kardex(
+                        conn=conn,
+                        tipo_entidad="MATERIAL",
+                        sku=mat_sku,
+                        nombre=nom_mat,
+                        tipo_movimiento="MERMA_MAQUILA",
+                        referencia_doc=f"OT-{oc.numero_oc}",
+                        cantidad=-merma_mat_qty,
+                        saldo_anterior=saldo_ant_mat - float(mat_qty),
+                        saldo_nuevo=saldo_nuevo_mat,
+                        costo_unitario=float(costo_u),
+                        motivo=motivo_merma or "Desperdicio / rotura en planta",
+                        usuario=user
+                    )
+                    insumos_mermados_list.append({
+                        "sku": mat_sku,
+                        "cantidad": merma_mat_qty,
+                        "costo_unitario": float(costo_u),
+                        "costo_total": float(costo_tot_merma)
+                    })
 
                 insumos_usados.append({
                     "sku": mat_sku,
                     "cantidad": float(mat_qty),
                     "costo_unitario": float(costo_u),
-                    "costo_total": float(costo_tot)
+                    "costo_total": float(costo_tot_consumo)
                 })
 
-            # Registrar en historial de liquidaciones
+            # 4. Registrar en historial de liquidaciones con campos de mermas
             conn.execute(text("""
                 INSERT INTO maquila_liquidaciones_historial (
                     orden_id, numero_oc, sku_producido, cantidad_producida, 
                     sku_origen, cantidad_origen_usada, detalles_insumos_json, 
-                    costo_total_liquidado, observaciones, usuario
+                    costo_total_liquidado, observaciones, usuario,
+                    merma_insumos_json, merma_unidades_producto, costo_merma_total, motivo_merma
                 ) VALUES (
-                    :oid, :oc, :sprod, :cprod, :sorig, :corig, :ijson, :ctot, :obs, :user
+                    :oid, :oc, :sprod, :cprod, :sorig, :corig, :ijson, :ctot, :obs, :user,
+                    :m_insumos, :m_prod, :c_merma, :motivo_m
                 )
             """), {
                 "oid": id,
@@ -951,7 +1186,11 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                 "ijson": json.dumps(insumos_usados),
                 "ctot": float(total_costo_liquidado),
                 "obs": observaciones,
-                "user": user
+                "user": user,
+                "m_insumos": json.dumps(insumos_mermados_list),
+                "m_prod": float(cant_merma_prod),
+                "c_merma": float(total_costo_merma),
+                "motivo_m": motivo_merma
             })
 
             items_liquidados.append({
@@ -959,10 +1198,12 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                 "cantidad_producida": cant_a_maq,
                 "sku_origen": sku_orig,
                 "cantidad_origen": float(cant_orig_usada),
-                "insumos": insumos_usados
+                "insumos": insumos_usados,
+                "mermas_insumos": insumos_mermados_list,
+                "merma_producto": float(cant_merma_prod)
             })
 
-        # Actualizar estado de la orden a 'Liquidada'
+        # 5. Actualizar estado de la orden a 'Liquidada'
         conn.execute(text("""
             UPDATE ordenes_maquila
             SET estado_procesamiento = 'Liquidada',
@@ -981,9 +1222,10 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
 
     return {
         "ok": True,
-        "mensaje": f"Orden {oc.numero_oc} liquidada con éxito. Inventarios de insumos y productos actualizados.",
+        "mensaje": f"Orden {oc.numero_oc} liquidada con éxito. Kardex e inventarios actualizados.",
         "items_liquidados": items_liquidados,
-        "costo_insumos_liquidado": float(total_costo_liquidado)
+        "costo_insumos_liquidado": float(total_costo_liquidado),
+        "costo_merma_total": float(total_costo_merma)
     }
 
 
