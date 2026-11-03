@@ -257,6 +257,36 @@ def run_migrations():
         )
         """,
 
+        # Columnas de costo, tiempos y liquidación en órdenes de maquila
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS costo_total_estimado NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS costo_insumos_estimado NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS costo_mo_estimado NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS horas_estimadas_1p NUMERIC(10,2) DEFAULT 0",
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS fecha_liquidacion TIMESTAMP",
+        "ALTER TABLE ordenes_maquila ADD COLUMN IF NOT EXISTS usuario_liquidacion TEXT",
+
+        # Stock mínimo para materiales de maquila
+        "ALTER TABLE materiales_maquila ADD COLUMN IF NOT EXISTS stock_minimo NUMERIC(12,2) DEFAULT 0",
+
+        # Historial de liquidaciones y auditoría de maquila (Kardex)
+        """
+        CREATE TABLE IF NOT EXISTS maquila_liquidaciones_historial (
+            id                      SERIAL PRIMARY KEY,
+            orden_id                INTEGER REFERENCES ordenes_maquila(id) ON DELETE SET NULL,
+            numero_oc               TEXT,
+            sku_producido           TEXT NOT NULL,
+            cantidad_producida      NUMERIC(12,2) NOT NULL,
+            sku_origen              TEXT,
+            cantidad_origen_usada   NUMERIC(12,2) DEFAULT 0,
+            detalles_insumos_json   TEXT,
+            costo_total_liquidado   NUMERIC(14,2) DEFAULT 0,
+            observaciones           TEXT,
+            usuario                 TEXT,
+            fecha_registro          TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_maquila_liq_orden ON maquila_liquidaciones_historial(orden_id)",
+
         # ── Órdenes de Compra (Gestión y Auditoría Pedido vs Despacho) ───────
         """
         CREATE TABLE IF NOT EXISTS ordenes_compra_registro (

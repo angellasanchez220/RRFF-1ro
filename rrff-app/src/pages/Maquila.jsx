@@ -46,6 +46,30 @@ export default function FamiliasReemplazo() {
   const [searchDistribucion, setSearchDistribucion] = useState('');
   const [filterDistribucion, setFilterDistribucion] = useState('ALL');
 
+  // Simulador de Maquila State
+  const [simuladorData, setSimuladorData] = useState([]);
+  const [loadingSimulador, setLoadingSimulador] = useState(false);
+  const [searchSimulador, setSearchSimulador] = useState('');
+  const [filterCuello, setFilterCuello] = useState('ALL');
+
+  async function loadSimulador() {
+    setLoadingSimulador(true);
+    try {
+      const res = await api.simularMaquila();
+      setSimuladorData(res.data || []);
+    } catch (err) {
+      console.error("Error al cargar simulador:", err);
+    } finally {
+      setLoadingSimulador(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'simulador') {
+      loadSimulador();
+    }
+  }, [activeTab]);
+
   // Role
   const role = localStorage.getItem('rrff_role') || 'viewer';
   const isAdmin = role === 'admin';
@@ -460,9 +484,276 @@ export default function FamiliasReemplazo() {
             >
               📑 Órdenes de Corte / Trabajo
             </h2>
+            <h2 
+              style={{ 
+                margin: 0, paddingBottom: '10px', cursor: 'pointer', 
+                color: activeTab === 'simulador' ? '#1976d2' : '#64748b', 
+                borderBottom: activeTab === 'simulador' ? '3px solid #1976d2' : 'none', 
+                fontSize: '1.15rem', fontWeight: activeTab === 'simulador' ? 700 : 500 
+              }}
+              onClick={() => setActiveTab('simulador')}
+            >
+              🧮 Simulador: ¿Cuánto Puedo Maquilar Hoy?
+            </h2>
           </div>
 
           {activeTab === 'ordenes' && <MaquilaOrdenes isAdmin={isAdmin} />}
+
+          {/* ── TAB SIMULADOR: ¿CUÁNTO PUEDO MAQUILAR HOY? ── */}
+          {activeTab === 'simulador' && (() => {
+            const filteredSim = simuladorData.filter(item => {
+              if (searchSimulador) {
+                const q = searchSimulador.toLowerCase();
+                const matchSku = (item.sku || '').toLowerCase().includes(q);
+                const matchNom = (item.nombre || '').toLowerCase().includes(q);
+                const matchFam = (item.familia_nombre || '').toLowerCase().includes(q);
+                if (!matchSku && !matchNom && !matchFam) return false;
+              }
+              if (filterCuello === 'DISPONIBLE') return item.max_producible > 0;
+              if (filterCuello === 'CERO') return item.max_producible === 0;
+              if (filterCuello === 'MATERIAL') return item.cuello_de_botella?.tipo === 'MATERIAL';
+              if (filterCuello === 'PRODUCTO') return item.cuello_de_botella?.tipo === 'PRODUCTO';
+              return true;
+            });
+
+            const totalSim = simuladorData.length;
+            const conStock = simuladorData.filter(s => s.max_producible > 0).length;
+            const limitMat = simuladorData.filter(s => s.cuello_de_botella?.tipo === 'MATERIAL').length;
+            const limitProd = simuladorData.filter(s => s.cuello_de_botella?.tipo === 'PRODUCTO').length;
+
+            return (
+              <div>
+                {/* Banner de Introducción */}
+                <div className="card" style={{ padding: '18px 22px', marginBottom: '20px', borderLeft: '4px solid #7e22ce', background: '#faf5ff', border: '1px solid #e9d5ff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                    <div style={{ flex: 1, minWidth: '300px' }}>
+                      <h3 style={{ margin: '0 0 6px', color: '#6b21a8', fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>🧮</span> Simulador de Capacidad y Detección de Cuellos de Botella
+                      </h3>
+                      <p style={{ margin: 0, color: '#334155', fontSize: '0.88rem', lineHeight: 1.5 }}>
+                        Calcula al instante cuántas unidades máximas de cada producto puedes armar hoy, cruzando el stock de productos hermanos en <b>planificacion_sop</b> con los insumos y empaques en <b>materiales_maquila</b>.
+                        Te indica exactamente qué material falta o si estás limitado por el producto base.
+                      </p>
+                    </div>
+                    <button
+                      className="btn-secondary"
+                      onClick={loadSimulador}
+                      disabled={loadingSimulador}
+                      style={{ padding: '8px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <span>🔄</span> {loadingSimulador ? 'Recalculando...' : 'Actualizar Stock en Vivo'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* KPIs Rápidos */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                  <div className="card" style={{ padding: '14px 18px', background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #0284c7', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Productos Evaluados</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{totalSim}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: 600 }}>En familias activas</div>
+                  </div>
+
+                  <div className="card" style={{ padding: '14px 18px', background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #16a34a', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Con Capacidad Inmediata</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>{conStock}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Listos para producir hoy</div>
+                  </div>
+
+                  <div className="card" style={{ padding: '14px 18px', background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #e11d48', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Limitados por Insumos</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#e11d48', marginTop: '2px' }}>{limitMat}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#be123c', fontWeight: 600 }}>Faltan etiquetas/mangas/cajas</div>
+                  </div>
+
+                  <div className="card" style={{ padding: '14px 18px', background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #f59e0b', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Limitados por Hermanos</div>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>{limitProd}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600 }}>Falta stock base para desarmar</div>
+                  </div>
+                </div>
+
+                {/* Filtros */}
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={searchSimulador}
+                    onChange={e => setSearchSimulador(e.target.value)}
+                    placeholder="🔍 Buscar por SKU o nombre de producto..."
+                    style={{ flex: 1, minWidth: '240px', padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontSize: '0.9rem' }}
+                  />
+                  <select
+                    value={filterCuello}
+                    onChange={e => setFilterCuello(e.target.value)}
+                    style={{ padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontWeight: 600, fontSize: '0.88rem', background: '#ffffff' }}
+                  >
+                    <option value="ALL">Todos los Estados</option>
+                    <option value="DISPONIBLE">✓ Con Capacidad Inmediata (&gt;0)</option>
+                    <option value="MATERIAL">⚠️ Limitados por Insumos (Etiquetas / Mangas)</option>
+                    <option value="PRODUCTO">🔄 Limitados por Stock de Hermanos</option>
+                    <option value="CERO">🔴 Sin Capacidad (0 unidades)</option>
+                  </select>
+                </div>
+
+                {loadingSimulador && simuladorData.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Calculando capacidad de maquila en vivo...</div>
+                ) : filteredSim.length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    No se encontraron productos coincidentes con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {filteredSim.map((item, idx) => {
+                      const isZero = item.max_producible === 0;
+                      const cuello = item.cuello_de_botella || {};
+                      const isMatCuello = cuello.tipo === 'MATERIAL';
+
+                      return (
+                        <div key={`${item.receta_id}-${item.sku}-${idx}`} className="card" style={{ padding: '20px', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
+                          {/* Cabecera del ítem */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '14px', marginBottom: '14px' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.15rem', color: '#0369a1' }}>
+                                  {item.sku}
+                                </span>
+                                <span style={{ fontSize: '0.78rem', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                  {item.familia_nombre}
+                                </span>
+                              </div>
+                              <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '1rem', marginTop: '2px' }}>
+                                {item.nombre}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                Stock terminado actual en bodega: <b>{item.stock_actual} uds</b>
+                              </div>
+                            </div>
+
+                            {/* Badge Capacidad Máxima */}
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                                Máximo Producible Hoy
+                              </div>
+                              <div style={{
+                                display: 'inline-block',
+                                padding: '6px 16px',
+                                borderRadius: '24px',
+                                marginTop: '4px',
+                                fontWeight: 900,
+                                fontSize: '1.25rem',
+                                background: isZero ? '#fee2e2' : item.max_producible < 100 ? '#fef3c7' : '#dcfce7',
+                                color: isZero ? '#991b1b' : item.max_producible < 100 ? '#b45309' : '#166534',
+                                border: '1.5px solid currentColor'
+                              }}>
+                                {item.max_producible.toLocaleString()} uds
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Banner Cuello de Botella */}
+                          <div style={{
+                            padding: '10px 14px',
+                            borderRadius: '6px',
+                            marginBottom: '14px',
+                            fontSize: '0.86rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: isZero ? '#fff1f2' : isMatCuello ? '#fffbeb' : '#f0fdf4',
+                            border: `1px solid ${isZero ? '#fecdd3' : isMatCuello ? '#fde68a' : '#bbf7d0'}`,
+                            color: isZero ? '#9f1239' : isMatCuello ? '#92400e' : '#166534'
+                          }}>
+                            <span style={{ fontSize: '1.1rem' }}>{isZero ? '🔴' : isMatCuello ? '⚠️' : '✓'}</span>
+                            <div>
+                              <b>{isZero ? 'Sin Capacidad Inmediata:' : isMatCuello ? 'Cuello de Botella en Insumos:' : 'Capacidad de Producción:'}</b>{' '}
+                              {isMatCuello ? (
+                                <span>Limitado por <b>{cuello.nombre} ({cuello.sku})</b>. Stock actual de insumo: <b>{cuello.stock_actual}</b> (alcanza para <b>{cuello.max_posible} uds</b>).</span>
+                              ) : (
+                                <span>{cuello.motivo || `Rinde hasta ${item.max_producible} unidades.`}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 2 Columnas: Hermanos vs Insumos */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '14px' }}>
+                            {/* Columna Hermanos */}
+                            <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                                <span>🔄 Hermanos para Desarmar</span>
+                                <span style={{ color: '#0284c7' }}>Capacidad: {item.capacidad_por_hermanos} uds</span>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <tbody>
+                                  {item.hermanos_disponibles.map(h => (
+                                    <tr key={h.sku} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                      <td style={{ padding: '5px 0', fontWeight: 700, fontFamily: 'monospace' }}>{h.sku}</td>
+                                      <td style={{ padding: '5px 4px', color: '#64748b' }}>Stock: {h.stock_actual}</td>
+                                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700, color: h.unidades_producibles > 0 ? '#15803d' : '#94a3b8' }}>
+                                        rinde {h.unidades_producibles} uds
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {item.hermanos_disponibles.length === 0 && (
+                                    <tr><td colSpan="3" style={{ padding: '6px 0', color: '#94a3b8' }}>Sin otros hermanos compatibles</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Columna Insumos */}
+                            <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                                <span>📦 Insumos en Bodega</span>
+                                <span style={{ color: '#7e22ce' }}>Capacidad: {item.capacidad_por_materiales} uds</span>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <tbody>
+                                  {item.materiales_evaluacion.map(m => (
+                                    <tr key={m.sku} style={{ borderBottom: '1px solid #e2e8f0', background: m.es_cuello_botella ? '#fef2f2' : 'inherit' }}>
+                                      <td style={{ padding: '5px 0', fontWeight: 700, fontFamily: 'monospace', color: m.es_cuello_botella ? '#b91c1c' : '#334155' }}>
+                                        {m.sku}
+                                        {m.es_cuello_botella && <span style={{ color: '#e11d48', marginLeft: '4px' }}>★</span>}
+                                      </td>
+                                      <td style={{ padding: '5px 4px', color: '#64748b' }}>Stock: {m.stock_actual}</td>
+                                      <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700, color: m.es_cuello_botella ? '#e11d48' : '#15803d' }}>
+                                        alcanza {m.max_posible} uds
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {item.materiales_evaluacion.length === 0 && (
+                                    <tr><td colSpan="3" style={{ padding: '6px 0', color: '#94a3b8' }}>No requiere insumos adicionales</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          {/* Barra de Costeo y Productividad del Lote */}
+                          {item.max_producible > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f1f5f9', padding: '10px 14px', borderRadius: '6px', flexWrap: 'wrap', gap: '10px', fontSize: '0.84rem' }}>
+                              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                                <span>Costo Insumos: <b>${Math.round(item.costeo_lote.costo_insumos).toLocaleString('es-CL')}</b></span>
+                                <span>Mano de Obra: <b>${Math.round(item.costeo_lote.costo_mano_obra).toLocaleString('es-CL')}</b></span>
+                                <span style={{ color: '#16a34a' }}>Costo Total Lote: <b>${Math.round(item.costeo_lote.costo_total).toLocaleString('es-CL')}</b> (${item.costeo_lote.costo_unitario_maquila}/ud)</span>
+                                <span style={{ color: '#7e22ce' }}>Tiempo: <b>{item.costeo_lote.horas_1p}h</b> (1 pers.) | <b>{item.costeo_lote.horas_3p}h</b> (3 pers.)</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('ordenes')}
+                                style={{ padding: '5px 12px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+                              >
+                                Ir a Órdenes de Maquila →
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── TAB DISTRIBUCIÓN HOMOGÉNEA DE FAMILIAS ── */}
           {activeTab === 'distribucion' && (

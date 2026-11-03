@@ -451,6 +451,40 @@ export async function updateOrdenMaquilaState(id, estado_procesamiento, observac
   return res.json();
 }
 
+export async function liquidarOrdenMaquila(id, payload = {}) {
+  const res = await fetch(`${BASE}/maquila/ordenes/${id}/liquidar`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al liquidar la orden' }));
+    throw new Error(err.detail || 'Error al liquidar orden');
+  }
+  return res.json();
+}
+
+export async function fetchOtMaquila(id) {
+  const res = await fetch(`${BASE}/maquila/ordenes/${id}/ot`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al obtener Hoja de Ruta' }));
+    throw new Error(err.detail || 'Error al obtener Hoja de Ruta');
+  }
+  return res.json();
+}
+
+export async function simularMaquila(sku = '') {
+  const url = sku ? `${BASE}/maquila/simulador?sku=${encodeURIComponent(sku)}` : `${BASE}/maquila/simulador`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error en simulación de maquila' }));
+    throw new Error(err.detail || 'Error en simulación');
+  }
+  return res.json();
+}
+
 
 // -- Exportaciones -------------------------------------------------------------
 

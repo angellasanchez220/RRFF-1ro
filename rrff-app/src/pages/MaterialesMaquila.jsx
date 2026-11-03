@@ -21,6 +21,7 @@ export default function MaterialesMaquila() {
     categoria: 'ETIQUETA',
     unidad_medida: 'UN',
     stock_actual: 0,
+    stock_minimo: 0,
     costo_unitario: 0,
     observaciones: '',
     activo: true
@@ -73,6 +74,7 @@ export default function MaterialesMaquila() {
       categoria: 'ETIQUETA',
       unidad_medida: 'UN',
       stock_actual: 0,
+      stock_minimo: 0,
       costo_unitario: 0,
       observaciones: '',
       activo: true
@@ -89,6 +91,7 @@ export default function MaterialesMaquila() {
       categoria: mat.categoria || 'INSUMO',
       unidad_medida: mat.unidad_medida || 'UN',
       stock_actual: mat.stock_actual ?? 0,
+      stock_minimo: mat.stock_minimo ?? 0,
       costo_unitario: mat.costo_unitario ?? 0,
       observaciones: mat.observaciones || '',
       activo: mat.activo !== false
@@ -106,6 +109,7 @@ export default function MaterialesMaquila() {
       const payload = {
         ...formMaterial,
         stock_actual: Number(formMaterial.stock_actual) || 0,
+        stock_minimo: Number(formMaterial.stock_minimo) || 0,
         costo_unitario: Number(formMaterial.costo_unitario) || 0
       };
       if (editingMaterial) {
@@ -138,11 +142,11 @@ export default function MaterialesMaquila() {
 
   function handleDownloadPlantilla() {
     try {
-      const csvContent = "\uFEFFsku,descripcion,categoria,unidades,costo\n" +
-        "ETIQ-50X30,Etiqueta adhesiva 50x30 mm,ETIQUETA,1500,15.50\n" +
-        "MANGA-CEL-20CM,Manga de celofán transparente 20 cm,MANGA,3200,25.00\n" +
-        "BOLSA-POLI-10X15,Bolsa polietileno 10x15 cm con cierre,EMPAQUE,850,12.00\n" +
-        "CAJA-MAESTRA-100U,Caja de cartón master para 100 unidades,EMPAQUE,45,180.00\n";
+      const csvContent = "\uFEFFsku,descripcion,categoria,unidades,costo,stock_minimo\n" +
+        "ETIQ-50X30,Etiqueta adhesiva 50x30 mm,ETIQUETA,1500,15.50,500\n" +
+        "MANGA-CEL-20CM,Manga de celofán transparente 20 cm,MANGA,3200,25.00,1000\n" +
+        "BOLSA-POLI-10X15,Bolsa polietileno 10x15 cm con cierre,EMPAQUE,850,12.00,300\n" +
+        "CAJA-MAESTRA-100U,Caja de cartón master para 100 unidades,EMPAQUE,45,180.00,20\n";
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -158,11 +162,11 @@ export default function MaterialesMaquila() {
   }
 
   function handleCopyExampleToClipboard() {
-    const tableText = "sku\tdescripcion\tcategoria\tunidades\tcosto\n" +
-      "ETIQ-50X30\tEtiqueta adhesiva 50x30 mm\tETIQUETA\t1500\t15.50\n" +
-      "MANGA-CEL-20CM\tManga de celofán transparente 20 cm\tMANGA\t3200\t25.00\n" +
-      "BOLSA-POLI-10X15\tBolsa polietileno 10x15 cm con cierre\tEMPAQUE\t850\t12.00\n" +
-      "CAJA-MAESTRA-100U\tCaja de cartón master para 100 unidades\tEMPAQUE\t45\t180.00";
+    const tableText = "sku\tdescripcion\tcategoria\tunidades\tcosto\tstock_minimo\n" +
+      "ETIQ-50X30\tEtiqueta adhesiva 50x30 mm\tETIQUETA\t1500\t15.50\t500\n" +
+      "MANGA-CEL-20CM\tManga de celofán transparente 20 cm\tMANGA\t3200\t25.00\t1000\n" +
+      "BOLSA-POLI-10X15\tBolsa polietileno 10x15 cm con cierre\tEMPAQUE\t850\t12.00\t300\n" +
+      "CAJA-MAESTRA-100U\tCaja de cartón master para 100 unidades\tEMPAQUE\t45\t180.00\t20";
     navigator.clipboard.writeText(tableText).then(() => {
       setCopiedHint(true);
       setTimeout(() => setCopiedHint(false), 3000);
@@ -222,6 +226,7 @@ export default function MaterialesMaquila() {
   const totalStockUds = materiales.reduce((acc, m) => acc + (Number(m.stock_actual) || 0), 0);
   const totalValorizado = materiales.reduce((acc, m) => acc + ((Number(m.stock_actual) || 0) * (Number(m.costo_unitario) || 0)), 0);
   const quiebresCount = materiales.filter(m => (Number(m.stock_actual) || 0) <= 0).length;
+  const bajoMinimoCount = materiales.filter(m => (Number(m.stock_minimo) || 0) > 0 && (Number(m.stock_actual) || 0) <= (Number(m.stock_minimo) || 0)).length;
 
   return (
     <div className="content-area">
@@ -325,6 +330,16 @@ export default function MaterialesMaquila() {
                 {quiebresCount > 0 ? '⚠️ Requieren reposición' : '✓ Todos con stock disponible'}
               </div>
             </div>
+
+            <div className="card" style={{ padding: '16px 20px', background: bajoMinimoCount > 0 ? '#fff1f2' : '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', borderLeft: `4px solid ${bajoMinimoCount > 0 ? '#e11d48' : '#cbd5e1'}`, boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ fontSize: '0.78rem', color: bajoMinimoCount > 0 ? '#be123c' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Bajo Stock Mínimo (Punto Reorden)</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: bajoMinimoCount > 0 ? '#e11d48' : '#334155', marginTop: '4px' }}>
+                {bajoMinimoCount}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: bajoMinimoCount > 0 ? '#be123c' : '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                {bajoMinimoCount > 0 ? '⚠️ Comprar insumos pronto' : '✓ Niveles sobre punto mínimo'}
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -395,6 +410,7 @@ export default function MaterialesMaquila() {
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Categoría</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'center' }}>Unidad</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Stock Actual</th>
+                      <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Stock Mín.</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Costo Unit. ($)</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700, textAlign: 'right' }}>Total Valor ($)</th>
                       <th style={{ padding: '12px 14px', color: '#475569', fontWeight: 700 }}>Observaciones</th>
@@ -405,9 +421,11 @@ export default function MaterialesMaquila() {
                   <tbody>
                     {filteredMateriales.map((m, idx) => {
                       const stockNum = Number(m.stock_actual) || 0;
+                      const stockMin = Number(m.stock_minimo) || 0;
                       const costoNum = Number(m.costo_unitario) || 0;
                       const valorTotal = stockNum * costoNum;
                       const isQuiebre = stockNum <= 0;
+                      const isBajoMin = stockMin > 0 && stockNum <= stockMin;
 
                       return (
                         <tr key={m.id || idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#fcfcfd' }}>
@@ -447,12 +465,20 @@ export default function MaterialesMaquila() {
                                 <span style={{ fontSize: '0.7rem', color: '#b91c1c', fontWeight: 700, textTransform: 'uppercase' }}>
                                   Sin Stock
                                 </span>
+                              ) : isBajoMin ? (
+                                <span style={{ fontSize: '0.7rem', color: '#e11d48', fontWeight: 700 }}>
+                                  ⚠️ Bajo Mínimo
+                                </span>
                               ) : (
                                 <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 600 }}>
                                   Disponible
                                 </span>
                               )}
                             </div>
+                          </td>
+
+                          <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>
+                            {stockMin > 0 ? stockMin.toLocaleString() : '-'}
                           </td>
 
                           <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
@@ -591,10 +617,10 @@ export default function MaterialesMaquila() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '12px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
-                        Stock Actual (Unidades):
+                        Stock Actual:
                       </label>
                       <input
                         type="number"
@@ -609,7 +635,22 @@ export default function MaterialesMaquila() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
-                        Costo Unitario ($ / unidad):
+                        Stock Mínimo:
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={formMaterial.stock_minimo}
+                        onChange={e => setFormMaterial({ ...formMaterial, stock_minimo: e.target.value })}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #f59e0b', fontSize: '1.05rem', fontWeight: 800, color: '#b45309' }}
+                        placeholder="Ej: 500"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '4px', color: '#334155' }}>
+                        Costo Unitario ($ / ud):
                       </label>
                       <input
                         type="number"
@@ -734,6 +775,7 @@ export default function MaterialesMaquila() {
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800 }}>Columna 3<br/><span style={{ color: '#0284c7' }}>categoria</span></th>
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 4<br/><span style={{ color: '#0284c7' }}>unidades</span></th>
                           <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 5<br/><span style={{ color: '#16a34a' }}>costo</span></th>
+                          <th style={{ padding: '6px 8px', color: '#0f172a', fontWeight: 800, textAlign: 'right' }}>Columna 6<br/><span style={{ color: '#b45309' }}>stock_minimo</span></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -743,6 +785,7 @@ export default function MaterialesMaquila() {
                           <td style={{ padding: '6px 8px' }}><span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>ETIQUETA</span></td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>1500</td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>$15.50</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>500</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>MANGA-CEL-20CM</td>
@@ -750,6 +793,7 @@ export default function MaterialesMaquila() {
                           <td style={{ padding: '6px 8px' }}><span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontSize: '0.74rem', fontWeight: 700 }}>MANGA</span></td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>3200</td>
                           <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>$25.00</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>1000</td>
                         </tr>
                         <tr>
                           <td style={{ padding: '6px 8px', fontWeight: 700, color: '#334155' }}>BOLSA-POLI-10X15</td>

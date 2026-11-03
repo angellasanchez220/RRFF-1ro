@@ -847,3 +847,223 @@ def export_distribucion_homogenea_excel():
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+
+@router.get("/simulador")
+def simular_maquila(sku: Optional[str] = None):
+    """
+    Calcula en tiempo real la capacidad máxima de maquila para un SKU dado (o todas las recetas),
+    evaluando los stocks actuales de productos hermanos en SOP y los stocks de materiales
+    en materiales_maquila, identificando el cuello de botella exacto.
+    """
+    with engine.connect() as conn:
+        # 1. Cargar stock de SOP
+        df_sop = pd.read_sql(text("""
+            SELECT sku, codigo_femaco, nombre_producto, stock_act 
+            FROM planificacion_sop
+        """), conn)
+        sop_stock = {}
+        sop_nombres = {}
+        for _, r in df_sop.iterrows():
+            s = str(r["sku"] or "").strip().upper()
+            f = str(r["codigo_femaco"] or "").strip().upper()
+            stk = float(r["stock_act"] or 0)
+            nom = str(r["nombre_producto"] or "")
+            if s:
+                sop_stock[s] = stk
+                sop_nombres[s] = nom
+            if f:
+                sop_stock[f] = stk
+                sop_nombres[f] = nom
+
+        # 2. Cargar stock de Materiales Maquila
+        df_mat = pd.read_sql(text("""
+            SELECT sku, nombre, stock_actual, stock_minimo, costo_unitario, unidad_medida, categoria 
+            FROM materiales_maquila WHERE activo = TRUE
+        """), conn)
+        mat_stock = {}
+        for _, r in df_mat.iterrows():
+            ms = str(r["sku"]).strip().upper()
+            mat_stock[ms] = {
+                "sku": ms,
+                "nombre": r["nombre"] or "Insumo",
+                "stock_actual": float(r["stock_actual"] or 0),
+                "stock_minimo": float(r["stock_minimo"] or 0),
+                "costo_unitario": float(r["costo_unitario"] or 0),
+                "unidad_medida": r["unidad_medida"] or "UN",
+                "categoria": r["categoria"] or "INSUMO"
+            }
+
+        # 3. Cargar Recetas activas
+        query_rec = """
+            SELECT id, sku_maquilable, descripcion, tiempo_base_1p_min, unidades_base_tiempo, costo_hora, costo_maquila_estimado, producto_objetivo
+            FROM recetas_maquila WHERE activa = TRUE
+        """
+        df_rec = pd.read_sql(text(query_rec), conn)
+        if df_rec.empty:
+            return {"ok": True, "data": []}
+
+        rec_ids = df_rec["id"].tolist()
+        df_comp = pd.read_sql(text("""
+            SELECT receta_id, sku_componente, cantidad_por_unidad, tipo_componente, nombre_componente, unidad_medida, costo_unitario, no_transformable
+            FROM receta_maquila_componentes WHERE receta_id = ANY(:ids)
+        """), conn, params={"ids": rec_ids})
+
+    comps_by_rec = {}
+    for _, c in df_comp.iterrows():
+        rid = int(c["receta_id"])
+        comps_by_rec.setdefault(rid, []).append({
+            "sku": str(c["sku_componente"]).strip().upper(),
+            "qty": float(c["cantidad_por_unidad"] or 1),
+            "tipo": str(c["tipo_componente"] or "PRODUCTO").strip().upper(),
+            "nombre": str(c["nombre_componente"] or ""),
+            "um": str(c["unidad_medida"] or "UN"),
+            "costo_unitario": float(c["costo_unitario"] or 0),
+            "no_transformable": bool(c["no_transformable"])
+        })
+
+    resultados = []
+    target_sku = sku.strip().upper() if sku else None
+
+    for _, rec in df_rec.iterrows():
+        rid = int(rec["id"])
+        comps = comps_by_rec.get(rid, [])
+        mats = [c for c in comps if c["tipo"] == "MATERIAL"]
+        prods = [c for c in comps if c["tipo"] != "MATERIAL"]
+
+        candidatos_skus = set()
+        for p in prods:
+            candidatos_skus.add(p["sku"])
+        if rec["sku_maquilable"]:
+            candidatos_skus.add(str(rec["sku_maquilable"]).strip().upper())
+        if rec["producto_objetivo"]:
+            candidatos_skus.add(str(rec["producto_objetivo"]).strip().upper())
+
+        if target_sku and target_sku not in candidatos_skus:
+            continue
+
+        skus_a_evaluar = [target_sku] if target_sku else list(candidatos_skus)
+
+        for p_sku in skus_a_evaluar:
+            p_nombre = sop_nombres.get(p_sku, f"Producto {p_sku}")
+            p_stock_actual = sop_stock.get(p_sku, 0)
+
+            # Hermanos disponibles
+            hermanos_disp = []
+            capacidad_por_hermanos = 0.0
+
+            for h in prods:
+                if h["sku"] == p_sku or h["no_transformable"]:
+                    continue
+                h_sku = h["sku"]
+                h_stk = sop_stock.get(h_sku, 0)
+                h_qty = h["qty"] if h["qty"] > 0 else 1.0
+                h_equiv = math.floor(h_stk / h_qty)
+                capacidad_por_hermanos += h_equiv
+                hermanos_disp.append({
+                    "sku": h_sku,
+                    "nombre": sop_nombres.get(h_sku, h["nombre"] or "Hermano"),
+                    "stock_actual": h_stk,
+                    "ratio": h_qty,
+                    "unidades_producibles": h_equiv
+                })
+
+            # Materiales e insumos requeridos
+            materiales_eval = []
+            capacidad_por_materiales = float('inf')
+            cuello_material = None
+
+            for m in mats:
+                m_sku = m["sku"]
+                m_info = mat_stock.get(m_sku, {})
+                m_stk = m_info.get("stock_actual", 0)
+                m_cost = m["costo_unitario"] or m_info.get("costo_unitario", 0)
+                m_qty = m["qty"] if m["qty"] > 0 else 1.0
+                m_max = math.floor(m_stk / m_qty)
+
+                if m_max < capacidad_por_materiales:
+                    capacidad_por_materiales = m_max
+                    cuello_material = {
+                        "tipo": "MATERIAL",
+                        "sku": m_sku,
+                        "nombre": m_info.get("nombre", m["nombre"]),
+                        "stock_actual": m_stk,
+                        "requerido_por_unidad": m_qty,
+                        "max_posible": m_max
+                    }
+
+                materiales_eval.append({
+                    "sku": m_sku,
+                    "nombre": m_info.get("nombre", m["nombre"] or "Insumo"),
+                    "stock_actual": m_stk,
+                    "stock_minimo": m_info.get("stock_minimo", 0),
+                    "unidad_medida": m.get("um") or m_info.get("unidad_medida", "UN"),
+                    "costo_unitario": m_cost,
+                    "ratio": m_qty,
+                    "max_posible": m_max
+                })
+
+            if capacidad_por_materiales == float('inf'):
+                capacidad_por_materiales = capacidad_por_hermanos
+
+            max_producible = min(capacidad_por_hermanos, capacidad_por_materiales)
+
+            if max_producible == 0:
+                if capacidad_por_hermanos == 0 and capacidad_por_materiales == 0:
+                    cuello_global = {"tipo": "GENERAL", "motivo": "Sin stock de hermanos ni insumos"}
+                elif capacidad_por_hermanos == 0:
+                    cuello_global = {"tipo": "PRODUCTO", "motivo": "Sin stock de productos hermanos transformables"}
+                else:
+                    cuello_global = cuello_material or {"tipo": "MATERIAL", "motivo": "Falta stock de insumos"}
+            elif capacidad_por_materiales < capacidad_por_hermanos:
+                cuello_global = cuello_material
+            elif capacidad_por_hermanos < capacidad_por_materiales:
+                cuello_global = {
+                    "tipo": "PRODUCTO",
+                    "motivo": f"Limitado por stock total de hermanos ({capacidad_por_hermanos} uds)",
+                    "max_posible": capacidad_por_hermanos
+                }
+            else:
+                cuello_global = cuello_material or {"tipo": "BALANCEADO", "motivo": "Stock balanceado", "max_posible": max_producible}
+
+            t_base = float(rec["tiempo_base_1p_min"] or 45)
+            u_base = float(rec["unidades_base_tiempo"] or 100)
+            c_hora = float(rec["costo_hora"] or 0)
+            vel_uds_h = (u_base / t_base) * 60 if t_base > 0 else 100.0
+
+            horas_1p = round(max_producible / vel_uds_h, 2) if max_producible > 0 else 0.0
+            costo_mo = round(horas_1p * c_hora, 2)
+            costo_insumos = round(sum(m["costo_unitario"] * m["ratio"] * max_producible for m in materiales_eval), 2)
+            costo_total = round(costo_mo + costo_insumos, 2)
+            costo_u_maquila = round(costo_total / max_producible, 2) if max_producible > 0 else 0.0
+
+            if cuello_material:
+                for me in materiales_eval:
+                    me["es_cuello_botella"] = (me["sku"] == cuello_material.get("sku") and me["max_posible"] == max_producible)
+
+            resultados.append({
+                "receta_id": rid,
+                "familia_nombre": rec["descripcion"] or rec["sku_maquilable"],
+                "sku": p_sku,
+                "nombre": p_nombre,
+                "stock_actual": p_stock_actual,
+                "max_producible": int(max_producible),
+                "cuello_de_botella": cuello_global,
+                "capacidad_por_hermanos": int(capacidad_por_hermanos),
+                "capacidad_por_materiales": int(capacidad_por_materiales if capacidad_por_materiales != float('inf') else 0),
+                "hermanos_disponibles": hermanos_disp,
+                "materiales_evaluacion": materiales_eval,
+                "costeo_lote": {
+                    "unidades": int(max_producible),
+                    "costo_insumos": costo_insumos,
+                    "costo_mano_obra": costo_mo,
+                    "costo_total": costo_total,
+                    "costo_unitario_maquila": costo_u_maquila,
+                    "horas_1p": horas_1p,
+                    "horas_3p": round(horas_1p / 2.7, 2),
+                    "horas_6p": round(horas_1p / 5.2, 2),
+                    "velocidad_uds_h": round(vel_uds_h, 1)
+                }
+            })
+
+    return {"ok": True, "data": resultados}
+

@@ -42,15 +42,32 @@ def list_materiales(search: str = None, categoria: str = None, solo_activos: boo
             # Formatear fechas y tipos
             if not df.empty:
                 df["stock_actual"] = df["stock_actual"].fillna(0).astype(float)
+                if "stock_minimo" in df.columns:
+                    df["stock_minimo"] = df["stock_minimo"].fillna(0).astype(float)
+                else:
+                    df["stock_minimo"] = 0.0
                 if "costo_unitario" in df.columns:
                     df["costo_unitario"] = df["costo_unitario"].fillna(0).astype(float)
+                else:
+                    df["costo_unitario"] = 0.0
                 df["fecha_creacion"] = df["fecha_creacion"].astype(str)
                 df["fecha_actualizacion"] = df["fecha_actualizacion"].astype(str)
                 data = df.to_dict(orient="records")
             else:
                 data = []
 
-            return {"ok": True, "data": data}
+            # Métricas rápidas
+            total_items = len(data)
+            bajo_minimo = sum(1 for d in data if (d.get("stock_minimo", 0) > 0 and d.get("stock_actual", 0) <= d.get("stock_minimo", 0)))
+            total_valor = sum(d.get("stock_actual", 0) * d.get("costo_unitario", 0) for d in data)
+
+            return {
+                "ok": True,
+                "data": data,
+                "total_items": total_items,
+                "bajo_minimo": bajo_minimo,
+                "total_valor": round(total_valor, 2)
+            }
         except Exception as e:
             return {"ok": False, "data": [], "error": str(e)}
 
@@ -67,6 +84,7 @@ def get_material(material_id: int):
             raise HTTPException(status_code=404, detail="Material no encontrado")
         d = dict(row._mapping)
         d["stock_actual"] = float(d.get("stock_actual") or 0)
+        d["stock_minimo"] = float(d.get("stock_minimo") or 0)
         d["costo_unitario"] = float(d.get("costo_unitario") or 0)
         d["fecha_creacion"] = str(d.get("fecha_creacion"))
         d["fecha_actualizacion"] = str(d.get("fecha_actualizacion"))
@@ -92,6 +110,13 @@ def create_material(body: dict = Body(...), authorization: str = Header(None)):
         stock_actual = 0.0
 
     try:
+        stock_minimo = float(body.get("stock_minimo", 0) or 0)
+        if stock_minimo < 0:
+            stock_minimo = 0.0
+    except Exception:
+        stock_minimo = 0.0
+
+    try:
         costo_unitario = float(body.get("costo_unitario", 0) or 0)
         if costo_unitario < 0:
             costo_unitario = 0.0
@@ -113,9 +138,9 @@ def create_material(body: dict = Body(...), authorization: str = Header(None)):
 
         res = conn.execute(text("""
             INSERT INTO materiales_maquila (
-                sku, nombre, descripcion, categoria, unidad_medida, stock_actual, costo_unitario, observaciones, activo
+                sku, nombre, descripcion, categoria, unidad_medida, stock_actual, stock_minimo, costo_unitario, observaciones, activo
             ) VALUES (
-                :sku, :nombre, :desc, :cat, :um, :stock, :costo, :obs, :act
+                :sku, :nombre, :desc, :cat, :um, :stock, :stock_min, :costo, :obs, :act
             ) RETURNING id
         """), {
             "sku": sku,
@@ -124,6 +149,7 @@ def create_material(body: dict = Body(...), authorization: str = Header(None)):
             "cat": categoria,
             "um": unidad_medida,
             "stock": stock_actual,
+            "stock_min": stock_minimo,
             "costo": costo_unitario,
             "obs": observaciones,
             "act": activo
@@ -151,6 +177,13 @@ def update_material(material_id: int, body: dict = Body(...), authorization: str
         stock_actual = 0.0
 
     try:
+        stock_minimo = float(body.get("stock_minimo", 0) or 0)
+        if stock_minimo < 0:
+            stock_minimo = 0.0
+    except Exception:
+        stock_minimo = 0.0
+
+    try:
         costo_unitario = float(body.get("costo_unitario", 0) or 0)
         if costo_unitario < 0:
             costo_unitario = 0.0
@@ -175,6 +208,7 @@ def update_material(material_id: int, body: dict = Body(...), authorization: str
                 categoria = :cat,
                 unidad_medida = :um,
                 stock_actual = :stock,
+                stock_minimo = :stock_min,
                 costo_unitario = :costo,
                 observaciones = :obs,
                 activo = :act,
@@ -187,6 +221,7 @@ def update_material(material_id: int, body: dict = Body(...), authorization: str
             "cat": categoria,
             "um": unidad_medida,
             "stock": stock_actual,
+            "stock_min": stock_minimo,
             "costo": costo_unitario,
             "obs": observaciones,
             "act": activo
@@ -253,7 +288,7 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
     if df.empty:
         raise HTTPException(status_code=400, detail="El archivo subido está vacío")
 
-    # Mapeo flexible de columnas para 'sku', 'descripcion', 'categoria', 'unidades' y 'costo'
+    # Mapeo flexible de columnas para 'sku', 'descripcion', 'categoria', 'unidades', 'costo' y 'stock_minimo'
     col_map = {}
     for c in df.columns:
         norm = str(c).strip().lower()
@@ -265,6 +300,8 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             col_map["categoria"] = c
         elif norm in ["costo", "costo_unitario", "costo_u", "precio", "cost", "unit_cost", "costo_un"]:
             col_map["costo"] = c
+        elif norm in ["stock_minimo", "stock_min", "minimo", "mínimo", "punto_reorden", "min", "seguridad"]:
+            col_map["stock_minimo"] = c
         elif norm in ["unidades", "unidad", "stock", "cantidad", "cant", "stock_actual", "inventario", "uds"]:
             col_map["unidades"] = c
 
@@ -284,6 +321,7 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
     desc_col = col_map.get("descripcion")
     cat_col = col_map.get("categoria")
     cost_col = col_map.get("costo")
+    min_col = col_map.get("stock_minimo")
 
     actualizados = 0
     creados = 0
@@ -324,6 +362,14 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
             except Exception:
                 cost_val = None
 
+            raw_min = row.get(min_col) if min_col else None
+            try:
+                min_val = float(raw_min) if (raw_min is not None and not pd.isna(raw_min)) else None
+                if min_val is not None and min_val < 0:
+                    min_val = 0.0
+            except Exception:
+                min_val = None
+
             try:
                 if pd.isna(raw_uds):
                     uds = 0.0
@@ -353,6 +399,9 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
                 if cost_val is not None:
                     set_clauses.append("costo_unitario = :costo")
                     params["costo"] = cost_val
+                if min_val is not None:
+                    set_clauses.append("stock_minimo = :smin")
+                    params["smin"] = min_val
 
                 conn.execute(text(f"""
                     UPDATE materiales_maquila
@@ -361,19 +410,20 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
                 """), params)
                 actualizados += 1
             else:
-                # Crear nuevo material con ese stock, descripción, categoría y costo
+                # Crear nuevo material con ese stock, descripción, categoría, costo y mínimo
                 nombre_defecto = desc if desc else f"Material {sku}"
                 conn.execute(text("""
                     INSERT INTO materiales_maquila (
-                        sku, nombre, descripcion, unidad_medida, stock_actual, costo_unitario, categoria, observaciones
+                        sku, nombre, descripcion, unidad_medida, stock_actual, stock_minimo, costo_unitario, categoria, observaciones
                     ) VALUES (
-                        :sku, :nombre, :desc, 'UN', :stock, :costo, :cat, 'Creado vía carga masiva de inventario'
+                        :sku, :nombre, :desc, 'UN', :stock, :smin, :costo, :cat, 'Creado vía carga masiva de inventario'
                     )
                 """), {
                     "sku": sku,
                     "nombre": nombre_defecto,
                     "desc": desc,
                     "stock": uds,
+                    "smin": (min_val or 0.0),
                     "costo": (cost_val or 0.0),
                     "cat": cat
                 })
@@ -391,12 +441,12 @@ async def upload_inventario_materiales(file: UploadFile = File(...), authorizati
 
 @router.get("/plantilla-excel")
 def download_plantilla_excel():
-    """Descarga la plantilla Excel con las cinco columnas: sku, descripcion, categoria, unidades y costo."""
+    """Descarga la plantilla Excel con las seis columnas: sku, descripcion, categoria, unidades, costo y stock_minimo."""
     df_sample = pd.DataFrame([
-        {"sku": "ETIQ-50X30", "descripcion": "Etiqueta adhesiva 50x30 mm", "categoria": "ETIQUETA", "unidades": 1500, "costo": 15.50},
-        {"sku": "MANGA-CEL-20CM", "descripcion": "Manga de celofán transparente 20 cm", "categoria": "MANGA", "unidades": 3200, "costo": 25.00},
-        {"sku": "BOLSA-POLI-10X15", "descripcion": "Bolsa polietileno 10x15 cm con cierre", "categoria": "EMPAQUE", "unidades": 850, "costo": 12.00},
-        {"sku": "CAJA-MAESTRA-100U", "descripcion": "Caja de cartón master para 100 unidades", "categoria": "EMPAQUE", "unidades": 45, "costo": 180.00}
+        {"sku": "ETIQ-50X30", "descripcion": "Etiqueta adhesiva 50x30 mm", "categoria": "ETIQUETA", "unidades": 1500, "costo": 15.50, "stock_minimo": 500},
+        {"sku": "MANGA-CEL-20CM", "descripcion": "Manga de celofán transparente 20 cm", "categoria": "MANGA", "unidades": 3200, "costo": 25.00, "stock_minimo": 1000},
+        {"sku": "BOLSA-POLI-10X15", "descripcion": "Bolsa polietileno 10x15 cm con cierre", "categoria": "EMPAQUE", "unidades": 850, "costo": 12.00, "stock_minimo": 300},
+        {"sku": "CAJA-MAESTRA-100U", "descripcion": "Caja de cartón master para 100 unidades", "categoria": "EMPAQUE", "unidades": 45, "costo": 180.00, "stock_minimo": 20}
     ])
 
     output = io.BytesIO()
@@ -426,6 +476,11 @@ def export_materiales_excel():
                 categoria AS "Categoría",
                 unidad_medida AS "Unidad de Medida",
                 stock_actual AS "Stock Actual (Unidades)",
+                COALESCE(stock_minimo, 0) AS "Stock Mínimo (Seguridad)",
+                CASE 
+                    WHEN COALESCE(stock_minimo, 0) > 0 AND stock_actual <= COALESCE(stock_minimo, 0) THEN 'ALERTA: BAJO MÍNIMO'
+                    ELSE 'OK'
+                END AS "Alerta Stock",
                 COALESCE(costo_unitario, 0) AS "Costo Unitario ($)",
                 ROUND(CAST(stock_actual * COALESCE(costo_unitario, 0) AS numeric), 2) AS "Valor Total ($)",
                 observaciones AS "Observaciones",
