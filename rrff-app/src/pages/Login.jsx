@@ -53,7 +53,7 @@ export default function Login({ onLogin, isModal = false }) {
               type="text"
               value={user}
               onChange={e => setUser(e.target.value)}
-              placeholder="Ej: Angella Sanchez o admin"
+              placeholder="Ingresa tu usuario"
               autoComplete="username"
               autoFocus
             />
@@ -103,13 +103,13 @@ export default function Login({ onLogin, isModal = false }) {
               type="text"
               value={serverUrl}
               onChange={e => setServerUrl(e.target.value)}
-              placeholder="https://rrff-api.onrender.com/api"
+              placeholder="http://217.71.200.221/api o /api"
               style={{
                 width: '100%', padding: '6px 8px', borderRadius: 4,
                 border: '1px solid #94a3b8', fontSize: '0.8rem', boxSizing: 'border-box'
               }}
             />
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={handleSaveConfig}
@@ -121,9 +121,33 @@ export default function Login({ onLogin, isModal = false }) {
               </button>
               <button
                 type="button"
+                onClick={async () => {
+                  try {
+                    const testTarget = (serverUrl || '').trim().replace(/\/+$/, '');
+                    const fullHealth = testTarget.endsWith('/api') ? `${testTarget}/health` : `${testTarget}/api/health`;
+                    const res = await fetch(fullHealth);
+                    if (res.ok) {
+                      setErr('');
+                      alert(`✓ Conexión exitosa con el servidor API (${fullHealth})`);
+                    } else {
+                      alert(`El servidor respondió con código HTTP ${res.status}`);
+                    }
+                  } catch (e) {
+                    alert(`No se pudo conectar a la URL: ${e.message}`);
+                  }
+                }}
+                style={{
+                  padding: '5px 10px', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc',
+                  borderRadius: 4, cursor: 'pointer', fontWeight: 600, fontSize: '0.78rem'
+                }}>
+                Probar Conexión
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setCustomApiUrl('');
-                  setServerUrl(getBaseApiUrl());
+                  const def = getBaseApiUrl();
+                  setServerUrl(def);
                   setConfigSaved(true);
                   setTimeout(() => setConfigSaved(false), 1500);
                 }}
@@ -131,7 +155,7 @@ export default function Login({ onLogin, isModal = false }) {
                   padding: '5px 10px', background: '#fff', color: '#64748b', border: '1px solid #cbd5e1',
                   borderRadius: 4, cursor: 'pointer', fontSize: '0.78rem'
                 }}>
-                Restablecer
+                Autodetectar
               </button>
             </div>
             {configSaved && (

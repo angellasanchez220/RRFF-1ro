@@ -122,10 +122,15 @@ def require_admin(authorization: str = Header(None)):
 
 def _get_user_from_db(username: str):
     from api.db import engine
+    clean_u = (username or "").strip()
     with engine.connect() as conn:
         row = conn.execute(
-            text("SELECT username, password_hash, role, permisos, activo FROM usuarios WHERE username=:u"),
-            {"u": username}
+            text("""
+                SELECT username, password_hash, role, permisos, activo 
+                FROM usuarios 
+                WHERE LOWER(TRIM(username)) = LOWER(TRIM(:u))
+            """),
+            {"u": clean_u}
         ).fetchone()
     return row
 

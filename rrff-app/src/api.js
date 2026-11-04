@@ -16,7 +16,17 @@ export function getBaseApiUrl() {
     return withProto.endsWith('/api') ? withProto : `${withProto}/api`;
   }
 
-  // 3. Autodescubrimiento en Render
+  // 3. Servidor de Producción / VPS / Dominio Propio (ej. http://217.71.200.221 o dominio)
+  // Cuando se accede desde una IP o dominio que NO sea localhost ni Render,
+  // el backend está en el mismo host bajo la ruta /api (proxy de Nginx / Docker).
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('onrender.com')) {
+      return `${window.location.origin}/api`;
+    }
+  }
+
+  // 4. Autodescubrimiento en Render
   if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
     const host = window.location.hostname;
     if (host.includes('rrff-frontend')) {
@@ -27,10 +37,10 @@ export function getBaseApiUrl() {
       const apiHost = host.replace('frontend', 'api');
       return `https://${apiHost}/api`;
     }
-    return 'https://rrff-api.onrender.com/api';
+    return `${window.location.origin}/api`;
   }
 
-  // 4. Entorno de desarrollo local por defecto
+  // 5. Entorno de desarrollo local por defecto
   return 'http://localhost:8000/api';
 }
 
@@ -56,13 +66,14 @@ async function handleResponseJson(res, defaultErrorMsg = 'Error en el servidor')
     data = JSON.parse(text);
   } catch (err) {
     if (text.trim().startsWith('<') || (res.headers.get('content-type') || '').includes('text/html')) {
+      const targetUrl = res.url || BASE;
       if (res.status === 404) {
-        throw new Error(`Servidor API no encontrado (404 en ${res.url || BASE}). Verifica la URL del backend en Render.`);
+        throw new Error(`Endpoint API no encontrado (404 en ${targetUrl}).`);
       }
       if (res.status === 502 || res.status === 503 || res.status === 504) {
-        throw new Error(`El servidor backend está iniciando (Cold Start de Render) o no responde (HTTP ${res.status}). Espera unos 30 segundos y reintenta.`);
+        throw new Error(`El servidor backend (${targetUrl}) no responde (HTTP ${res.status}). Verifica el contenedor o URL.`);
       }
-      throw new Error(`El servidor respondió con HTML en lugar de JSON (HTTP ${res.status}). Comprueba que el backend esté en ejecución.`);
+      throw new Error(`El servidor respondió con HTML en lugar de JSON (HTTP ${res.status} en ${targetUrl}).`);
     }
     throw new Error(text.slice(0, 150) || defaultErrorMsg);
   }
