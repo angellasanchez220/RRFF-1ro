@@ -54,9 +54,10 @@ app.include_router(export.router, prefix="/api/export", tags=["Export"], depende
 
 @app.on_event("startup")
 def on_startup():
-    """Ejecuta migraciones DDL al arrancar la API."""
+    """Ejecuta migraciones DDL en segundo plano para no bloquear el arranque ni causar 502 por timeout."""
+    import threading
     from api.db import run_migrations
-    run_migrations()
+    threading.Thread(target=run_migrations, daemon=True, name="db-migrations").start()
 
 
 @app.get("/api/health")

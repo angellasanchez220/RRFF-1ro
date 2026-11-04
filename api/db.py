@@ -387,9 +387,13 @@ def run_migrations():
     for stmt in stmts:
         try:
             with engine.begin() as conn:
+                try:
+                    conn.execute(text("SET lock_timeout = '3s'"))
+                except Exception:
+                    pass
                 conn.execute(text(stmt))
-        except Exception as e:
-            # Ignorar errores menores de migración (p.ej. tabla o columna no existe aún)
+        except Exception:
+            # Ignorar errores menores de migración (p.ej. tabla o columna no existe aún o lock ocupado)
             pass
 
     # Insertar admin por defecto si la tabla usuarios está vacía
@@ -415,16 +419,23 @@ def _seed_admin_user():
         "angella sanchez"
     ]
 
-    with engine.begin() as conn:
-        for u in admin_candidates:
-            if not u:
-                continue
-            conn.execute(text("""
-                INSERT INTO usuarios (username, password_hash, role, permisos, activo)
-                VALUES (:u, :h, 'admin', :p, TRUE)
-                ON CONFLICT (username) DO NOTHING
-            """), {
-                "u": u,
-                "h": pwd_hash,
-                "p": default_perms
-            })
+    try:
+        with engine.begin() as conn:
+            try:
+                conn.execute(text("SET lock_timeout = '3s'"))
+            except Exception:
+                pass
+            for u in admin_candidates:
+                if not u:
+                    continue
+                conn.execute(text("""
+                    INSERT INTO usuarios (username, password_hash, role, permisos, activo)
+                    VALUES (:u, :h, 'admin', :p, TRUE)
+                    ON CONFLICT (username) DO NOTHING
+                """), {
+                    "u": u,
+                    "h": pwd_hash,
+                    "p": default_perms
+                })
+    except Exception:
+        pass
