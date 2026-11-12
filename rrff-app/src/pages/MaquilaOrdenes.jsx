@@ -14,7 +14,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
   // Detail state
   const [activeOc, setActiveOc] = useState(null);
 
-  // Modales OT y Liquidaci�n
+  // Modales OT y Liquidación
   const [otModalOpen, setOtModalOpen] = useState(false);
   const [otData, setOtData] = useState(null);
   const [otLoading, setOtLoading] = useState(false);
@@ -151,7 +151,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
 
   function handleOpenLiquidar() {
     if (!activeOc) return;
-    // Precargar selecci�n por defecto del primer hermano con stock para cada producto a maquilar
+    // Precargar selección por defecto del primer hermano con stock para cada producto a maquilar
     const map = {};
     activeOc.detalles.forEach(d => {
       if (d.cantidad_a_maquilar > 0 && d.hermanos_disponibles && d.hermanos_disponibles.length > 0) {
@@ -162,13 +162,13 @@ export default function MaquilaOrdenes({ isAdmin }) {
     setLiquidarMermasInsumos({});
     setLiquidarMermaProducto(0);
     setLiquidarMotivoMerma('');
-    setLiquidarObs(`Liquidaci�n de OC ${activeOc.meta.numero_oc} procesada en planta`);
+    setLiquidarObs(`Liquidación de OC ${activeOc.meta.numero_oc} procesada en planta`);
     setLiquidarModalOpen(true);
   }
 
   async function handleConfirmLiquidar() {
     if (!activeOc) return;
-    if (!window.confirm("�Confirmas la liquidaci�n de esta maquila? Se descontar�n los materiales de 'materiales_maquila' (consumo + mermas), se descontar�n los productos hermanos de origen y se sumar� el producto terminado en 'planificacion_sop'.")) {
+    if (!window.confirm("¿Confirmas la liquidación de esta maquila? Se descontarán los materiales de 'materiales_maquila' (consumo + mermas), se descontarán los productos hermanos de origen y se sumará el producto terminado en 'planificacion_sop'.")) {
       return;
     }
 
@@ -181,7 +181,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
         merma_producto_origen: Number(liquidarMermaProducto) || 0,
         motivo_merma: liquidarMotivoMerma.trim()
       });
-      alert(res.mensaje || "Maquila liquidada e inventarios actualizados con �xito");
+      alert(res.mensaje || "Maquila liquidada e inventarios actualizados con éxito");
       setLiquidarModalOpen(false);
       openDetail(activeOc.meta.id);
     } catch (err) {
@@ -195,16 +195,16 @@ export default function MaquilaOrdenes({ isAdmin }) {
     window.print();
   }
 
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   // 1. VISTA DE LISTADO
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderList() {
     return (
       <div style={{ padding: '4px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 14 }}>
           <div>
             <h2 style={{ margin: '0 0 4px', fontSize: '1.4rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>??</span> �rdenes de Compra y Maquila de Clientes
+              <span>📑</span> Órdenes de Compra y Maquila de Clientes
             </h2>
             <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
               Sube las OCs de clientes para evaluar quiebres contra stock terminado y calcular requerimientos de insumos, tiempos y costos de maquila.
@@ -216,9 +216,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
               className="btn-secondary"
               onClick={handleOpenMermas}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', fontSize: '0.88rem', fontWeight: 600, background: '#ffffff', border: '1.5px solid #cbd5e1' }}
-              title="Auditor�a de mermas y scrap registrados"
+              title="Auditoría de mermas y scrap registrados"
             >
-              <span>??</span> Reporte Mermas & Scrap
+              <span>📉</span> Reporte Mermas & Scrap
             </button>
 
             {isAdmin && (
@@ -245,14 +245,14 @@ export default function MaquilaOrdenes({ isAdmin }) {
         {error && <div className="alert-box" style={{ background: '#ffebee', color: '#c62828', padding: '12px 16px', borderRadius: '6px', marginBottom: '16px' }}>{error}</div>}
         
         {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Cargando �rdenes de maquila...</div>
+          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Cargando órdenes de maquila...</div>
         ) : (
           <div style={{ overflowX: 'auto', background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
                   <th style={{ padding: '12px 14px', width: '70px' }}>ID</th>
-                  <th style={{ padding: '12px 14px' }}>N�mero OC</th>
+                  <th style={{ padding: '12px 14px' }}>Número OC</th>
                   <th style={{ padding: '12px 14px' }}>Fecha Carga</th>
                   <th style={{ padding: '12px 14px', textAlign: 'center' }}>SKUs Totales (Maq.)</th>
                   <th style={{ padding: '12px 14px', textAlign: 'right' }}>Presupuesto Maquila</th>
@@ -265,7 +265,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 {ordenes.map(o => {
                   const isLiquidada = o.estado_procesamiento === 'Liquidada';
                   const isBloqueada = (o.estado_procesamiento || '').includes('Bloquead');
-                  const isPrep = (o.estado_procesamiento || '').includes('preparaci�n');
+                  const isPrep = (o.estado_procesamiento || '').includes('preparación');
 
                   return (
                     <tr key={o.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -293,7 +293,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                           color: isLiquidada ? '#166534' : isBloqueada ? '#991b1b' : isPrep ? '#1d4ed8' : '#92400e',
                           border: '1px solid currentColor'
                         }}>
-                          {isLiquidada ? 'V Liquidada' : o.estado_procesamiento}
+                          {isLiquidada ? '✓ Liquidada' : o.estado_procesamiento}
                         </span>
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
@@ -310,7 +310,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                             style={{ padding: '6px 10px', fontSize: '0.8rem', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                             title="Imprimir Orden de Trabajo"
                           >
-                            ??? OT
+                            🖨️ OT
                           </button>
                         </div>
                       </td>
@@ -320,7 +320,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 {ordenes.length === 0 && (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                      No hay �rdenes de maquila registradas. Sube un archivo CSV de Orden de Compra para iniciar.
+                      No hay órdenes de maquila registradas. Sube un archivo CSV de Orden de Compra para iniciar.
                     </td>
                   </tr>
                 )}
@@ -332,9 +332,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
     );
   }
 
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   // 2. VISTA PREVIA TRAS IMPORTAR CSV
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderPreview() {
     if (!previewData) return null;
     const { meta, detalles, componentes, estado_general, costos_resumen } = previewData;
@@ -349,16 +349,16 @@ export default function MaquilaOrdenes({ isAdmin }) {
           onClick={() => { setView('list'); setPreviewData(null); }} 
           style={{ marginBottom: 16, display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
         >
-           Volver al listado
+          ← Volver al listado
         </button>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
           <div>
             <h2 style={{ margin: '0 0 4px', fontSize: '1.4rem', color: '#0f172a', fontWeight: 800 }}>
-              Vista Previa de Importaci�n: OC {meta.numero_oc}
+              Vista Previa de Importación: OC {meta.numero_oc}
             </h2>
             <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
-              Archivo: <b>{meta.nombre_archivo}</b> | L�neas analizadas: {meta.total_lineas} | SKUs consolidados: {detalles.length}
+              Archivo: <b>{meta.nombre_archivo}</b> | Líneas analizadas: {meta.total_lineas} | SKUs consolidados: {detalles.length}
             </p>
           </div>
 
@@ -399,7 +399,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#7e22ce', marginTop: '2px' }}>
                 ${Math.round(costos_resumen.costo_mo_estimado || 0).toLocaleString('es-CL')}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Seg�n costo por hora</div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Según costo por hora</div>
             </div>
 
             <div className="card" style={{ padding: '14px 18px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
@@ -423,7 +423,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
                 <th style={{ padding: '10px 12px' }}>SKU</th>
-                <th style={{ padding: '10px 12px' }}>Descripci�n</th>
+                <th style={{ padding: '10px 12px' }}>Descripción</th>
                 <th style={{ padding: '10px 12px', textAlign: 'center' }}>Pedido</th>
                 <th style={{ padding: '10px 12px', textAlign: 'center' }}>Recibido</th>
                 <th style={{ padding: '10px 12px', textAlign: 'center' }}>Pendiente</th>
@@ -476,7 +476,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{c.requerido}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', color: hasFaltante ? '#dc2626' : '#15803d', fontWeight: 700 }}>{c.stock_actual}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: hasFaltante ? '#e11d48' : '#15803d' }}>
-                      {hasFaltante ? `?? ${c.faltante}` : '0 (OK)'}
+                      {hasFaltante ? `⚠️ ${c.faltante}` : '0 (OK)'}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>${c.costo_unitario}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>${Math.round(c.costo_total).toLocaleString('es-CL')}</td>
@@ -496,15 +496,15 @@ export default function MaquilaOrdenes({ isAdmin }) {
           disabled={loading} 
           style={{ width: '100%', padding: '14px', fontSize: '1.05rem', fontWeight: 800, borderRadius: '8px' }}
         >
-          {loading ? 'Guardando Orden...' : 'V Confirmar e Importar Orden de Maquila'}
+          {loading ? 'Guardando Orden...' : '✓ Confirmar e Importar Orden de Maquila'}
         </button>
       </div>
     );
   }
 
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   // 3. VISTA DETALLE DE UNA ORDEN GUARDADA
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderDetail() {
     if (!activeOc) return null;
     const { meta, detalles, componentes, costos_resumen } = activeOc;
@@ -532,14 +532,14 @@ export default function MaquilaOrdenes({ isAdmin }) {
 
     return (
       <div style={{ padding: '4px' }}>
-        {/* Barra superior de navegaci�n y acciones */}
+        {/* Barra superior de navegación y acciones */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
           <button 
             className="btn-secondary" 
             onClick={() => { setView('list'); setActiveOc(null); }}
             style={{ fontWeight: 600 }}
           >
-             Volver al listado
+            ← Volver al listado
           </button>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -550,7 +550,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 disabled={loading || isLiquidada}
                 style={{ fontWeight: 600 }}
               >
-                ?? Recalcular con Inventario Actual
+                🔄 Recalcular con Inventario Actual
               </button>
             )}
 
@@ -559,7 +559,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               onClick={() => handleOpenOt(meta.id)}
               style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
             >
-              <span>???</span> Generar Orden de Trabajo (OT)
+              <span>🖨️</span> Generar Orden de Trabajo (OT)
             </button>
 
             <button 
@@ -567,7 +567,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               onClick={handleExport}
               style={{ fontWeight: 600 }}
             >
-              ?? Exportar CSV
+              📥 Exportar CSV
             </button>
 
             {isAdmin && !isLiquidada && (
@@ -576,7 +576,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 onClick={handleOpenLiquidar}
                 style={{ background: '#16a34a', border: 'none', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
               >
-                <span>?</span> Liquidar y Descontar Stock
+                <span>⚡</span> Liquidar y Descontar Stock
               </button>
             )}
           </div>
@@ -603,8 +603,8 @@ export default function MaquilaOrdenes({ isAdmin }) {
               </div>
               <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: '0.88rem', color: '#64748b', flexWrap: 'wrap' }}>
                 <span><strong>Tipo de Orden:</strong> {meta.tipo_orden || 'Retail'}</span>
-                <span><strong>Fecha Emisi�n:</strong> {meta.fecha_emision || '-'}</span>
-                <span><strong>Fecha L�mite:</strong> {meta.fecha_fin_recepcion || '-'}</span>
+                <span><strong>Fecha Emisión:</strong> {meta.fecha_emision || '-'}</span>
+                <span><strong>Fecha Límite:</strong> {meta.fecha_fin_recepcion || '-'}</span>
                 <span><strong>Archivo Origen:</strong> {meta.nombre_archivo}</span>
               </div>
             </div>
@@ -619,7 +619,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                   disabled={loading}
                 >
                   <option value="Pendiente">Pendiente</option>
-                  <option value="En preparaci�n">En preparaci�n</option>
+                  <option value="En preparación">En preparación</option>
                   <option value="Preparada">Preparada</option>
                   <option value="Bloqueada por falta de Insumos">Bloqueada por falta de Insumos</option>
                   <option value="Bloqueada por falta de Hermanos">Bloqueada por falta de Hermanos</option>
@@ -655,7 +655,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#7e22ce', marginTop: '2px' }}>
                 ${Math.round(costos_resumen.costo_mo_estimado || 0).toLocaleString('es-CL')}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>Seg�n tiempo est�ndar</div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>Según tiempo estándar</div>
             </div>
 
             <div className="card" style={{ padding: '16px 20px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
@@ -670,7 +670,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
           </div>
         )}
 
-        {/* Secci�n 1: Productos Maquilables */}
+        {/* Sección 1: Productos Maquilables */}
         <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', color: '#0f172a', fontWeight: 700 }}>
           1. Productos de la OC a Maquilar ({maq.length})
         </h3>
@@ -719,9 +719,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
           </table>
         </div>
 
-        {/* Secci�n 2: Insumos de Maquila Requeridos */}
+        {/* Sección 2: Insumos de Maquila Requeridos */}
         <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>???</span> 2. Insumos y Materiales de Maquila Requeridos ({insumos.length})
+          <span>🏷️</span> 2. Insumos y Materiales de Maquila Requeridos ({insumos.length})
         </h3>
         <div style={{ overflowX: 'auto', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: 24, boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
@@ -750,7 +750,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                       {c.stock_actual}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: hasFaltante ? '#e11d48' : '#15803d' }}>
-                      {hasFaltante ? `?? ${c.faltante}` : '0 (OK)'}
+                      {hasFaltante ? `⚠️ ${c.faltante}` : '0 (OK)'}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>${c.costo_unitario}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
@@ -770,11 +770,11 @@ export default function MaquilaOrdenes({ isAdmin }) {
           </table>
         </div>
 
-        {/* Secci�n 3: Productos Hermanos (Bases de transformaci�n) */}
+        {/* Sección 3: Productos Hermanos (Bases de transformación) */}
         {hermanos.length > 0 && (
           <>
             <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>??</span> 3. Productos Hermanos Compatibles para Transformaci�n ({hermanos.length})
+              <span>🔄</span> 3. Productos Hermanos Compatibles para Transformación ({hermanos.length})
             </h3>
             <div style={{ overflowX: 'auto', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: 24, boxShadow: '0 2px 4px rgba(0,0,0,0.03)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
@@ -783,7 +783,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                     <th style={{ padding: '10px 12px' }}>SKU Hermano</th>
                     <th style={{ padding: '10px 12px' }}>Nombre Producto</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right' }}>Stock Disponible en SOP</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Unidades Requeridas M�x.</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Unidades Requeridas Máx.</th>
                     <th style={{ padding: '10px 12px' }}>Compatible con</th>
                   </tr>
                 </thead>
@@ -805,7 +805,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
           </>
         )}
 
-        {/* Secci�n 4: Productos No Maquilables */}
+        {/* Sección 4: Productos No Maquilables */}
         {noMaq.length > 0 && (
           <>
             <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', color: '#64748b', fontWeight: 700 }}>
@@ -839,9 +839,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
     );
   }
 
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   // 4. MODAL DE ORDEN DE TRABAJO (OT / PICKING LIST IMPRIMIBLE)
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderOtModal() {
     if (!otModalOpen) return null;
 
@@ -866,7 +866,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0f172a', paddingBottom: '14px', marginBottom: '16px' }}>
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>
-                    FEMACO / PLANTA DE MAQUILA Y TRANSFORMACI�N
+                    FEMACO / PLANTA DE MAQUILA Y TRANSFORMACIÓN
                   </div>
                   <h1 style={{ margin: '4px 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 900 }}>
                     ORDEN DE TRABAJO (OT): {otData.ot_numero}
@@ -877,7 +877,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Fecha de Emisi�n:</div>
+                  <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Fecha de Emisión:</div>
                   <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>{otData.fecha_emision}</div>
                   <div style={{ fontSize: '0.8rem', color: '#e11d48', fontWeight: 700, marginTop: '2px' }}>
                     Fecha Entrega: {otData.oc.fecha_fin_recepcion || 'Prioritaria'}
@@ -892,7 +892,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                   onClick={printOt}
                   style={{ padding: '8px 18px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  <span>???</span> Imprimir OT
+                  <span>🖨️</span> Imprimir OT
                 </button>
                 <button 
                   type="button" 
@@ -903,7 +903,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 </button>
               </div>
 
-              {/* Resumen de Producci�n */}
+              {/* Resumen de Producción */}
               <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Unidades a Producir</span>
@@ -925,15 +925,15 @@ export default function MaquilaOrdenes({ isAdmin }) {
 
               {/* 1. Lista de Picking de Insumos */}
               <h3 style={{ fontSize: '1rem', color: '#0f172a', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '4px', margin: '0 0 8px' }}>
-                ?? 1. Lista de Despacho de Bodega - Insumos (Picking List)
+                📦 1. Lista de Despacho de Bodega - Insumos (Picking List)
               </h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', marginBottom: '18px' }}>
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
-                    <th style={{ padding: '6px 8px', width: '30px', textAlign: 'center' }}>[V]</th>
+                    <th style={{ padding: '6px 8px', width: '30px', textAlign: 'center' }}>[✓]</th>
                     <th style={{ padding: '6px 8px' }}>SKU Insumo</th>
-                    <th style={{ padding: '6px 8px' }}>Descripci�n</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Categor�a</th>
+                    <th style={{ padding: '6px 8px' }}>Descripción</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Categoría</th>
                     <th style={{ padding: '6px 8px', textAlign: 'right' }}>Cantidad a Despachar</th>
                     <th style={{ padding: '6px 8px', textAlign: 'right' }}>Stock Bodega</th>
                   </tr>
@@ -959,12 +959,12 @@ export default function MaquilaOrdenes({ isAdmin }) {
 
               {/* 2. Lista de Picking de Productos Hermanos a Transformar */}
               <h3 style={{ fontSize: '1rem', color: '#0f172a', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '4px', margin: '0 0 8px' }}>
-                ?? 2. Lista de Despacho de Bodega - Productos Hermanos Origen
+                🔄 2. Lista de Despacho de Bodega - Productos Hermanos Origen
               </h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', marginBottom: '18px' }}>
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
-                    <th style={{ padding: '6px 8px', width: '30px', textAlign: 'center' }}>[V]</th>
+                    <th style={{ padding: '6px 8px', width: '30px', textAlign: 'center' }}>[✓]</th>
                     <th style={{ padding: '6px 8px' }}>SKU Hermano Origen</th>
                     <th style={{ padding: '6px 8px' }}>Nombre Producto</th>
                     <th style={{ padding: '6px 8px', textAlign: 'right' }}>Cantidad a Despachar</th>
@@ -991,11 +991,11 @@ export default function MaquilaOrdenes({ isAdmin }) {
 
               {/* 3. Control de Planta y Tiempos */}
               <h3 style={{ fontSize: '1rem', color: '#0f172a', borderBottom: '1.5px solid #cbd5e1', paddingBottom: '4px', margin: '0 0 8px' }}>
-                ?? 3. Control de Ejecuci�n en L�nea
+                ⏱️ 3. Control de Ejecución en Línea
               </h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', fontSize: '0.84rem', marginBottom: '20px' }}>
                 <div style={{ border: '1px solid #cbd5e1', padding: '8px 10px', borderRadius: '4px' }}>
-                  <b>Operario / Supervisor L�nea:</b>
+                  <b>Operario / Supervisor Línea:</b>
                   <div style={{ borderBottom: '1px dotted #94a3b8', height: '22px', marginTop: '4px' }}></div>
                 </div>
                 <div style={{ border: '1px solid #cbd5e1', padding: '8px 10px', borderRadius: '4px' }}>
@@ -1003,7 +1003,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                   <div style={{ borderBottom: '1px dotted #94a3b8', height: '22px', marginTop: '4px' }}></div>
                 </div>
                 <div style={{ border: '1px solid #cbd5e1', padding: '8px 10px', borderRadius: '4px' }}>
-                  <b>Fecha y Hora T�rmino:</b>
+                  <b>Fecha y Hora Término:</b>
                   <div style={{ borderBottom: '1px dotted #94a3b8', height: '22px', marginTop: '4px' }}></div>
                 </div>
                 <div style={{ border: '1px solid #cbd5e1', padding: '8px 10px', borderRadius: '4px' }}>
@@ -1015,7 +1015,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                   <div style={{ borderBottom: '1px dotted #94a3b8', height: '22px', marginTop: '4px' }}></div>
                 </div>
                 <div style={{ border: '1px solid #cbd5e1', padding: '8px 10px', borderRadius: '4px' }}>
-                  <b>Dotaci�n Real de Personas:</b>
+                  <b>Dotación Real de Personas:</b>
                   <div style={{ borderBottom: '1px dotted #94a3b8', height: '22px', marginTop: '4px' }}></div>
                 </div>
               </div>
@@ -1048,9 +1048,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
     );
   }
 
-  // �����������������������������������������������������������������������������
-  // 5. MODAL DE LIQUIDACI�N Y ACTUALIZACI�N DE STOCK
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 5. MODAL DE LIQUIDACIÓN Y ACTUALIZACIÓN DE STOCK
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderLiquidarModal() {
     if (!liquidarModalOpen || !activeOc) return null;
     const { meta, detalles, componentes } = activeOc;
@@ -1067,25 +1067,25 @@ export default function MaquilaOrdenes({ isAdmin }) {
           padding: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', maxHeight: '90vh', overflowY: 'auto'
         }}>
           <h2 style={{ margin: '0 0 6px', fontSize: '1.3rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>?</span> Liquidaci�n y Cierre de Maquila: OC {meta.numero_oc}
+            <span>⚡</span> Liquidación y Cierre de Maquila: OC {meta.numero_oc}
           </h2>
           <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.86rem' }}>
-            Esta acci�n confirma que la maquila fue realizada en planta. El sistema actualizar� autom�ticamente todos los inventarios en vivo.
+            Esta acción confirma que la maquila fue realizada en planta. El sistema actualizará automáticamente todos los inventarios en vivo.
           </p>
 
           <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '8px', padding: '14px', marginBottom: '16px', fontSize: '0.85rem' }}>
             <span style={{ fontWeight: 800, color: '#166534', display: 'block', marginBottom: '6px' }}>
-              V Impacto autom�tico en inventarios:
+              ✓ Impacto automático en inventarios:
             </span>
             <ul style={{ margin: 0, paddingLeft: '20px', color: '#15803d' }}>
-              <li>Se <b>descontar�n</b> las etiquetas, mangas y cajas de <b>materiales_maquila</b>.</li>
-              <li>Se <b>descontar�</b> el stock del producto hermano origen seleccionado de <b>planificacion_sop</b>.</li>
-              <li>Se <b>sumar�</b> el stock del producto terminado a <b>planificacion_sop</b>.</li>
-              <li>Quedar� registrado el hist�rico auditable con costos, fechas y usuario responsable.</li>
+              <li>Se <b>descontarán</b> las etiquetas, mangas y cajas de <b>materiales_maquila</b>.</li>
+              <li>Se <b>descontará</b> el stock del producto hermano origen seleccionado de <b>planificacion_sop</b>.</li>
+              <li>Se <b>sumará</b> el stock del producto terminado a <b>planificacion_sop</b>.</li>
+              <li>Quedará registrado el histórico auditable con costos, fechas y usuario responsable.</li>
             </ul>
           </div>
 
-          {/* Selecci�n de Hermano Origen para cada producto */}
+          {/* Selección de Hermano Origen para cada producto */}
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', marginBottom: '8px' }}>
               Confirmar Producto Hermano Utilizado como Base:
@@ -1116,13 +1116,13 @@ export default function MaquilaOrdenes({ isAdmin }) {
           {/* Mermas Reales en Planta */}
           <div style={{ background: '#fff1f2', border: '1.5px solid #fecdd3', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
             <div style={{ fontWeight: 800, color: '#9f1239', fontSize: '0.9rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>??</span> Registro de Mermas y Scrap en Planta (Opcional):
+              <span>📉</span> Registro de Mermas y Scrap en Planta (Opcional):
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', marginBottom: '12px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#881337', marginBottom: '4px' }}>
-                  Merma de Producto Origen (uds da�adas):
+                  Merma de Producto Origen (uds dañadas):
                 </label>
                 <input
                   type="number"
@@ -1159,7 +1159,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
                 type="text"
                 value={liquidarMotivoMerma}
                 onChange={e => setLiquidarMotivoMerma(e.target.value)}
-                placeholder="Ej. Calibraci�n de mangas, etiquetas rasgadas por bobina defectuosa"
+                placeholder="Ej. Calibración de mangas, etiquetas rasgadas por bobina defectuosa"
                 style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1.5px solid #fda4af', fontSize: '0.84rem' }}
               />
             </div>
@@ -1168,14 +1168,14 @@ export default function MaquilaOrdenes({ isAdmin }) {
           {/* Observaciones */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '4px' }}>
-              Observaciones de Cierre / Bit�cora:
+              Observaciones de Cierre / Bitácora:
             </label>
             <input
               type="text"
               value={liquidarObs}
               onChange={e => setLiquidarObs(e.target.value)}
               style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1.5px solid #cbd5e1', fontSize: '0.88rem' }}
-              placeholder="Ej: Lote finalizado conforme en turno ma�ana"
+              placeholder="Ej: Lote finalizado conforme en turno mañana"
             />
           </div>
 
@@ -1195,7 +1195,7 @@ export default function MaquilaOrdenes({ isAdmin }) {
               disabled={liquidarLoading}
               style={{ background: '#16a34a', border: 'none', padding: '10px 22px', fontWeight: 800 }}
             >
-              {liquidarLoading ? 'Liquidando e impactando inventario...' : 'V Confirmar y Liquidar Maquila'}
+              {liquidarLoading ? 'Liquidando e impactando inventario...' : '✓ Confirmar y Liquidar Maquila'}
             </button>
           </div>
         </div>
@@ -1203,9 +1203,9 @@ export default function MaquilaOrdenes({ isAdmin }) {
     );
   }
 
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   // 6. MODAL REPORTE DE MERMAS Y SCRAP
-  // �����������������������������������������������������������������������������
+  // ─────────────────────────────────────────────────────────────────────────────
   function renderMermasModal() {
     if (!mermasModalOpen) return null;
 
@@ -1222,13 +1222,13 @@ export default function MaquilaOrdenes({ isAdmin }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
             <div>
               <h2 style={{ margin: '0 0 4px', fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
-                ?? Reporte Hist�rico de Mermas y Scrap de Maquila
+                📉 Reporte Histórico de Mermas y Scrap de Maquila
               </h2>
               <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                Control y auditor�a de desperdicios registrados al liquidar cada orden de trabajo
+                Control y auditoría de desperdicios registrados al liquidar cada orden de trabajo
               </div>
             </div>
-            <button onClick={() => setMermasModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#64748b' }}>?</button>
+            <button onClick={() => setMermasModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
           </div>
 
           {/* Tarjetas resumen */}

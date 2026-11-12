@@ -1,15 +1,15 @@
 """
-api/routes/ordenes_compra.py - M�dulo de �rdenes de Compra y Auditor�a de Despacho
+api/routes/ordenes_compra.py — Módulo de Órdenes de Compra y Auditoría de Despacho
 ================================================================================
-Permite subir �rdenes de Compra (OCs) en dos etapas:
+Permite subir Órdenes de Compra (OCs) en dos etapas:
   1. PEDIDO (Opcional): registro inicial de lo solicitado por el cliente/empresa.
-  2. ENTREGA (Despacho): auditor�a de cumplimiento real vs lo pedido.
+  2. ENTREGA (Despacho): auditoría de cumplimiento real vs lo pedido.
 
-Detecta autom�ticamente:
+Detecta automáticamente:
   - Productos no despachados (despacho = 0).
   - Despachos parciales (despacho < pedido).
-  - Desbalance Familiar: si en una familia un producto se despach� pero otro(s) no.
-  - Quiebres hist�ricos y tiempo transcurrido (en d�as) hasta que se volvi� a vender/despachar.
+  - Desbalance Familiar: si en una familia un producto se despachó pero otro(s) no.
+  - Quiebres históricos y tiempo transcurrido (en días) hasta que se volvió a vender/despachar.
 """
 
 import io
@@ -78,7 +78,7 @@ def _detect_quantity_columns(cols: List[str]):
     if cant_cols and cant_1_cols:
         return cant_cols[0], cant_1_cols[0]
 
-    # Caso 2: Nombres expl�citos de cantidades
+    # Caso 2: Nombres explícitos de cantidades
     col_ped = None
     for pat in [
         r'cant(?:idad)?[_\s]*(?:pedida|solicitada|comprada)',
@@ -115,7 +115,7 @@ def _detect_quantity_columns(cols: List[str]):
 
 
 def _read_file_to_df(content: bytes, filename: str) -> pd.DataFrame:
-    """Lee archivos Excel o CSV de portales B2B con detecci�n autom�tica de separador, codificaci�n y fila de cabecera."""
+    """Lee archivos Excel o CSV de portales B2B con detección automática de separador, codificación y fila de cabecera."""
     fn_lower = filename.lower()
     if fn_lower.endswith(".csv"):
         for sep in [";", ",", "\t"]:
@@ -133,8 +133,8 @@ def _read_file_to_df(content: bytes, filename: str) -> pd.DataFrame:
         except Exception:
             df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
 
-        # Verificar si la cabecera real est� m�s abajo (filas de t�tulo o metadatos)
-        expected_pats = [r"sku", r"orden", r"unidades", r"cant", r"vin", r"item", r"c[o�]digo"]
+        # Verificar si la cabecera real está más abajo (filas de título o metadatos)
+        expected_pats = [r"sku", r"orden", r"unidades", r"cant", r"vin", r"item", r"c[oó]digo"]
         matched = sum(1 for c in df.columns if any(re.search(p, str(c), re.IGNORECASE) for p in expected_pats))
         if matched == 0 and len(df) > 0:
             for header_idx in range(1, min(10, len(df))):
@@ -151,19 +151,19 @@ def _read_file_to_df(content: bytes, filename: str) -> pd.DataFrame:
 
 def _interpret_estado_y_etapa(estado_raw: str, sum_ped: float, sum_desp: float, user_etapa: str):
     """
-    Interpreta el estado del portal ('Cursado', 'Recepci�n', etc.) y define la etapa correspondiente.
+    Interpreta el estado del portal ('Cursado', 'Recepción', etc.) y define la etapa correspondiente.
     """
     user_etapa = (user_etapa or "AUTO").strip().upper()
     estado_raw_str = str(estado_raw or "").strip()
     e_lower = estado_raw_str.lower()
 
     if user_etapa in ("PEDIDO", "ENTREGA"):
-        # Selecci�n forzada por el usuario
+        # Selección forzada por el usuario
         if estado_raw_str:
             return user_etapa, estado_raw_str.upper()
         return user_etapa, ("CURSADO" if user_etapa == "PEDIDO" else "RECEPCIONADO")
 
-    # Detecci�n Autom�tica (AUTO)
+    # Detección Automática (AUTO)
     if estado_raw_str:
         if any(k in e_lower for k in ["cursa", "pend", "vigen", "emit"]):
             return "PEDIDO", "CURSADO"
@@ -206,7 +206,7 @@ def _load_active_families(conn) -> Dict[str, Dict[str, Any]]:
             fam_members[fid] = {"nombre": fname, "miembros": []}
         fam_members[fid]["miembros"].append(comp)
 
-    # Invertir para lookup r�pido por c�digo
+    # Invertir para lookup rápido por código
     lookup = {}
     for fid, data in fam_members.items():
         for m in data["miembros"]:
@@ -220,8 +220,8 @@ def _load_active_families(conn) -> Dict[str, Dict[str, Any]]:
 
 def _recalcular_tiempos_recuperacion(conn, skus_afectados: List[str]):
     """
-    Para cada SKU afectado, revisa cronol�gicamente todas las OCs donde hubo quiebre
-    y busca la primera OC posterior donde se volvi� a despachar (>0), calculando d�as transcurridos.
+    Para cada SKU afectado, revisa cronológicamente todas las OCs donde hubo quiebre
+    y busca la primera OC posterior donde se volvió a despachar (>0), calculando días transcurridos.
     """
     if not skus_afectados:
         return
@@ -290,9 +290,9 @@ async def upload_orden_compra(
     authorization: str = Header(None)
 ):
     """
-    Sube y procesa �rdenes de Compra individuales o masivas con historial de varios meses.
-    Detecta autom�ticamente n�mero de OC, etapa ('PEDIDO' vs 'ENTREGA'), estado ('CURSADO' vs 'RECEPCIONADO'),
-    consolida por local/tienda al nivel de SKU y calcula auditor�a de cumplimiento, quiebres y tiempos de recuperaci�n.
+    Sube y procesa Órdenes de Compra individuales o masivas con historial de varios meses.
+    Detecta automáticamente número de OC, etapa ('PEDIDO' vs 'ENTREGA'), estado ('CURSADO' vs 'RECEPCIONADO'),
+    consolida por local/tienda al nivel de SKU y calcula auditoría de cumplimiento, quiebres y tiempos de recuperación.
     """
     token = _get_auth_header(authorization)
     user_payload = decode_token(token)
@@ -310,7 +310,7 @@ async def upload_orden_compra(
 
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Archivo vac�o")
+        raise HTTPException(status_code=400, detail="Archivo vacío")
 
     filename = file.filename or "archivo.xlsx"
     try:
@@ -325,45 +325,45 @@ async def upload_orden_compra(
 
     # Identificar columnas principales
     col_oc = _find_column(cols, [
-        r"^(?:n[�u]mero|nro|n�)[_\s]*(?:oc|compra|orden|pedido)?.*$",
-        r"n[�u]mero.*", r"n�.*orden", r"orden[_\s]*compra", r"^oc$", r"^pedido$"
+        r"^(?:n[úu]mero|nro|n°)[_\s]*(?:oc|compra|orden|pedido)?.*$",
+        r"n[úu]mero.*", r"n°.*orden", r"orden[_\s]*compra", r"^oc$", r"^pedido$"
     ])
     col_sku = _find_column(cols, [
-        r"^(?:sku|material|item)$", r"sku.*", r"c[o�]digo"
+        r"^(?:sku|material|item)$", r"sku.*", r"c[oó]digo"
     ])
     col_femaco = _find_column(cols, [
         r"^(?:vin|vendor[_\s]*item[_\s]*number)$",
-        r"c[o�]d(?:igo)?[_\s]*femaco", r"c[o�]d(?:igo)?[_\s]*interno", r"^c[o�]digo$"
+        r"c[oó]d(?:igo)?[_\s]*femaco", r"c[oó]d(?:igo)?[_\s]*interno", r"^c[oó]digo$"
     ])
     col_nombre = _find_column(cols, [
-        r"^(?:nombre|nombre[_\s]*producto|descripci[o�]n|producto|modelo)$",
-        r"descripci[o�]n.*"
+        r"^(?:nombre|nombre[_\s]*producto|descripci[oó]n|producto|modelo)$",
+        r"descripci[oó]n.*"
     ])
     col_estado_oc = _find_column(cols, [
-        r"^(?:estado[_\s]*oc|estado|status|situaci[o�]n)$", r"estado.*"
+        r"^(?:estado[_\s]*oc|estado|status|situaci[oó]n)$", r"estado.*"
     ])
 
     col_ped, col_desp = _detect_quantity_columns(cols)
 
-    col_cliente = _find_column(cols, [r"^(?:cliente|comprador|bu)$", r"cliente.*", r"raz[o�]n[_\s]*social"])
+    col_cliente = _find_column(cols, [r"^(?:cliente|comprador|bu)$", r"cliente.*", r"raz[oó]n[_\s]*social"])
     col_bu = _find_column(cols, [r"^bu$", r"bu.*"])
     col_local = _find_column(cols, [r"local", r"sucursal", r"tienda"])
-    col_fecha_p = _find_column(cols, [r"fecha.*(?:creaci[o�]n|pedido|emisi[o�]n|compra)", r"fecha.*inic.*", r"fecha[_\s]*oc"])
-    col_fecha_e = _find_column(cols, [r"fecha.*(?:entrega|despacho|recepci[o�]n)", r"fecha.*fin.*", r"fecha.*venc.*"])
+    col_fecha_p = _find_column(cols, [r"fecha.*(?:creaci[oó]n|pedido|emisi[oó]n|compra)", r"fecha.*inic.*", r"fecha[_\s]*oc"])
+    col_fecha_e = _find_column(cols, [r"fecha.*(?:entrega|despacho|recepci[oó]n)", r"fecha.*fin.*", r"fecha.*venc.*"])
 
     if not col_sku and not col_femaco:
-        raise HTTPException(status_code=400, detail="No se encontr� columna para SKU o C�digo Interno/VIN.")
+        raise HTTPException(status_code=400, detail="No se encontró columna para SKU o Código Interno/VIN.")
 
     # Agrupar por Orden de Compra si existe columna de OC
     oc_groups = []
     if col_oc:
-        # Extraer OCs v�lidas
+        # Extraer OCs válidas
         valid_rows = df[df[col_oc].notna() & (df[col_oc].astype(str).str.strip() != '')]
         grouped = valid_rows.groupby(col_oc)
         for val_oc, df_subset in grouped:
             str_oc = str(val_oc).strip()
             # Filtrar cabeceras repetidas si las hubiera
-            if str_oc.lower() in ('none', 'nan', 'null', 'n� de orden', 'numero oc', 'orden', 'oc'):
+            if str_oc.lower() in ('none', 'nan', 'null', 'n° de orden', 'numero oc', 'orden', 'oc'):
                 continue
             oc_groups.append((str_oc, df_subset))
 
@@ -381,7 +381,7 @@ async def upload_orden_compra(
     with engine.begin() as conn:
         familias_map = _load_active_families(conn)
 
-        # Cat�logo de planificacion_sop para descripciones y cruces
+        # Catálogo de planificacion_sop para descripciones y cruces
         sop_rows = conn.execute(text("SELECT sku, codigo_femaco, nombre_producto FROM planificacion_sop")).fetchall()
         sop_by_sku = {str(r.sku).strip().upper(): str(r.nombre_producto or '') for r in sop_rows if r.sku}
         sop_by_fem = {str(r.codigo_femaco).strip().upper(): str(r.nombre_producto or '') for r in sop_rows if r.codigo_femaco}
@@ -423,7 +423,7 @@ async def upload_orden_compra(
                 if not vfe.empty:
                     f_ent = _parse_date(vfe.iloc[0])
 
-            # 3. Extraer �tems crudos
+            # 3. Extraer ítems crudos
             raw_items = []
             for idx, row in df_oc.iterrows():
                 sku_val = str(row[col_sku]).strip() if col_sku and pd.notna(row.get(col_sku)) else ""
@@ -438,7 +438,7 @@ async def upload_orden_compra(
                 if col_nombre and pd.notna(row.get(col_nombre)):
                     nombre_val = str(row[col_nombre]).strip()
                 if not nombre_val:
-                    nombre_val = sop_by_sku.get(sku_val.upper()) or sop_by_fem.get(fem_val.upper()) or "Producto sin descripci�n"
+                    nombre_val = sop_by_sku.get(sku_val.upper()) or sop_by_fem.get(fem_val.upper()) or "Producto sin descripción"
 
                 cant_p = 0.0
                 cant_d = 0.0
@@ -461,7 +461,7 @@ async def upload_orden_compra(
             if not raw_items:
                 continue
 
-            # 4. Consolidar tiendas/locales dentro de la misma OC por (SKU, VIN/C�digo Femaco)
+            # 4. Consolidar tiendas/locales dentro de la misma OC por (SKU, VIN/Código Femaco)
             consolidated = {}
             for it in raw_items:
                 key = (it["sku"].upper(), it["codigo_femaco"].upper())
@@ -490,7 +490,7 @@ async def upload_orden_compra(
 
             oc_etapa, oc_estado = _interpret_estado_y_etapa(estado_raw_val, sum_p_pre, sum_d_pre, etapa_val)
 
-            # Ajustes seg�n la etapa final
+            # Ajustes según la etapa final
             if oc_etapa == "PEDIDO":
                 for it in item_list:
                     if it["cantidad_pedida"] == 0.0 and it["cantidad_despachada"] > 0.0:
@@ -505,7 +505,7 @@ async def upload_orden_compra(
                 if not f_ent:
                     f_ent = f_ped or date.today()
                 for it in item_list:
-                    # Si no vino cantidad pedida pero s� despacho, asumir pedido = despacho
+                    # Si no vino cantidad pedida pero sí despacho, asumir pedido = despacho
                     if it["cantidad_pedida"] == 0.0 and it["cantidad_despachada"] > 0.0:
                         it["cantidad_pedida"] = it["cantidad_despachada"]
                     dif = it["cantidad_despachada"] - it["cantidad_pedida"]
@@ -571,9 +571,9 @@ async def upload_orden_compra(
                         for it in f_items:
                             it["desbalance_familiar"] = True
                             if it["cantidad_despachada"] > 0:
-                                it["desbalance_detalle"] = f"Se despach� este producto, pero sus hermanos no se despacharon: {nodesp_names}"
+                                it["desbalance_detalle"] = f"Se despachó este producto, pero sus hermanos no se despacharon: {nodesp_names}"
                             else:
-                                it["desbalance_detalle"] = f"No se despach� (0 uds), mientras que otros miembros s� se despacharon: {desp_names}"
+                                it["desbalance_detalle"] = f"No se despachó (0 uds), mientras que otros miembros sí se despacharon: {desp_names}"
 
             # 7. Upsert en ordenes_compra_registro
             prev_oc = conn.execute(text("""
@@ -708,7 +708,7 @@ async def upload_orden_compra(
                 "tipo_accion": action_type
             })
 
-        # Recalcular historial de quiebres y tiempos de recuperaci�n
+        # Recalcular historial de quiebres y tiempos de recuperación
         if all_affected_skus:
             _recalcular_tiempos_recuperacion(conn, list(set(all_affected_skus)))
 
@@ -722,7 +722,7 @@ async def upload_orden_compra(
     total_quiebres = sum(r["quiebres_count"] for r in processed_results)
 
     first_oc = processed_results[0]
-    msg = f"Se procesaron {len(processed_results)} �rdenes de compra ({total_entregas} entregas, {total_pedidos} pedidos pendientes). {total_actualizadas} actualizadas, {total_nuevas} nuevas."
+    msg = f"Se procesaron {len(processed_results)} órdenes de compra ({total_entregas} entregas, {total_pedidos} pedidos pendientes). {total_actualizadas} actualizadas, {total_nuevas} nuevas."
 
     return {
         "ok": True,
@@ -771,16 +771,16 @@ def list_ordenes_compra():
 @router.get("/quiebres/historicos")
 def list_quiebres_historicos():
     """
-    Retorna la auditor�a acumulada de todos los quiebres y el tiempo transcurrido
-    hasta que se volvi� a vender/despachar cada producto en OCs posteriores.
-    Incluye estado del producto en cat�logo (ACTIVO, BLOQUEADO, DESCONTINUADO).
+    Retorna la auditoría acumulada de todos los quiebres y el tiempo transcurrido
+    hasta que se volvió a vender/despachar cada producto en OCs posteriores.
+    Incluye estado del producto en catálogo (ACTIVO, BLOQUEADO, DESCONTINUADO).
     """
     with engine.connect() as conn:
         df_q = pd.read_sql(text("""
             SELECT d.id, d.numero_oc,
-                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '-') AS sku,
-                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '-') AS codigo_femaco,
-                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '-') AS nombre_producto,
+                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '—') AS sku,
+                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '—') AS codigo_femaco,
+                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '—') AS nombre_producto,
                    d.cantidad_pedida, d.cantidad_despachada,
                    d.nombre_familia, d.desbalance_familiar,
                    d.fecha_quiebre::date::text AS fecha_quiebre,
@@ -809,9 +809,9 @@ def list_quiebres_historicos():
 def get_reporte_fill_rate():
     """
     Reporte Comercial OTIF (On-Time In-Full) y Fill Rate por Cliente:
-    - Desempe�o acumulado de despacho (Unidades Pedidas vs Despachadas).
+    - Desempeño acumulado de despacho (Unidades Pedidas vs Despachadas).
     - % Fill Rate por Cliente (Walmart, Sodimac, Cencosud, etc.).
-    - Tasa OTIF (Porcentaje de �rdenes de compra entregadas 100% completas y sin quiebres).
+    - Tasa OTIF (Porcentaje de órdenes de compra entregadas 100% completas y sin quiebres).
     - Top SKUs con mayor volumen de quiebre o venta perdida en el retail.
     """
     with engine.connect() as conn:
@@ -836,7 +836,7 @@ def get_reporte_fill_rate():
             # 2. Top SKUs quebrados
             df_skus = pd.read_sql(text("""
                 SELECT 
-                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '-') AS sku,
+                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '—') AS sku,
                     COALESCE(NULLIF(TRIM(d.nombre_producto), ''), 'Producto Desconocido') AS nombre_producto,
                     SUM(GREATEST(0, d.cantidad_pedida - d.cantidad_despachada)) AS unidades_no_entregadas,
                     COUNT(d.id) AS veces_quebrado
@@ -844,7 +844,7 @@ def get_reporte_fill_rate():
                 JOIN ordenes_compra_registro r ON r.id = d.oc_id
                 WHERE d.quiebre_detectado = TRUE OR (d.cantidad_despachada < d.cantidad_pedida AND d.cantidad_pedida > 0)
                 GROUP BY 
-                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '-'),
+                    COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(d.codigo_femaco), ''), '—'),
                     COALESCE(NULLIF(TRIM(d.nombre_producto), ''), 'Producto Desconocido')
                 ORDER BY unidades_no_entregadas DESC
                 LIMIT 10
@@ -918,7 +918,7 @@ def get_reporte_fill_rate():
 
 @router.get("/{oc_id}")
 def get_orden_compra_detail(oc_id: int):
-    """Retorna detalle de una OC con su desglose de auditor�a por producto y estado de cat�logo."""
+    """Retorna detalle de una OC con su desglose de auditoría por producto y estado de catálogo."""
     with engine.connect() as conn:
         head = conn.execute(text("SELECT * FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id}).fetchone()
         if not head:
@@ -935,9 +935,9 @@ def get_orden_compra_detail(oc_id: int):
 
         df_items = pd.read_sql(text("""
             SELECT d.id, d.numero_oc,
-                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '-') AS sku,
-                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '-') AS codigo_femaco,
-                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '-') AS nombre_producto,
+                   COALESCE(NULLIF(TRIM(d.sku), ''), NULLIF(TRIM(p2.sku), ''), '—') AS sku,
+                   COALESCE(NULLIF(TRIM(d.codigo_femaco), ''), NULLIF(TRIM(p1.codigo_femaco), ''), '—') AS codigo_femaco,
+                   COALESCE(NULLIF(TRIM(d.nombre_producto), ''), NULLIF(TRIM(p1.nombre_producto), ''), NULLIF(TRIM(p2.nombre_producto), ''), '—') AS nombre_producto,
                    d.cantidad_pedida, d.cantidad_despachada, d.diferencia, d.estado_entrega,
                    d.familia_id, d.nombre_familia, d.desbalance_familiar, d.desbalance_detalle,
                    d.quiebre_detectado,
@@ -983,7 +983,7 @@ def delete_orden_compra(oc_id: int, authorization: str = Header(None)):
 
 @router.get("/{oc_id}/export")
 def export_orden_compra_excel(oc_id: int):
-    """Descarga el reporte de auditor�a de la OC en formato Excel."""
+    """Descarga el reporte de auditoría de la OC en formato Excel."""
     with engine.connect() as conn:
         head = conn.execute(text("SELECT * FROM ordenes_compra_registro WHERE id = :id"), {"id": oc_id}).fetchone()
         if not head:
@@ -991,19 +991,19 @@ def export_orden_compra_excel(oc_id: int):
 
         df_items = pd.read_sql(text("""
             SELECT sku AS "SKU",
-                   codigo_femaco AS "C�d. Interno",
+                   codigo_femaco AS "Cód. Interno",
                    nombre_producto AS "Producto",
                    nombre_familia AS "Familia / Hermanos",
                    cantidad_pedida AS "Cant. Pedida",
                    cantidad_despachada AS "Cant. Despachada",
                    diferencia AS "Diferencia",
                    estado_entrega AS "Estado Entrega",
-                   CASE WHEN desbalance_familiar THEN 'S�' ELSE 'NO' END AS "Desbalance Familiar",
+                   CASE WHEN desbalance_familiar THEN 'SÍ' ELSE 'NO' END AS "Desbalance Familiar",
                    desbalance_detalle AS "Detalle Desbalance",
                    CASE WHEN quiebre_detectado THEN 'QUIEBRE' ELSE 'OK' END AS "Alerta Quiebre",
                    fecha_quiebre AS "Fecha Quiebre",
-                   oc_recuperacion AS "OC Recuperaci�n",
-                   dias_recuperacion_quiebre AS "D�as hasta Recuperaci�n"
+                   oc_recuperacion AS "OC Recuperación",
+                   dias_recuperacion_quiebre AS "Días hasta Recuperación"
             FROM ordenes_compra_detalle
             WHERE oc_id = :id
             ORDER BY id ASC
