@@ -93,8 +93,8 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
   const explLegacy = explicacion_compra_legacy ?? explicacion_compra ?? 'Sin explicacion';
 
   const purchaseFinal = sugerencia_compra_dinamica || 0;
-  // Si no viene mes_llegada_oc, usamos 5 por default (Lead time)
-  const mesLlegada = mes_llegada_oc || 5;
+  // Si no viene mes_llegada_oc, aproximamos los 120 d�as a 4 meses.
+  const mesLlegada = mes_llegada_oc || 4;
 
   return (
     <div style={{
@@ -117,7 +117,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
               </span>
               <div style={{ display: 'flex', gap: '5px' }}>
                 <span style={{ background: '#f3e5f5', padding: '4px 10px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                  Tránsito Total: {cantidad_transito || 0}
+                  Tr�nsito Total: {cantidad_transito || 0}
                 </span>
                 {(transito_confirmado > 0 || transito_estimado > 0 || transito_vencido > 0) && (
                   <div style={{ display: 'flex', gap: '5px', fontSize: '0.75rem', alignItems: 'center' }}>
@@ -131,12 +131,12 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
           </div>
           <button onClick={onClose} style={{
             background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#888'
-          }}>✖</button>
+          }}>?</button>
         </div>
 
         {/* Warning Banner */}
         <div style={{ padding: '10px 20px', background: '#fff3cd', color: '#856404', fontSize: '0.85rem', borderBottom: '1px solid #ffeeba', textAlign: 'center' }}>
-          <b>⚠️ Planificador Dinámico en modo experimental.</b> La recomendación operativa oficial sigue siendo la calculada por el modelo Legacy.
+          <b>?? Planificador Din�mico en modo experimental.</b> La recomendaci�n operativa oficial sigue siendo la calculada por el modelo Legacy.
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', padding: '20px', gap: '20px' }}>
@@ -144,15 +144,15 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
           {/* Panel Izquierdo: Legacy */}
           <div style={{ flex: '1 1 400px', background: '#fafafa', border: '1px solid #ddd', borderRadius: '8px', padding: '15px' }}>
             <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '1.1rem', borderBottom: '2px solid #ccc', paddingBottom: '5px' }}>
-              Recomendación Oficial (Legacy)
+              Recomendaci�n Oficial (Legacy)
             </h3>
             <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
               <tbody>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Ritmo Semanal Verificado</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_semanal_verificado||0).toFixed(1)} uds</td></tr>
-                <tr><td style={{ padding: '6px 0', color: '#666' }}>Venta {skuData.cantidad_semanas_validas || 4} Semanas Válidas</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(total_4_sem_verificado||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Venta {skuData.cantidad_semanas_validas || 4} Semanas V�lidas</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(total_4_sem_verificado||0).toFixed(0)} uds</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Ritmo Mensual Equivalente</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_mensual_verificado||0).toFixed(0)} uds</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Actual</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(duracion_fisica_solo||0).toFixed(1)} meses</td></tr>
-                <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Target</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(meses_cobertura_objetivo||5)} meses</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Target</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(meses_cobertura_objetivo||5.4)} meses</td></tr>
               </tbody>
             </table>
             <div style={{ marginTop: '20px', background: '#e8f5e9', padding: '15px', borderRadius: '6px', border: '1px solid #c8e6c9', textAlign: 'center' }}>
@@ -160,26 +160,26 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
               <div style={{ fontSize: '2rem', color: '#1b5e20', fontWeight: '900', margin: '5px 0' }}>{Number(sugLegacy).toLocaleString('es-CL')}</div>
             </div>
             <div style={{ marginTop: '15px', fontSize: '0.85rem', color: '#444', lineHeight: '1.4' }}>
-              <b>Explicación:</b> {explLegacy}
+              <b>Explicaci�n:</b> {explLegacy}
             </div>
           </div>
 
           {/* Panel Derecho: Dinamico */}
           <div style={{ flex: '1 1 500px', background: '#fff', border: '1px solid #2196f3', borderRadius: '8px', padding: '15px', boxShadow: '0 4px 6px rgba(33,150,243,0.1)' }}>
             <h3 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '1.1rem', borderBottom: '2px solid #90caf9', paddingBottom: '5px' }}>
-              Análisis Dinámico (Experimental)
+              An�lisis Din�mico (Experimental)
             </h3>
             
             {!isDynamicAvailable ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#777' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '10px' }}>📉</div>
-                Historial o datos insuficientes para correr el modelo dinámico estadístico.
+                <div style={{ fontSize: '2rem', marginBottom: '10px' }}>??</div>
+                Historial o datos insuficientes para correr el modelo din�mico estad�stico.
               </div>
             ) : (
               <>
                 <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', marginBottom: '15px' }}>
                   <tbody>
-                    <tr><td style={{ padding: '6px 0', color: '#666' }}>Clasificación</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{clasificacion_comportamiento}</td></tr>
+                    <tr><td style={{ padding: '6px 0', color: '#666' }}>Clasificaci�n</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{clasificacion_comportamiento}</td></tr>
                     <tr><td style={{ padding: '6px 0', color: '#666' }}>Riesgo de Stock</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{riesgo_stock}</td></tr>
                     <tr><td style={{ padding: '6px 0', color: '#666' }}>Estado Alerta</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{estado_alerta}</td></tr>
                     <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Proyectada</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{cobertura_proyectada_meses != null ? `${Number(cobertura_proyectada_meses).toFixed(1)} meses` : 'N/D'}</td></tr>
@@ -190,7 +190,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                 
                 {quiebre_antes_de_llegada && (
                   <div style={{ padding: '10px', background: '#ffebee', color: '#c62828', borderRadius: '4px', fontSize: '0.8rem', border: '1px solid #ffcdd2', marginBottom: '15px' }}>
-                    <b>⚠️ Alerta:</b> Una nueva compra con lead time normal de 5 meses no alcanzaría a llegar antes del quiebre proyectado (Mes {primer_mes_quiebre || '?'}). Se requiere revisar tránsito, traslado interno o acción logística urgente.
+                    <b>?? Alerta:</b> Una nueva compra con lead time normal de 120 d�as no alcanzar�a a llegar antes del quiebre proyectado (Mes {primer_mes_quiebre || '?'}). Se requiere revisar tr�nsito, traslado interno o acci�n log�stica urgente.
                   </div>
                 )}
                 
@@ -216,10 +216,10 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                       return (
                         <tr key={i}>
                           <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold' }}>Mes {i + 1}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.f != null ? Number(m.f).toFixed(0) : '—'}</td>
-                          <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold', color: m.s < 0 ? '#d32f2f' : 'inherit' }}>{m.s != null ? Number(m.s).toFixed(0) : '—'}</td>
+                          <td style={{ padding: '4px', border: '1px solid #ddd' }}>{m.f != null ? Number(m.f).toFixed(0) : '-'}</td>
+                          <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold', color: m.s < 0 ? '#d32f2f' : 'inherit' }}>{m.s != null ? Number(m.s).toFixed(0) : '-'}</td>
                           <td style={{ padding: '4px', border: '1px solid #ddd', fontWeight: 'bold', color: simStock < 0 ? '#d32f2f' : '#1976d2', background: (i + 1) >= mesLlegada ? '#e3f2fd' : 'transparent' }}>
-                            {simStock != null ? Number(simStock).toFixed(0) : '—'}
+                            {simStock != null ? Number(simStock).toFixed(0) : '-'}
                           </td>
                         </tr>
                       );
@@ -228,7 +228,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                 </table>
 
                 <div style={{ background: '#e3f2fd', padding: '15px', borderRadius: '6px', border: '1px solid #90caf9', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.85rem', color: '#1565c0', fontWeight: 'bold' }}>COMPRA SUGERIDA DINÁMICA</div>
+                  <div style={{ fontSize: '0.85rem', color: '#1565c0', fontWeight: 'bold' }}>COMPRA SUGERIDA DIN�MICA</div>
                   <div style={{ fontSize: '2rem', color: '#0d47a1', fontWeight: '900', margin: '5px 0' }}>
                     {sugerencia_compra_dinamica != null ? Number(sugerencia_compra_dinamica).toLocaleString('es-CL') : 'N/D'}
                   </div>
@@ -238,11 +238,11 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                 </div>
                 
                 <div style={{ marginTop: '15px', fontSize: '0.85rem', color: '#444', lineHeight: '1.4' }}>
-                  <b>Motivo:</b> {explicacion_compra_dinamica || 'Sin detalle dinámico.'}
+                  <b>Motivo:</b> {explicacion_compra_dinamica || 'Sin detalle din�mico.'}
                 </div>
                 {motivos_revision_manual_dinamica && (
                   <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#c62828', background: '#ffebee', padding: '8px', borderRadius: '4px' }}>
-                    ⚠️ {motivos_revision_manual_dinamica}
+                    ?? {motivos_revision_manual_dinamica}
                   </div>
                 )}
               </>
@@ -281,14 +281,14 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
         {familia_skus && familia_skus.length > 1 && (
           <div style={{ padding: '20px', borderTop: '1px solid #eee', background: '#fff' }}>
             <h4 style={{ margin: '0 0 10px 0', color: '#1d6b3e', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📦 Hermanos de SKU (Reemplazo)
+              ?? Hermanos de SKU (Reemplazo)
             </h4>
             <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
                   <th style={{ padding: '8px' }}>SKU</th>
                   <th style={{ padding: '8px' }}>Nombre</th>
-                  <th style={{ padding: '8px', textAlign: 'right' }}>Stock Físico</th>
+                  <th style={{ padding: '8px', textAlign: 'right' }}>Stock F�sico</th>
                   <th style={{ padding: '8px', textAlign: 'right' }}>Ritmo Venta (Mes)</th>
                   <th style={{ padding: '8px', textAlign: 'center' }}>Puede reemplazar</th>
                 </tr>
@@ -311,13 +311,13 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                         <td style={{ padding: '8px', textAlign: 'center' }}>
                           {comp.no_transformable 
                             ? <span style={{ background: '#f8d7da', color: '#721c24', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>No transformable</span> 
-                            : <span style={{ background: '#d4edda', color: '#155724', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>Sí</span>}
+                            : <span style={{ background: '#d4edda', color: '#155724', padding: '2px 8px', borderRadius: '12px', fontSize:'0.85em' }}>S�</span>}
                         </td>
                       </tr>
                       {isExpanded && fullSiblingData && fullSiblingData.chart_24m && (
                         <tr style={{ background: '#f9f9f9' }}>
                           <td colSpan={5} style={{ padding: '15px', borderBottom: '1px solid #ddd', borderLeft: '4px solid #2196f3' }}>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard Básico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '12px', color: '#1565c0' }}>Dashboard B�sico: {fullSiblingData.sku} - {fullSiblingData.nombre_producto}</div>
                             <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
                               <div style={{ flex: '1 1 300px', height: 160 }}>
                                 <ResponsiveContainer width="100%" height="100%">
@@ -348,10 +348,10 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                       if (m.growth_pct != null && m.hist_val != null && m.hist_val > 0) {
                                         const diff = m.growth_pct;
                                         if (diff > 0) {
-                                          growth = `↑ ${diff.toFixed(0)}%`;
+                                          growth = ` ${diff.toFixed(0)}%`;
                                           gClass = 'pos';
                                         } else if (diff < 0) {
-                                          growth = `↓ ${Math.abs(diff).toFixed(0)}%`;
+                                          growth = ` ${Math.abs(diff).toFixed(0)}%`;
                                           gClass = 'neg';
                                         } else {
                                           growth = '0%';
@@ -364,10 +364,10 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                       const valSI = m.growth_si_pct;
                                       if (valSI != null && m.hist_si_val != null && m.hist_si_val > 0) {
                                         if (valSI > 0) {
-                                          growthSI = `↑ ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
+                                          growthSI = ` ${valSI % 1 !== 0 ? valSI.toFixed(1) : valSI.toFixed(0)}%`;
                                           gClassSI = 'pos';
                                         } else if (valSI < 0) {
-                                          growthSI = `↓ ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
+                                          growthSI = ` ${valSI % 1 !== 0 ? Math.abs(valSI).toFixed(1) : Math.abs(valSI).toFixed(0)}%`;
                                           gClassSI = 'neg';
                                         } else {
                                           growthSI = '0%';
@@ -378,8 +378,8 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                                       return (
                                       <div className="cal-col" key={i} style={{ flex: 1, borderRight: i < 11 ? '1px solid #EBEBEB' : 'none', padding: '4px', textAlign: 'center', fontSize: '0.75rem' }}>
                                         <div className={`cal-mes`} style={{ fontWeight: 'bold', borderBottom: '1px solid #eee', marginBottom: '4px', paddingBottom: '2px', color: m.es_real ? '#1d6b3e' : '#666' }}>{m.label}</div>
-                                        <div className={`cal-so`} style={{ color: m.sell_out === 0 ? '#ccc' : '#4caf50', fontWeight: 'bold' }}>{m.sell_out == null ? '—' : Number(m.sell_out).toLocaleString('es-CL')}</div>
-                                        <div className={`cal-si`} style={{ color: m.sell_in === 0 ? '#ccc' : '#2196f3', fontWeight: 'bold' }}>{m.sell_in == null ? '—' : Number(m.sell_in).toLocaleString('es-CL')}</div>
+                                        <div className={`cal-so`} style={{ color: m.sell_out === 0 ? '#ccc' : '#4caf50', fontWeight: 'bold' }}>{m.sell_out == null ? '-' : Number(m.sell_out).toLocaleString('es-CL')}</div>
+                                        <div className={`cal-si`} style={{ color: m.sell_in === 0 ? '#ccc' : '#2196f3', fontWeight: 'bold' }}>{m.sell_in == null ? '-' : Number(m.sell_in).toLocaleString('es-CL')}</div>
                                         <div className={`cal-growth`} style={{ color: gClass === 'pos' ? '#2e7d32' : gClass === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growth}</div>
                                         <div className={`cal-growth`} style={{ color: gClassSI === 'pos' ? '#2e7d32' : gClassSI === 'neg' ? '#c62828' : '#999', fontSize: '0.7rem' }}>{growthSI}</div>
                                       </div>
@@ -395,7 +395,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                       {isExpanded && (!fullSiblingData || !fullSiblingData.chart_24m) && (
                         <tr>
                           <td colSpan={5} style={{ padding: '10px', background: '#fff3e0', color: '#e65100', fontSize: '0.8rem', textAlign: 'center' }}>
-                            ⚠️ Datos del gráfico no encontrados para este hermano.
+                            ?? Datos del gr�fico no encontrados para este hermano.
                           </td>
                         </tr>
                       )}
@@ -422,7 +422,7 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
             
             {reemplazos_validos && reemplazos_validos.length > 0 && (
               <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#555' }}>
-                <b>Reemplazos válidos para {sku}:</b> {reemplazos_validos.map(r => r.sku).join(', ')}
+                <b>Reemplazos v�lidos para {sku}:</b> {reemplazos_validos.map(r => r.sku).join(', ')}
               </div>
             )}
             

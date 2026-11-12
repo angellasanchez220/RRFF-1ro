@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import * as api from '../api';
 
 function formatCleanDate(val) {
-  if (!val) return '—';
+  if (!val) return '-';
   const s = String(val).trim();
-  if (s === '—' || s === 'None' || s === 'null' || !s) return '—';
+  if (s === '-' || s === 'None' || s === 'null' || !s) return '-';
   if (s.includes('T')) return s.split('T')[0];
   if (s.includes(' ')) return s.split(' ')[0];
   return s.length > 10 ? s.substring(0, 10) : s;
@@ -38,7 +38,7 @@ export default function OrdenesCompra() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFilter, setDetailFilter] = useState('ALL'); // 'ALL' | 'NO_DESPACHADO' | 'PARCIAL' | 'DESBALANCE'
 
-  // Histórico de quiebres
+  // Hist�rico de quiebres
   const [quiebresHistory, setQuiebresHistory] = useState([]);
   const [quiebresLoading, setQuiebresLoading] = useState(false);
   const [filterCatalogStates, setFilterCatalogStates] = useState({
@@ -59,7 +59,7 @@ export default function OrdenesCompra() {
     setLoading(true);
     try {
       const res = await api.fetchOrdenesCompra();
-      setOcs(res.data || []);
+      setOcs(Array.isArray(res?.data) ? res.data : []);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -72,7 +72,7 @@ export default function OrdenesCompra() {
     setQuiebresLoading(true);
     try {
       const res = await api.fetchQuiebresHistoricos();
-      setQuiebresHistory(res.data || []);
+      setQuiebresHistory(Array.isArray(res?.data) ? res.data : []);
     } catch (err) {
       alert("Error al cargar historial de quiebres: " + err.message);
     } finally {
@@ -88,7 +88,7 @@ export default function OrdenesCompra() {
         setFillRateData(res);
       }
     } catch (err) {
-      alert("Error al cargar auditoría OTIF y Fill Rate: " + err.message);
+      alert("Error al cargar auditor�a OTIF y Fill Rate: " + err.message);
     } finally {
       setFillRateLoading(false);
     }
@@ -103,7 +103,7 @@ export default function OrdenesCompra() {
       setDetailData(res);
       setDetailFilter('ALL');
     } catch (err) {
-      alert("Error al cargar auditoría: " + err.message);
+      alert("Error al cargar auditor�a: " + err.message);
       setSelectedOcId(null);
       setSelectedOcNumero('');
     } finally {
@@ -112,7 +112,7 @@ export default function OrdenesCompra() {
   }
 
   async function handleDeleteOc(id, num) {
-    if (!window.confirm(`¿Seguro que deseas eliminar la Orden de Compra ${num}?`)) return;
+    if (!window.confirm(`�Seguro que deseas eliminar la Orden de Compra ${num}?`)) return;
     try {
       await api.deleteOrdenCompra(id);
       loadOcs();
@@ -157,7 +157,7 @@ export default function OrdenesCompra() {
       if (uploadFechaEntrega) formData.append('fecha_entrega', uploadFechaEntrega);
 
       const res = await api.uploadOrdenCompra(formData);
-      alert(res.msg || "Orden de compra procesada con éxito.");
+      alert(res.msg || "Orden de compra procesada con �xito.");
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadOcNum('');
@@ -175,7 +175,7 @@ export default function OrdenesCompra() {
     }
   }
 
-  // Métricas globales
+  // M�tricas globales
   const totalOcs = ocs.length;
   const totalUdsPed = ocs.reduce((acc, o) => acc + (Number(o.total_pedido_uds) || 0), 0);
   const totalUdsDesp = ocs.reduce((acc, o) => acc + (Number(o.total_despachado_uds) || 0), 0);
@@ -200,7 +200,7 @@ export default function OrdenesCompra() {
     return true;
   });
 
-  // Métricas y filtrado de histórico de quiebres por casillas
+  // M�tricas y filtrado de hist�rico de quiebres por casillas
   const countActivos = quiebresHistory.filter(q => {
     const est = String(q.estado_producto || '').toUpperCase();
     return !est.includes('DESCONTINUAD') && !est.includes('INACTIV') && !est.includes('BLOQUEAD');
@@ -232,14 +232,14 @@ export default function OrdenesCompra() {
     <div className="content-area">
       <div className="main-panel" style={{ padding: '20px 24px', maxWidth: '100%', margin: 0, width: '100%' }}>
         
-        {/* ── HEADER PRINCIPAL ── */}
+        {/* �� HEADER PRINCIPAL �� */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              📄 Auditoría de Órdenes de Compra
+              ?? Auditor�a de �rdenes de Compra
             </h1>
             <p style={{ margin: '6px 0 0', color: '#888', fontSize: '0.9rem' }}>
-              Control de pedidos vs despachos reales, detección de quiebres, seguimiento de recuperación y desbalances familiares.
+              Control de pedidos vs despachos reales, detecci�n de quiebres, seguimiento de recuperaci�n y desbalances familiares.
             </p>
           </div>
 
@@ -249,15 +249,15 @@ export default function OrdenesCompra() {
               style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
               onClick={() => setShowUploadModal(true)}
             >
-              <span style={{ fontSize: '1.2rem' }}>⬆</span> Subir Orden de Compra
+              <span style={{ fontSize: '1.2rem' }}>?</span> Subir Orden de Compra
             </button>
           </div>
         </div>
 
-        {/* ── TARJETAS DE MÉTRICAS (KPIs) ── */}
+        {/* �� TARJETAS DE M�TRICAS (KPIs) �� */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
           <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #1976d2' }}>
-            <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Órdenes Totales</span>
+            <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>�rdenes Totales</span>
             <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#1976d2' }}>{totalOcs}</div>
             <span style={{ fontSize: '0.8rem', color: '#666' }}>{totalUdsPed.toLocaleString()} uds pedidas</span>
           </div>
@@ -273,7 +273,7 @@ export default function OrdenesCompra() {
           <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #d32f2f' }}>
             <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Quiebres (No Despachados)</span>
             <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#d32f2f' }}>{totalQuiebres}</div>
-            <span style={{ fontSize: '0.8rem', color: '#888' }}>Líneas con 0 unidades despachadas</span>
+            <span style={{ fontSize: '0.8rem', color: '#888' }}>L�neas con 0 unidades despachadas</span>
           </div>
 
           <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #9c27b0' }}>
@@ -283,7 +283,7 @@ export default function OrdenesCompra() {
           </div>
         </div>
 
-        {/* ── NAVEGACIÓN DE VISTAS ── */}
+        {/* �� NAVEGACI�N DE VISTAS �� */}
         <div style={{ display: 'flex', gap: '20px', borderBottom: '2px solid #333', marginBottom: '20px' }}>
           <button
             style={{
@@ -294,7 +294,7 @@ export default function OrdenesCompra() {
             }}
             onClick={() => setActiveTab('list')}
           >
-            📋 Listado de Órdenes de Compra ({ocs.length})
+            ?? Listado de �rdenes de Compra ({ocs.length})
           </button>
           <button
             style={{
@@ -308,7 +308,7 @@ export default function OrdenesCompra() {
               loadQuiebres();
             }}
           >
-            ⏱ Auditoría Histórica de Quiebres y Tiempo de Recuperación
+            ? Auditor�a Hist�rica de Quiebres y Tiempo de Recuperaci�n
           </button>
           <button
             style={{
@@ -323,13 +323,13 @@ export default function OrdenesCompra() {
               loadFillRate();
             }}
           >
-            📈 Desempeño Comercial: OTIF & Fill Rate
+            ?? Desempe�o Comercial: OTIF & Fill Rate
           </button>
         </div>
 
         {error && <div className="alert-error" style={{ marginBottom: '16px', color: '#d32f2f' }}>{error}</div>}
 
-        {/* ── TAB 1: LISTADO DE OCS ── */}
+        {/* �� TAB 1: LISTADO DE OCS �� */}
         {activeTab === 'list' && (
           <div className="card" style={{ padding: '20px' }}>
             
@@ -337,7 +337,7 @@ export default function OrdenesCompra() {
             <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
               <input
                 type="text"
-                placeholder="🔍 Buscar por N° OC, cliente o archivo..."
+                placeholder="?? Buscar por N� OC, cliente o archivo..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 style={{ flex: 1, minWidth: '220px', padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', background: '#ffffff', color: '#0f172a', fontSize: '0.9rem', outline: 'none' }}
@@ -349,7 +349,7 @@ export default function OrdenesCompra() {
                 style={{ padding: '10px 14px', borderRadius: '6px', border: '1.5px solid #cbd5e1', background: '#ffffff', color: '#0f172a', fontSize: '0.9rem', fontWeight: 500, outline: 'none' }}
               >
                 <option value="ALL">Todas las Etapas</option>
-                <option value="ENTREGA">Solo Entregas (Auditoría)</option>
+                <option value="ENTREGA">Solo Entregas (Auditor�a)</option>
                 <option value="PEDIDO">Solo Pedidos (Opcional)</option>
               </select>
 
@@ -366,18 +366,18 @@ export default function OrdenesCompra() {
             </div>
 
             {loading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontWeight: 500 }}>Cargando órdenes de compra...</div>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontWeight: 500 }}>Cargando �rdenes de compra...</div>
             ) : filteredOcs.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>📭</span>
-                No se encontraron órdenes de compra registradas. Sube un archivo Excel/CSV para comenzar la auditoría.
+                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>??</span>
+                No se encontraron �rdenes de compra registradas. Sube un archivo Excel/CSV para comenzar la auditor�a.
               </div>
             ) : (
               <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                 <table className="table" style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
-                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>N° OC</th>
+                      <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>N� OC</th>
                       <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cliente</th>
                       <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Etapa</th>
                       <th style={{ padding: '12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha</th>
@@ -385,7 +385,7 @@ export default function OrdenesCompra() {
                       <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Pedido</th>
                       <th style={{ padding: '12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Despachado</th>
                       <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cumplimiento</th>
-                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Alertas Auditoría</th>
+                      <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Alertas Auditor�a</th>
                       <th style={{ padding: '12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Acciones</th>
                     </tr>
                   </thead>
@@ -402,7 +402,7 @@ export default function OrdenesCompra() {
                               {oc.numero_oc}
                             </span>
                           </td>
-                          <td style={{ padding: '12px', color: '#0f172a', fontWeight: 500, whiteSpace: 'nowrap' }}>{oc.cliente || '—'}</td>
+                          <td style={{ padding: '12px', color: '#0f172a', fontWeight: 500, whiteSpace: 'nowrap' }}>{oc.cliente || '-'}</td>
                           <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                               <span style={{
@@ -458,7 +458,7 @@ export default function OrdenesCompra() {
                                   background: 'rgba(244, 67, 54, 0.2)', color: '#ff5252', border: '1px solid #d32f2f',
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600
                                 }} title={`${oc.quiebres_count} productos no despachados`}>
-                                  🚨 {oc.quiebres_count} quiebres
+                                  ?? {oc.quiebres_count} quiebres
                                 </span>
                               )}
                               {(oc.desbalance_familiar_count > 0) && (
@@ -466,11 +466,11 @@ export default function OrdenesCompra() {
                                   background: 'rgba(156, 39, 176, 0.2)', color: '#ba68c8', border: '1px solid #9c27b0',
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600
                                 }} title={`${oc.desbalance_familiar_count} casos de desbalance en familia`}>
-                                  ⚖️ Desbalance
+                                  ?? Desbalance
                                 </span>
                               )}
                               {oc.quiebres_count === 0 && oc.desbalance_familiar_count === 0 && (
-                                <span style={{ color: '#4caf50', fontSize: '0.8rem' }}>✓ OK</span>
+                                <span style={{ color: '#4caf50', fontSize: '0.8rem' }}>V OK</span>
                               )}
                             </div>
                           </td>
@@ -480,9 +480,9 @@ export default function OrdenesCompra() {
                                 className="btn-secondary"
                                 style={{ padding: '4px 8px', fontSize: '0.8rem' }}
                                 onClick={() => handleOpenDetail(oc.id, oc.numero_oc)}
-                                title="Ver Auditoría Detallada"
+                                title="Ver Auditor�a Detallada"
                               >
-                                👁 Ver
+                                ?? Ver
                               </button>
                               <button
                                 className="btn-secondary"
@@ -490,14 +490,14 @@ export default function OrdenesCompra() {
                                 onClick={() => handleDownloadExcel(oc.id)}
                                 title="Descargar Excel"
                               >
-                                📥
+                                ??
                               </button>
                               <button
                                 style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px' }}
                                 onClick={() => handleDeleteOc(oc.id, oc.numero_oc)}
                                 title="Eliminar"
                               >
-                                🗑
+                                ??
                               </button>
                             </div>
                           </td>
@@ -511,26 +511,26 @@ export default function OrdenesCompra() {
           </div>
         )}
 
-        {/* ── TAB 2: AUDITORÍA HISTÓRICA DE QUIEBRES Y RECUPERACIÓN ── */}
+        {/* �� TAB 2: AUDITOR�A HIST�RICA DE QUIEBRES Y RECUPERACI�N �� */}
         {activeTab === 'quiebres' && (
           <div className="card" style={{ padding: '20px' }}>
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
               <div>
                 <h2 style={{ margin: '0 0 6px', fontSize: '1.25rem', color: '#ff5252', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🚨</span> Registro Consolidado de Quiebres y Tiempos de Recuperación
+                  <span>??</span> Registro Consolidado de Quiebres y Tiempos de Recuperaci�n
                 </h2>
                 <p style={{ margin: 0, color: '#475569', fontSize: '0.85rem' }}>
-                  Muestra todos los productos que sufrieron quiebre (pedido &gt; 0 con 0 despachado), en qué OC posterior se volvió a despachar y cuántos días tardó la recuperación.
+                  Muestra todos los productos que sufrieron quiebre (pedido &gt; 0 con 0 despachado), en qu� OC posterior se volvi� a despachar y cu�ntos d�as tard� la recuperaci�n.
                 </p>
               </div>
 
-              {/* Filtro por Estado de Catálogo con Casillas (Checkboxes) */}
+              {/* Filtro por Estado de Cat�logo con Casillas (Checkboxes) */}
               <div style={{
                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
                 background: '#f8fafc', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1'
               }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>
-                  Filtrar Catálogo:
+                  Filtrar Cat�logo:
                 </span>
 
                 {/* Casilla Activo */}
@@ -548,7 +548,7 @@ export default function OrdenesCompra() {
                     onChange={e => setFilterCatalogStates(prev => ({ ...prev, ACTIVO: e.target.checked }))}
                     style={{ cursor: 'pointer', accentColor: '#16a34a' }}
                   />
-                  ✓ Activos ({countActivos})
+                  V Activos ({countActivos})
                 </label>
 
                 {/* Casilla Bloqueado */}
@@ -566,7 +566,7 @@ export default function OrdenesCompra() {
                     onChange={e => setFilterCatalogStates(prev => ({ ...prev, BLOQUEADO: e.target.checked }))}
                     style={{ cursor: 'pointer', accentColor: '#9333ea' }}
                   />
-                  🔒 Bloqueados ({countBloqueados})
+                  ?? Bloqueados ({countBloqueados})
                 </label>
 
                 {/* Casilla Descontinuado (Por default desmarcado) */}
@@ -584,7 +584,7 @@ export default function OrdenesCompra() {
                     onChange={e => setFilterCatalogStates(prev => ({ ...prev, DESCONTINUADO: e.target.checked }))}
                     style={{ cursor: 'pointer', accentColor: '#dc2626' }}
                   />
-                  🚫 Descontinuados ({countDescontinuados})
+                  ?? Descontinuados ({countDescontinuados})
                 </label>
 
                 <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginLeft: '6px' }}>
@@ -594,11 +594,11 @@ export default function OrdenesCompra() {
             </div>
 
             {quiebresLoading ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>Cargando histórico de quiebres...</div>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>Cargando hist�rico de quiebres...</div>
             ) : quiebresHistory.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>
-                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>🎉</span>
-                No se han detectado quiebres de producto en las órdenes de compra analizadas.
+                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '10px' }}>??</span>
+                No se han detectado quiebres de producto en las �rdenes de compra analizadas.
               </div>
             ) : (
               <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #cbd5e1', width: '100%' }}>
@@ -606,9 +606,9 @@ export default function OrdenesCompra() {
                   <thead>
                     <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
                       <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
-                      <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
+                      <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>C�d. Femaco</th>
                       <th style={{ padding: '9px 10px', color: '#ffffff', fontWeight: 600, minWidth: '180px' }}>Producto</th>
-                      <th style={{ padding: '9px 8px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Catálogo</th>
+                      <th style={{ padding: '9px 8px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado Cat�logo</th>
                       <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
                       <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>OC Quiebre</th>
                       <th style={{ padding: '9px 8px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Fecha Quiebre</th>
@@ -639,11 +639,11 @@ export default function OrdenesCompra() {
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: rowBg }}>
                             <td style={{ padding: '8px 10px', fontWeight: 700, color: '#0284c7', borderLeft: borderLeft, whiteSpace: 'nowrap' }}>
-                              {q.sku || '—'}
+                              {q.sku || '-'}
                             </td>
                             <td style={{ padding: '8px 10px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
                               <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}>
-                                {q.codigo_femaco || '—'}
+                                {q.codigo_femaco || '-'}
                               </span>
                             </td>
                             <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 500, minWidth: '180px', lineHeight: '1.25' }}>
@@ -655,25 +655,25 @@ export default function OrdenesCompra() {
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800,
                                   background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
-                                  🚫 DESCONTINUADO
+                                  ?? DESCONTINUADO
                                 </span>
                               ) : isBloqueado ? (
                                 <span style={{
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 800,
                                   background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
-                                  🔒 BLOQUEADO
+                                  ?? BLOQUEADO
                                 </span>
                               ) : (
                                 <span style={{
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
                                   background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
-                                  ✓ ACTIVO
+                                  V ACTIVO
                                 </span>
                               )}
                             </td>
-                            <td style={{ padding: '8px 8px', color: '#475569', whiteSpace: 'nowrap' }}>{q.nombre_familia || '—'}</td>
+                            <td style={{ padding: '8px 8px', color: '#475569', whiteSpace: 'nowrap' }}>{q.nombre_familia || '-'}</td>
                             <td style={{ padding: '8px 8px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{q.numero_oc}</td>
                             <td style={{ padding: '8px 8px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>
                               {formatCleanDate(q.fecha_quiebre || q.fecha_oc)}
@@ -682,7 +682,7 @@ export default function OrdenesCompra() {
                               {Math.round(q.cantidad_pedida).toLocaleString()}
                             </td>
                             <td style={{ padding: '8px 8px', fontWeight: 600, color: recuperado ? '#15803d' : '#64748b', whiteSpace: 'nowrap' }}>
-                              {q.oc_recuperacion || '—'}
+                              {q.oc_recuperacion || '-'}
                             </td>
                             <td style={{ padding: '8px 8px', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
                               {formatCleanDate(q.fecha_recuperacion)}
@@ -690,7 +690,7 @@ export default function OrdenesCompra() {
                             <td style={{ padding: '8px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {recuperado ? (
                                 <span style={{ fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>
-                                  ⏱ {q.dias_recuperacion_quiebre} d
+                                  ? {q.dias_recuperacion_quiebre} d
                                 </span>
                               ) : (
                                 <span style={{ color: '#d97706', fontStyle: 'italic', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -704,14 +704,14 @@ export default function OrdenesCompra() {
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700,
                                   background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
-                                  ✓ Recuperado
+                                  V Recuperado
                                 </span>
                               ) : (
                                 <span style={{
                                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 700,
                                   background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-block', whiteSpace: 'nowrap'
                                 }}>
-                                  ⚠️ Quiebre Activo
+                                  ?? Quiebre Activo
                                 </span>
                               )}
                             </td>
@@ -726,23 +726,23 @@ export default function OrdenesCompra() {
           </div>
         )}
 
-        {/* ── TAB 3: DESEMPEÑO COMERCIAL: OTIF & FILL RATE POR CLIENTE ── */}
+        {/* �� TAB 3: DESEMPE�O COMERCIAL: OTIF & FILL RATE POR CLIENTE �� */}
         {activeTab === 'fillrate' && (
           <div className="card" style={{ padding: '24px' }}>
             <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h2 style={{ margin: '0 0 6px', fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📈</span> Auditoría Comercial de Despacho: OTIF & Fill Rate
+                  <span>??</span> Auditor�a Comercial de Despacho: OTIF & Fill Rate
                 </h2>
                 <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-                  Métricas de cumplimiento ante clientes clave (Walmart, Sodimac, Cencosud, etc.), tasa de órdenes perfectas y ranking de quiebres.
+                  M�tricas de cumplimiento ante clientes clave (Walmart, Sodimac, Cencosud, etc.), tasa de �rdenes perfectas y ranking de quiebres.
                 </p>
               </div>
               <button
                 onClick={loadFillRate}
                 className="btn-secondary"
                 style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                ↻ Actualizar Métricas
+                ? Actualizar M�tricas
               </button>
             </div>
 
@@ -750,7 +750,7 @@ export default function OrdenesCompra() {
               <div className="loader-wrap"><div className="spinner" /></div>
             ) : !fillRateData ? (
               <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
-                Haz clic en actualizar para cargar las métricas de despacho.
+                Haz clic en actualizar para cargar las m�tricas de despacho.
               </div>
             ) : (
               <div>
@@ -778,7 +778,7 @@ export default function OrdenesCompra() {
                     </div>
 
                     <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8, borderLeft: '4px solid #ef4444' }}>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Déficit no Entregado</span>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>D�ficit no Entregado</span>
                       <div style={{ fontSize: '2rem', fontWeight: 800, margin: '6px 0', color: '#b91c1c' }}>
                         {Number(fillRateData.resumen_global.unidades_deficit_total).toLocaleString()} uds
                       </div>
@@ -791,19 +791,19 @@ export default function OrdenesCompra() {
 
                 {/* TABLA CLIENTES */}
                 <h3 style={{ fontSize: '1.05rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  🏢 Desempeño por Cliente
+                  ?? Desempe�o por Cliente
                 </h3>
                 <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 28 }}>
                   <table className="preview-table" style={{ margin: 0, border: 'none', width: '100%' }}>
                     <thead>
                       <tr>
                         <th>Cliente</th>
-                        <th style={{ textAlign: 'center' }}>Órdenes</th>
+                        <th style={{ textAlign: 'center' }}>�rdenes</th>
                         <th style={{ textAlign: 'right' }}>Uds Pedidas</th>
                         <th style={{ textAlign: 'right' }}>Uds Despachadas</th>
-                        <th style={{ textAlign: 'right', background: '#fef2f2', color: '#991b1b' }}>Déficit (Uds)</th>
+                        <th style={{ textAlign: 'right', background: '#fef2f2', color: '#991b1b' }}>D�ficit (Uds)</th>
                         <th style={{ textAlign: 'center' }}>Fill Rate (%)</th>
-                        <th style={{ textAlign: 'center' }}>Órdenes Perfectas</th>
+                        <th style={{ textAlign: 'center' }}>�rdenes Perfectas</th>
                         <th style={{ textAlign: 'center' }}>OTIF (%)</th>
                         <th style={{ textAlign: 'center' }}>Quiebres</th>
                       </tr>
@@ -833,7 +833,7 @@ export default function OrdenesCompra() {
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             {cli.total_quiebres > 0 ? (
-                              <span style={{ color: '#dc2626', fontWeight: 700 }}>🚨 {cli.total_quiebres}</span>
+                              <span style={{ color: '#dc2626', fontWeight: 700 }}>?? {cli.total_quiebres}</span>
                             ) : (
                               <span style={{ color: '#16a34a' }}>0</span>
                             )}
@@ -846,7 +846,7 @@ export default function OrdenesCompra() {
 
                 {/* TOP SKUS QUIEBRE */}
                 <h3 style={{ fontSize: '1.05rem', color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  🚨 Top 10 Productos con Mayor Volumen de Quiebre en Clientes
+                  ?? Top 10 Productos con Mayor Volumen de Quiebre en Clientes
                 </h3>
                 <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
                   <table className="preview-table" style={{ margin: 0, border: 'none', width: '100%' }}>
@@ -881,7 +881,7 @@ export default function OrdenesCompra() {
           </div>
         )}
 
-        {/* ── MODAL: SUBIR ORDEN DE COMPRA ── */}
+        {/* �� MODAL: SUBIR ORDEN DE COMPRA �� */}
         {showUploadModal && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -894,13 +894,13 @@ export default function OrdenesCompra() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a', fontWeight: 700 }}>
-                  <span>⬆</span> Subir Orden de Compra
+                  <span>?</span> Subir Orden de Compra
                 </h2>
                 <button
                   style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '1.5rem', cursor: 'pointer', fontWeight: 700 }}
                   onClick={() => setShowUploadModal(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -920,9 +920,9 @@ export default function OrdenesCompra() {
                       onClick={() => setUploadEtapa('AUTO')}
                     >
                       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: uploadEtapa === 'AUTO' ? '#0369a1' : '#475569' }}>
-                        ⭐ AUTO (B2B Retail)
+                        ? AUTO (B2B Retail)
                       </div>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Lee Estado OC (Cursado/Recepción)</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Lee Estado OC (Cursado/Recepci�n)</span>
                     </div>
 
                     <div
@@ -934,9 +934,9 @@ export default function OrdenesCompra() {
                       onClick={() => setUploadEtapa('ENTREGA')}
                     >
                       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: uploadEtapa === 'ENTREGA' ? '#15803d' : '#475569' }}>
-                        🚚 Solo Entregas
+                        ?? Solo Entregas
                       </div>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Auditoría vs pedido</span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Auditor�a vs pedido</span>
                     </div>
 
                     <div
@@ -948,7 +948,7 @@ export default function OrdenesCompra() {
                       onClick={() => setUploadEtapa('PEDIDO')}
                     >
                       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: uploadEtapa === 'PEDIDO' ? '#1d4ed8' : '#475569' }}>
-                        📝 Solo Pedidos
+                        ?? Solo Pedidos
                       </div>
                       <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Registro inicial (Cursado)</span>
                     </div>
@@ -971,7 +971,7 @@ export default function OrdenesCompra() {
                     required
                   />
                   <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                    Soporta archivos mensuales con múltiples OCs (Sodimac / Falabella B2B), consolidando locales por SKU y distinguiendo pedidos cursados de recepcionados.
+                    Soporta archivos mensuales con m�ltiples OCs (Sodimac / Falabella B2B), consolidando locales por SKU y distinguiendo pedidos cursados de recepcionados.
                   </span>
                 </div>
 
@@ -979,11 +979,11 @@ export default function OrdenesCompra() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '18px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', color: '#475569', marginBottom: '4px', fontWeight: 600 }}>
-                      N° OC (Opcional):
+                      N� OC (Opcional):
                     </label>
                     <input
                       type="text"
-                      placeholder="Auto si está en archivo"
+                      placeholder="Auto si est� en archivo"
                       value={uploadOcNum}
                       onChange={e => setUploadOcNum(e.target.value)}
                       style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
@@ -996,7 +996,7 @@ export default function OrdenesCompra() {
                     </label>
                     <input
                       type="text"
-                      placeholder="Cliente / Razón Social"
+                      placeholder="Cliente / Raz�n Social"
                       value={uploadCliente}
                       onChange={e => setUploadCliente(e.target.value)}
                       style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1.5px solid #cbd5e1', background: '#ffffff', color: '#0f172a' }}
@@ -1053,7 +1053,7 @@ export default function OrdenesCompra() {
           </div>
         )}
 
-        {/* ── MODAL / DETALLE DE AUDITORÍA DE OC ── */}
+        {/* �� MODAL / DETALLE DE AUDITOR�A DE OC �� */}
         {selectedOcId && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1069,7 +1069,7 @@ export default function OrdenesCompra() {
               <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '10px', color: '#0f172a', fontWeight: 700 }}>
-                    <span>Auditoría OC:</span>
+                    <span>Auditor�a OC:</span>
                     <span style={{ color: '#0284c7' }}>{detailData?.header?.numero_oc || selectedOcNumero || (detailLoading ? 'Cargando...' : selectedOcId)}</span>
                     <span style={{
                       fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', fontWeight: 700,
@@ -1091,7 +1091,7 @@ export default function OrdenesCompra() {
                     )}
                   </h2>
                   <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '4px' }}>
-                    Cliente: <strong>{detailData?.header?.cliente || '—'}</strong> | Fecha Entrega: <strong>{detailData?.header?.fecha_entrega || '—'}</strong> | Archivo: {detailData?.header?.nombre_archivo}
+                    Cliente: <strong>{detailData?.header?.cliente || '-'}</strong> | Fecha Entrega: <strong>{detailData?.header?.fecha_entrega || '-'}</strong> | Archivo: {detailData?.header?.nombre_archivo}
                   </div>
                 </div>
 
@@ -1101,13 +1101,13 @@ export default function OrdenesCompra() {
                     style={{ padding: '8px 14px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     onClick={() => handleDownloadExcel(selectedOcId)}
                   >
-                    📥 Descargar Excel
+                    ?? Descargar Excel
                   </button>
                   <button
                     style={{ background: 'none', border: 'none', color: '#888', fontSize: '1.8rem', cursor: 'pointer', lineHeight: 1 }}
                     onClick={() => { setSelectedOcId(null); setDetailData(null); }}
                   >
-                    ×
+                    �
                   </button>
                 </div>
               </div>
@@ -1115,12 +1115,12 @@ export default function OrdenesCompra() {
               {/* Contenido Modal */}
               <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
                 {detailLoading ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>Cargando análisis...</div>
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>Cargando an�lisis...</div>
                 ) : !detailData ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>No se pudo cargar la información.</div>
+                  <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>No se pudo cargar la informaci�n.</div>
                 ) : (
                   <>
-                    {/* Tarjetas resumen de auditoría */}
+                    {/* Tarjetas resumen de auditor�a */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                       <div style={{ background: '#ffffff', padding: '14px 18px', borderRadius: '8px', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                         <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 600 }}>Total Pedido</span>
@@ -1172,21 +1172,21 @@ export default function OrdenesCompra() {
                         style={{ padding: '6px 12px', fontSize: '0.8rem', color: detailFilter === 'NO_DESPACHADO' ? '#fff' : '#b91c1c' }}
                         onClick={() => setDetailFilter('NO_DESPACHADO')}
                       >
-                        🚨 No Despachados (0) ({detailData.items.filter(i => i.estado_entrega === 'NO_DESPACHADO').length})
+                        ?? No Despachados (0) ({detailData.items.filter(i => i.estado_entrega === 'NO_DESPACHADO').length})
                       </button>
                       <button
                         className={detailFilter === 'PARCIAL' ? 'btn-primary' : 'btn-secondary'}
                         style={{ padding: '6px 12px', fontSize: '0.8rem', color: detailFilter === 'PARCIAL' ? '#fff' : '#b45309' }}
                         onClick={() => setDetailFilter('PARCIAL')}
                       >
-                        ⚠️ Despacho Parcial ({detailData.items.filter(i => i.estado_entrega === 'DESPACHO_PARCIAL').length})
+                        ?? Despacho Parcial ({detailData.items.filter(i => i.estado_entrega === 'DESPACHO_PARCIAL').length})
                       </button>
                       <button
                         className={detailFilter === 'DESBALANCE' ? 'btn-primary' : 'btn-secondary'}
                         style={{ padding: '6px 12px', fontSize: '0.8rem', color: detailFilter === 'DESBALANCE' ? '#fff' : '#7e22ce' }}
                         onClick={() => setDetailFilter('DESBALANCE')}
                       >
-                        ⚖️ Desbalance Familiar ({detailData.items.filter(i => i.desbalance_familiar).length})
+                        ?? Desbalance Familiar ({detailData.items.filter(i => i.desbalance_familiar).length})
                       </button>
                     </div>
 
@@ -1196,7 +1196,7 @@ export default function OrdenesCompra() {
                         <thead>
                           <tr style={{ background: '#1e293b', textAlign: 'left', borderBottom: '2px solid #0f172a' }}>
                             <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>SKU</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cód. Femaco</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>C�d. Femaco</th>
                             <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, minWidth: '200px' }}>Producto</th>
                             <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Familia</th>
                             <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Cant. Pedida</th>
@@ -1204,7 +1204,7 @@ export default function OrdenesCompra() {
                             <th style={{ padding: '10px 12px', textAlign: 'right', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Diferencia</th>
                             <th style={{ padding: '10px 12px', textAlign: 'center', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Estado</th>
                             <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Desbalance Familiar</th>
-                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Historial Quiebre / Recuperación</th>
+                            <th style={{ padding: '10px 12px', color: '#ffffff', fontWeight: 600, whiteSpace: 'nowrap' }}>Historial Quiebre / Recuperaci�n</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1227,27 +1227,27 @@ export default function OrdenesCompra() {
                                   background: isQuiebre ? '#fff5f5' : (it.desbalance_familiar ? '#faf5ff' : '#ffffff')
                                 }}>
                                   <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0284c7', whiteSpace: 'nowrap' }}>
-                                    {it.sku || '—'}
+                                    {it.sku || '-'}
                                   </td>
                                   <td style={{ padding: '10px 12px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
                                     <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}>
-                                      {it.codigo_femaco || '—'}
+                                      {it.codigo_femaco || '-'}
                                     </span>
                                   </td>
                                   <td style={{ padding: '10px 12px', color: '#0f172a', fontWeight: 500, minWidth: '200px', maxWidth: '320px', whiteSpace: 'normal', lineHeight: '1.3' }}>
                                     {it.nombre_producto}
                                     {it.estado_producto && String(it.estado_producto).toUpperCase().includes('DESCONTINUAD') && (
                                       <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', whiteSpace: 'nowrap' }}>
-                                        🚫 DESCONTINUADO
+                                        ?? DESCONTINUADO
                                       </span>
                                     )}
                                     {it.estado_producto && String(it.estado_producto).toUpperCase().includes('BLOQUEAD') && (
                                       <span style={{ marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', fontSize: '0.68rem', fontWeight: 700, background: '#f3e8ff', color: '#6b21a8', border: '1px solid #d8b4fe', whiteSpace: 'nowrap' }}>
-                                        🔒 BLOQUEADO
+                                        ?? BLOQUEADO
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>{it.nombre_familia || '—'}</td>
+                                  <td style={{ padding: '10px 12px', color: '#475569', whiteSpace: 'nowrap' }}>{it.nombre_familia || '-'}</td>
                                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#334155', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                     {Math.round(it.cantidad_pedida).toLocaleString()}
                                   </td>
@@ -1279,7 +1279,7 @@ export default function OrdenesCompra() {
                                         background: '#ecfdf5', color: '#15803d', border: '1px solid #86efac',
                                         padding: '3px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '0.75rem', display: 'inline-block', whiteSpace: 'nowrap'
                                       }}>
-                                        ✓ COMPLETO
+                                        V COMPLETO
                                       </span>
                                     )}
                                     {isExcedente && (
@@ -1298,19 +1298,19 @@ export default function OrdenesCompra() {
                                         background: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff',
                                         fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap'
                                       }}>
-                                        ⚖️ {it.desbalance_detalle || 'Desbalance detectado'}
+                                        ?? {it.desbalance_detalle || 'Desbalance detectado'}
                                       </span>
                                     ) : (
-                                      <span style={{ color: '#94a3b8' }}>—</span>
+                                      <span style={{ color: '#94a3b8' }}>-</span>
                                     )}
                                   </td>
                                   <td style={{ padding: '10px 12px', fontSize: '0.8rem', color: '#334155', whiteSpace: 'nowrap' }}>
                                     {it.quiebre_detectado ? (
                                       <div style={{ color: '#dc2626' }}>
-                                        <strong>⚠️ Quiebre</strong> {it.fecha_quiebre ? `(${formatCleanDate(it.fecha_quiebre)})` : ''}
+                                        <strong>?? Quiebre</strong> {it.fecha_quiebre ? `(${formatCleanDate(it.fecha_quiebre)})` : ''}
                                         {it.oc_recuperacion && (
                                           <div style={{ color: '#15803d', fontSize: '0.75rem' }}>
-                                            Recuperado en OC {it.oc_recuperacion} ({it.dias_recuperacion_quiebre} días)
+                                            Recuperado en OC {it.oc_recuperacion} ({it.dias_recuperacion_quiebre} d�as)
                                           </div>
                                         )}
                                       </div>

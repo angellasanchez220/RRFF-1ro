@@ -1,30 +1,30 @@
 """
-planner.py — Módulo de Inteligencia SOP RRFF Soft
+planner.py - M�dulo de Inteligencia SOP RRFF Soft
 ===================================================
 Fase 4 del orquestador: extrae datos de PostgreSQL (dim_productos + fact_ventas),
-aplica lógica de planificación S&OP y persiste la tabla planificacion_sop.
+aplica l�gica de planificaci�n S&OP y persiste la tabla planificacion_sop.
 
-LÓGICA IMPLEMENTADA:
-  Paso 1 — Conexión y cruce: JOIN dim_productos ⋈ fact_ventas por SKU
-  Paso 2 — Base transaccional 4 semanas:
-            • Unidades individuales sem 1-4 (semanas cerradas)
-            • Total ventas 4 semanas = ritmo de salida actual (sell-out rate)
-            • La semana parcial (sem actual) se excluye del ritmo base
-  Paso 3 — Matriz 12 meses (Sell-Out y Sell-In proyectados):
-            • Sell-Out mensual = (ritmo_4_sem / 4) × semanas_del_mes
-              con trigger de actualización: el mes anterior solo se actualiza
-              el día 1 del mes siguiente (datos de may-2026 se fijan el 1-jun-2026)
-            • Sell-In mensual = Sell-Out + buffer_reposicion (14 días = 2 semanas)
-  Paso 4 — Inteligencia Comparativa:
-            • YoY estimado: comparación del sell-out mensual actual
-              vs mismo mes año anterior (usando factor de tendencia del catálogo)
-            • Mes Pico Sell-Out: mes con mayor proyección de salida
-            • Mes Pico Sell-In:  mes con mayor sugerencia de compra
-  Paso 5 — Sell-In Ajustado (UMP):
-            • sell_in_ajustado = math.ceil(sell_in / ump) * ump  (múltiplo estricto hacia arriba)
-            • Si ump es None/0, se usa el sell_in sin ajuste
-  Paso 6 — Persistencia: sobreescribe planificacion_sop en PostgreSQL
-  Paso 7 — Métricas complementarias: sellout_minimo (mínimo de las 4 semanas × 4.33)
+L�GICA IMPLEMENTADA:
+  Paso 1 - Conexi�n y cruce: JOIN dim_productos ? fact_ventas por SKU
+  Paso 2 - Base transaccional 4 semanas:
+             Unidades individuales sem 1-4 (semanas cerradas)
+             Total ventas 4 semanas = ritmo de salida actual (sell-out rate)
+             La semana parcial (sem actual) se excluye del ritmo base
+  Paso 3 - Matriz 12 meses (Sell-Out y Sell-In proyectados):
+             Sell-Out mensual = (ritmo_4_sem / 4) � semanas_del_mes
+              con trigger de actualizaci�n: el mes anterior solo se actualiza
+              el d�a 1 del mes siguiente (datos de may-2026 se fijan el 1-jun-2026)
+             Sell-In mensual = Sell-Out + buffer_reposicion (14 d�as = 2 semanas)
+  Paso 4 - Inteligencia Comparativa:
+             YoY estimado: comparaci�n del sell-out mensual actual
+              vs mismo mes a�o anterior (usando factor de tendencia del cat�logo)
+             Mes Pico Sell-Out: mes con mayor proyecci�n de salida
+             Mes Pico Sell-In:  mes con mayor sugerencia de compra
+  Paso 5 - Sell-In Ajustado (UMP):
+             sell_in_ajustado = math.ceil(sell_in / ump) * ump  (m�ltiplo estricto hacia arriba)
+             Si ump es None/0, se usa el sell_in sin ajuste
+  Paso 6 - Persistencia: sobreescribe planificacion_sop en PostgreSQL
+  Paso 7 - M�tricas complementarias: sellout_minimo (m�nimo de las 4 semanas � 4.33)
 
 NOTA SOBRE PRECIOS:
   El pipeline actual no incluye precio unitario en las tablas cargadas.
@@ -48,9 +48,9 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuración
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Configuraci�n
+# ������������������������������������������������������������������������������
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -59,18 +59,41 @@ TABLA_FACT      = "fact_ventas"
 TABLA_PLAN      = "planificacion_sop"
 CHUNK_SIZE      = 500
 
-# Las semanas se detectan DINÁMICAMENTE desde fact_ventas en tiempo de ejecución.
-# (El reporte Shiny rota cada semana, añadiendo una columna nueva al CSV de ventas)
-# Patrón: columnas que empiecen con 'unidades' seguido de fecha, excepto
+# Las semanas se detectan DIN�MICAMENTE desde fact_ventas en tiempo de ejecuci�n.
+# (El reporte Shiny rota cada semana, a�adiendo una columna nueva al CSV de ventas)
+# Patr�n: columnas que empiecen con 'unidades' seguido de fecha, excepto
 # 'total_unidades_semanas_cerradas' que es la suma acumulada.
 COLS_SEM_PATTERN    = "unidades"         # prefijo de las columnas de semanas
 COLS_SEM_EXCLUIR    = {                  # columnas que NO son semanas individuales
     "total_unidades_semanas_cerradas"
 }
-# Número de semanas cerradas a usar como base de ritmo
+# N�mero de semanas cerradas a usar como base de ritmo
 N_SEMANAS_BASE = 4
 
-# Semanas por mes calendario (aproximación estándar para proyección)
+# Reglas operativas vigentes de compra.
+# Si el �ltimo mes cerrado creci� al menos 5%, se agrega un mes completo
+# de demanda a la cobertura base de 5,4 meses.
+COBERTURA_MINIMA_MESES = 5.4
+UMBRAL_CRECIMIENTO_COMPRA_PCT = 5.0
+MESES_EXTRA_POR_CRECIMIENTO = 1.0
+
+
+def _aplicar_regla_cobertura_compra(cobertura_configurada, crecimiento_mom):
+    """Retorna cobertura base, flag de crecimiento, extra y target final."""
+    base = pd.to_numeric(cobertura_configurada, errors="coerce").fillna(
+        COBERTURA_MINIMA_MESES
+    ).clip(lower=COBERTURA_MINIMA_MESES)
+    crecimiento = pd.to_numeric(crecimiento_mom, errors="coerce")
+    detectado = crecimiento.ge(UMBRAL_CRECIMIENTO_COMPRA_PCT)
+    extra = pd.Series(
+        np.where(detectado, MESES_EXTRA_POR_CRECIMIENTO, 0.0),
+        index=base.index,
+        dtype=float,
+    )
+    target = (base + extra).round(1)
+    return base, detectado, extra, target
+
+# Semanas por mes calendario (aproximaci�n est�ndar para proyecci�n)
 SEMANAS_POR_MES = {
     1: 4.33, 2: 4.00, 3: 4.33, 4: 4.00,
     5: 4.33, 6: 4.33, 7: 4.33, 8: 4.33,
@@ -78,35 +101,35 @@ SEMANAS_POR_MES = {
 }
 
 # Factor de estacionalidad mensual relativo a Mayo
-# (índice base = 1.0 para Mayo; valores derivados de patrones ferretería retail Chile)
+# (�ndice base = 1.0 para Mayo; valores derivados de patrones ferreter�a retail Chile)
 ESTACIONALIDAD = {
-    1: 0.95,   # Enero     — inicio año, demanda moderada
-    2: 1.00,   # Febrero   — vuelta a clases + remodelaciones
-    3: 1.10,   # Marzo     — peak post-verano, pre-otoño
-    4: 1.05,   # Abril     — actividad alta
-    5: 1.00,   # Mayo      — BASE (mes actual del dataset)
-    6: 0.90,   # Junio     — invierno, caída moderada
-    7: 0.85,   # Julio     — vacaciones invierno, menor actividad
-    8: 0.92,   # Agosto    — recuperación gradual
-    9: 1.08,   # Septiembre — peak Fiestas Patrias + remodelaciones
-    10: 1.05,  # Octubre   — post-fiestas, demanda sostenida
-    11: 1.10,  # Noviembre — Black Friday + inicio ciclo navideño
-    12: 0.95,  # Diciembre — Navidad, cierre año
+    1: 0.95,   # Enero     - inicio a�o, demanda moderada
+    2: 1.00,   # Febrero   - vuelta a clases + remodelaciones
+    3: 1.10,   # Marzo     - peak post-verano, pre-oto�o
+    4: 1.05,   # Abril     - actividad alta
+    5: 1.00,   # Mayo      - BASE (mes actual del dataset)
+    6: 0.90,   # Junio     - invierno, ca�da moderada
+    7: 0.85,   # Julio     - vacaciones invierno, menor actividad
+    8: 0.92,   # Agosto    - recuperaci�n gradual
+    9: 1.08,   # Septiembre - peak Fiestas Patrias + remodelaciones
+    10: 1.05,  # Octubre   - post-fiestas, demanda sostenida
+    11: 1.10,  # Noviembre - Black Friday + inicio ciclo navide�o
+    12: 0.95,  # Diciembre - Navidad, cierre a�o
 }
 
-# Buffer de reposición en semanas (Lead Time + Safety Stock = 2 semanas)
+# Buffer de reposici�n en semanas (Lead Time + Safety Stock = 2 semanas)
 BUFFER_SEMANAS_REPOSICION = 2.0
 
 # Fecha de referencia (mes base del dataset)
-# Se usa el mes y año actual dinámicamente para que sincronice correctamente 
-# con la lógica de api/routes/sop.py que lee los últimos 12 meses.
+# Se usa el mes y a�o actual din�micamente para que sincronice correctamente 
+# con la l�gica de api/routes/sop.py que lee los �ltimos 12 meses.
 _hoy = date.today()
 MES_BASE         = _hoy.month
 ANIO_BASE        = _hoy.year
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 # Logger
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 
 logging.basicConfig(
     level=logging.INFO,
@@ -116,9 +139,9 @@ logging.basicConfig(
 log = logging.getLogger("planner")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 # Helpers
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 
 def _build_engine():
     """Construye el engine SQLAlchemy desde las credenciales del .env."""
@@ -153,7 +176,7 @@ def _build_engine():
 
 def _ceil_to_multiple(value: float, multiple: float) -> float:
     """
-    Redondea 'value' al próximo múltiplo exacto de 'multiple' (hacia arriba).
+    Redondea 'value' al pr�ximo m�ltiplo exacto de 'multiple' (hacia arriba).
     Si multiple <= 0 o es None, retorna value sin cambios.
     """
     if not multiple or multiple <= 0 or math.isnan(multiple):
@@ -163,13 +186,13 @@ def _ceil_to_multiple(value: float, multiple: float) -> float:
 
 def _trigger_update_ok(mes: int, anio: int, hoy: date) -> bool:
     """
-    Trigger de actualización: el mes anterior solo se 'cierra' y actualiza
-    el día 1 del mes siguiente.
+    Trigger de actualizaci�n: el mes anterior solo se 'cierra' y actualiza
+    el d�a 1 del mes siguiente.
     Ejemplo: datos de Mayo 2026 solo se actualizan desde el 01-Jun-2026.
 
-    Retorna True si el mes ya está disponible para actualización.
+    Retorna True si el mes ya est� disponible para actualizaci�n.
     """
-    # Calcular el primer día del mes siguiente al (mes, anio) dado
+    # Calcular el primer d�a del mes siguiente al (mes, anio) dado
     if mes == 12:
         fecha_cierre = date(anio + 1, 1, 1)
     else:
@@ -178,22 +201,22 @@ def _trigger_update_ok(mes: int, anio: int, hoy: date) -> bool:
 
 
 def _nombre_mes(num: int) -> str:
-    """Retorna el nombre en español del mes (1→Enero, ..., 12→Diciembre)."""
+    """Retorna el nombre en espa�ol del mes (1Enero, ..., 12Diciembre)."""
     nombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
     return nombres[num - 1]
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 1 — Extracción y cruce
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 1 - Extracci�n y cruce
+# ������������������������������������������������������������������������������
 
 def _detectar_columnas_semana(engine) -> tuple[list[str], str | None]:
     """
-    Detecta dinámicamente las columnas de semana cerradas en fact_ventas.
+    Detecta din�micamente las columnas de semana cerradas en fact_ventas.
     Retorna:
-      - cols_cerradas: lista de N_SEMANAS_BASE columnas más recientes (cerradas)
-      - col_parcial:   columna de la semana en curso (la más nueva), o None
+      - cols_cerradas: lista de N_SEMANAS_BASE columnas m�s recientes (cerradas)
+      - col_parcial:   columna de la semana en curso (la m�s nueva), o None
     """
     from sqlalchemy import inspect as sa_inspect
     insp = sa_inspect(engine)
@@ -205,12 +228,12 @@ def _detectar_columnas_semana(engine) -> tuple[list[str], str | None]:
         if c.startswith(COLS_SEM_PATTERN) and c not in COLS_SEM_EXCLUIR
     ])
 
-    # La última columna es la semana parcial (en curso), las anteriores son cerradas
+    # La �ltima columna es la semana parcial (en curso), las anteriores son cerradas
     if len(cols_sem) <= N_SEMANAS_BASE:
         cols_cerradas = cols_sem
         col_parcial   = None
     else:
-        # Tomamos las últimas N+1, separamos la más nueva como parcial
+        # Tomamos las �ltimas N+1, separamos la m�s nueva como parcial
         recientes     = cols_sem[-(N_SEMANAS_BASE + 1):]
         col_parcial   = recientes[-1]       # semana en curso (parcial)
         cols_cerradas = recientes[:-1]      # N semanas cerradas
@@ -224,8 +247,8 @@ def _detectar_columnas_semana(engine) -> tuple[list[str], str | None]:
 
 def _extraer_datos(engine) -> pd.DataFrame:
     """
-    LEFT JOIN dim_productos ⋈ fact_ventas por SKU.
-    Detecta dinámicamente las columnas de semana disponibles.
+    LEFT JOIN dim_productos ? fact_ventas por SKU.
+    Detecta din�micamente las columnas de semana disponibles.
     Se excluye la fila 'Total' de fact_ventas (sku IS NULL).
     """
     log.info("Extrayendo cruce dim_productos x fact_ventas...")
@@ -236,11 +259,11 @@ def _extraer_datos(engine) -> pd.DataFrame:
     if len(cols_cerradas) < 2:
         raise RuntimeError(
             f"fact_ventas tiene menos de 2 semanas cerradas detectadas: {cols_cerradas}. "
-            "Verifica que la Fase 3 (loader) se ejecutó correctamente."
+            "Verifica que la Fase 3 (loader) se ejecut� correctamente."
         )
 
-    # Construir SELECT dinámico para las semanas cerradas
-    # Siempre se nombran sem1..semN en orden cronológico
+    # Construir SELECT din�mico para las semanas cerradas
+    # Siempre se nombran sem1..semN en orden cronol�gico
     sem_select = "\n".join(
         f"            f.{col}  AS sem{i+1}_uds,"
         for i, col in enumerate(cols_cerradas)
@@ -294,18 +317,18 @@ def _extraer_datos(engine) -> pd.DataFrame:
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 2 — Base transaccional 4 semanas
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 2 - Base transaccional 4 semanas
+# ������������������������������������������������������������������������������
 
 def _calcular_base_transaccional(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calcula métricas de ritmo de salida basadas en las 4 semanas cerradas.
+    Calcula m�tricas de ritmo de salida basadas en las 4 semanas cerradas.
 
-    Columnas añadidas:
+    Columnas a�adidas:
       - ritmo_semanal_uds:       promedio de las 4 semanas (base para proyectar)
-      - total_4_sem_verificado:  suma directa de sem1..sem4 (auditoría)
-      - sellout_minimo:          mínimo semanal × 4.33 → piso mensual real de demanda
+      - total_4_sem_verificado:  suma directa de sem1..sem4 (auditor�a)
+      - sellout_minimo:          m�nimo semanal � 4.33  piso mensual real de demanda
       - monto_total_4_sem:       placeholder 0.0 (sin precio disponible)
     """
     cols_sem = ["sem1_uds", "sem2_uds", "sem3_uds", "sem4_uds"]
@@ -318,29 +341,29 @@ def _calcular_base_transaccional(df: pd.DataFrame) -> pd.DataFrame:
     # Ritmo semanal = total / 4 (base para proyectar a N semanas)
     df["ritmo_semanal_uds"] = df["total_4_sem_verificado"] / 4.0
 
-    # Sell-Out Mínimo: mínimo semanal escalado al mes → piso de demanda real
+    # Sell-Out M�nimo: m�nimo semanal escalado al mes  piso de demanda real
     # Permite detectar SKUs con demanda irregular o estacional baja
     df["sellout_minimo"] = (df[cols_sem].min(axis=1) * 4.33).round(0)
 
-    # Monto total: sin precio disponible en este pipeline → se deja en 0
+    # Monto total: sin precio disponible en este pipeline  se deja en 0
     df["monto_total_4_sem"] = 0.0
 
     log.info(
         "Base transaccional calculada. Ritmo semanal promedio: %.1f uds/sem | "
-        "Sell-Out Mínimo promedio: %.1f uds/mes",
+        "Sell-Out M�nimo promedio: %.1f uds/mes",
         df["ritmo_semanal_uds"].mean(),
         df["sellout_minimo"].mean(),
     )
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 3 — Proyección mensual 12 meses (Sell-Out y Sell-In)
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 3 - Proyecci�n mensual 12 meses (Sell-Out y Sell-In)
+# ������������������������������������������������������������������������������
 
 def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list]:
     """
-    Genera la matriz de proyecciones mes a mes para los próximos 12 meses,
+    Genera la matriz de proyecciones mes a mes para los pr�ximos 12 meses,
     partiendo del mes base (Mayo 2026). Integra datos historicos reales si
     estan disponibles en /data/processed.
     """
@@ -364,7 +387,7 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
             return pd.DataFrame()
         df_h = pd.read_csv(path, sep=";", dtype=str, encoding="utf-8-sig")
         df_h.columns = df_h.columns.str.strip()
-        # Normalizar columna año — puede llamarse 'año' o 'ano'
+        # Normalizar columna a�o - puede llamarse 'a�o' o 'ano'
         for col in df_h.columns:
             if col.lower().startswith("a") and col.lower().endswith("o"):
                 df_h.rename(columns={col: "_ano"}, inplace=True)
@@ -395,11 +418,11 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
         lbl        = f"{_nombre_mes(mes)[:3].lower()}_{anio}"
         nombre_mes = _nombre_mes(mes).lower()
 
-        # El año real del dato histórico:
-        # Para todos los meses, la proyección de la API asume que los datos históricos
-        # para rellenar la proyección son del año anterior (trailing 12 months).
+        # El a�o real del dato hist�rico:
+        # Para todos los meses, la proyecci�n de la API asume que los datos hist�ricos
+        # para rellenar la proyecci�n son del a�o anterior (trailing 12 months).
         # Esto asegura que al proyectar Jul 2026 -> Jul 2027, Ene 2027 se llene con Ene 2026,
-        # y Jul 2026 se llene con Jul 2025 (alineado con la vista del dashboard "Últimos 12 meses").
+        # y Jul 2026 se llene con Jul 2025 (alineado con la vista del dashboard "�ltimos 12 meses").
         anio_hist = anio - 1
 
         # Inicializamos en 0. Si no hay historia real para este mes, debe ser 0 
@@ -407,7 +430,7 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
         col_so = f"sellout_{lbl}"
         df[col_so] = 0.0
 
-        # Override con Sell-Out histórico real si existe para este mes/año
+        # Override con Sell-Out hist�rico real si existe para este mes/a�o
         if not df_so_hist.empty:
             hist_sub = df_so_hist[
                 (df_so_hist["mes"] == nombre_mes) & (df_so_hist["_ano"] == str(anio_hist))
@@ -428,7 +451,7 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
         col_si = f"sellin_{lbl}"
         df[col_si] = 0.0
 
-        # Override con Sell-In histórico real si existe para este mes/año
+        # Override con Sell-In hist�rico real si existe para este mes/a�o
         if not df_si_hist.empty:
             hist_sub = df_si_hist[
                 (df_si_hist["mes"] == nombre_mes) & (df_si_hist["_ano"] == str(anio_hist))
@@ -444,20 +467,20 @@ def _proyectar_12_meses(df: pd.DataFrame, hoy: date) -> tuple[pd.DataFrame, list
     return df, meses
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 4 — Inteligencia Comparativa: YoY y Picos
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 4 - Inteligencia Comparativa: YoY y Picos
+# ������������������������������������������������������������������������������
 
 def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFrame) -> pd.DataFrame:
     """
     YoY (Year-over-Year):
       Compara el Sell-Out proyectado del mes actual (Mayo 2026) contra el
-      mismo mes del año anterior. Como no tenemos datos de Mayo 2025 en las
-      tablas, el YoY se calcula así:
-        - Sell-Out_base (Mayo 2026) = ritmo_semanal × semanas_mayo × estac_mayo
-        - Sell-Out_año_anterior = Sell-Out_base × (1 / factor_tendencia_catalogo)
-          donde factor_tendencia = 1.08 (crecimiento del catálogo 8% YoY estimado)
-        - yoy_pct = ((SO_2026 - SO_2025) / SO_2025) × 100
+      mismo mes del a�o anterior. Como no tenemos datos de Mayo 2025 en las
+      tablas, el YoY se calcula as�:
+        - Sell-Out_base (Mayo 2026) = ritmo_semanal � semanas_mayo � estac_mayo
+        - Sell-Out_a�o_anterior = Sell-Out_base � (1 / factor_tendencia_catalogo)
+          donde factor_tendencia = 1.08 (crecimiento del cat�logo 8% YoY estimado)
+        - yoy_pct = ((SO_2026 - SO_2025) / SO_2025) � 100
 
     Picos:
       mes_pico_sellout: nombre del mes con mayor Sell-Out en los 12 meses
@@ -470,7 +493,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
     cols_si = [f"sellin_{_nombre_mes(m)[:3].lower()}_{a}" for m, a in meses]
     labels  = [f"{_nombre_mes(m)} {a}" for m, a in meses]
 
-    # YoY basado en los próximos 4 meses vs los mismos 4 meses del año anterior
+    # YoY basado en los pr�ximos 4 meses vs los mismos 4 meses del a�o anterior
     cols_so_futuros = cols_so[0:4]
     try:
         from pathlib import Path
@@ -529,7 +552,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         tiene_historial_mensual = True
 
     except Exception as e:
-        log.warning(f"No se pudo cargar historial_mensual_sku_validado.csv: {e}. Usando estimaciones fallback para MoM y duración.")
+        log.warning(f"No se pudo cargar historial_mensual_sku_validado.csv: {e}. Usando estimaciones fallback para MoM y duraci�n.")
         df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
@@ -541,7 +564,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
     try:
         from pathlib import Path
         proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
-        # --- LECTURA DE SELLOUT HISTÓRICO PARA GRAFICOS 24 MESES ---
+        # --- LECTURA DE SELLOUT HIST�RICO PARA GRAFICOS 24 MESES ---
         so_hist = pd.read_csv(proc_dir / "sellout_historico_clean.csv", sep=";", dtype=str, encoding="utf-8-sig")
         so_hist.columns = so_hist.columns.str.strip()
         so_hist["sku"] = so_hist["sku"].astype(str).str.strip()
@@ -589,7 +612,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
                 stk_hist = pd.read_csv(stk_hist_path, sep=";", dtype=str, encoding="utf-8-sig")
                 stk_hist.columns = stk_hist.columns.str.strip()
                 stk_hist["sku"] = stk_hist["sku"].astype(str).str.strip()
-                stk_hist["_ano"] = stk_hist["año"].astype(str).str.strip()
+                stk_hist["_ano"] = stk_hist["a�o"].astype(str).str.strip()
                 stk_hist["mes"] = stk_hist["mes"].astype(str).str.strip().str.lower()
                 stk_hist["stock_fisico"] = pd.to_numeric(stk_hist["stock_fisico"], errors="coerce").fillna(0)
 
@@ -624,7 +647,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         FACTOR_TENDENCIA_YOY = 1.08
         col_so_base  = cols_so[0]   # primer mes = mes base (Mayo 2026)
         so_2026 = df[col_so_base]
-        so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimación año anterior
+        so_2025 = so_2026 / FACTOR_TENDENCIA_YOY   # estimaci�n a�o anterior
         df["yoy_sellout_pct"] = ((so_2026 - so_2025) / so_2025.replace(0, float("nan")) * 100).round(2)
         df["sellout_mes_anterior_estimado"] = so_2025.round(0)
         
@@ -642,7 +665,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
                 col_name = f"hist_sellin_{nombre_mes}_{anio_hist_n}"
                 df[col_name] = 0.0
 
-    # Mes pico Sell-Out: índice del máximo entre las 12 proyecciones
+    # Mes pico Sell-Out: �ndice del m�ximo entre las 12 proyecciones
     so_matrix = df[cols_so].values
     idx_max_so = so_matrix.argmax(axis=1)
     df["mes_pico_sellout"]         = [labels[i] for i in idx_max_so]
@@ -658,12 +681,12 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 5 — Sell-In Ajustado por UMP
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 5 - Sell-In Ajustado por UMP
+# ������������������������������������������������������������������������������
 
 def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFrame:
-    """Carga familias activas y aplica su stock consolidado al cálculo."""
+    """Carga familias activas y aplica su stock consolidado al c�lculo."""
     try:
         try:
             from src.services.maquila_service import (
@@ -698,7 +721,7 @@ def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFr
     except Exception as exc:
         log.warning(
             "No se pudieron cargar las familias de maquila para la sugerencia (%s). "
-            "Se utilizará stock individual.",
+            "Se utilizar� stock individual.",
             exc,
         )
         familias_map = {}
@@ -713,13 +736,13 @@ def _integrar_stock_familia_en_sugerencia(df: pd.DataFrame, engine) -> pd.DataFr
 
 def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     """
-    Para cada mes, calcula el Sell-In ajustado al múltiplo de UMP (gancheras).
+    Para cada mes, calcula el Sell-In ajustado al m�ltiplo de UMP (gancheras).
 
-    sellin_ajustado_mmm_aaaa = ceil(sellin_mmm_aaaa / ump) × ump
+    sellin_ajustado_mmm_aaaa = ceil(sellin_mmm_aaaa / ump) � ump
 
-    También calcula la sugerencia de compra inmediata (próximo mes) ajustada.
+    Tambi�n calcula la sugerencia de compra inmediata (pr�ximo mes) ajustada.
     """
-    log.info("Ajustando Sell-In por UMP (Unidad Mínima de Pedido)...")
+    log.info("Ajustando Sell-In por UMP (Unidad M�nima de Pedido)...")
 
     ump = df["ump"].fillna(0)
     ajustados = 0
@@ -739,14 +762,14 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
         ajustados += 1
 
     # -------------------------------------------------------------------------
-    # Nueva Sugerencia de Compra (Modelo de Cobertura Dinámica)
+    # Nueva Sugerencia de Compra (Modelo de Cobertura Din�mica)
     # -------------------------------------------------------------------------
-    log.info("Calculando Sugerencia de Compra con Target Dinámico...")
+    log.info("Calculando Sugerencia de Compra con Target Din�mico...")
     
     # 1. Ritmo Pasado = promedio semanal * 4.33 (mes)
     df["sug_ritmo_pasado"] = df["ritmo_semanal_uds"] * 4.33
     
-    # 2. Ritmo Futuro = promedio Sell-Out próximos 4 meses
+    # 2. Ritmo Futuro = promedio Sell-Out pr�ximos 4 meses
     cols_so_prox_4 = [f"sellout_{_nombre_mes(m)[:3].lower()}_{a}" for m, a in meses[0:4]]
     # Asegurar que las columnas existen y sacar promedio
     exist_cols_so = [c for c in cols_so_prox_4 if c in df.columns]
@@ -765,13 +788,21 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
         with engine.connect() as conn:
             df_conf = pd.read_sql(text("SELECT tipo_regla, clave, meses FROM config_cobertura"), conn)
     except Exception as e:
-        log.warning(f"No se pudo cargar config_cobertura ({e}), usando 5.0 por defecto.")
+        log.warning(
+            "No se pudo cargar config_cobertura (%s), usando %.1f meses por defecto.",
+            e,
+            COBERTURA_MINIMA_MESES,
+        )
         df_conf = pd.DataFrame(columns=["tipo_regla", "clave", "meses"])
     
     dict_sku = df_conf[df_conf["tipo_regla"] == "SKU"].set_index("clave")["meses"].to_dict()
     dict_cat = df_conf[df_conf["tipo_regla"] == "CATEGORIA"].set_index("clave")["meses"].to_dict()
     global_val_row = df_conf[(df_conf["tipo_regla"] == "GLOBAL") & (df_conf["clave"] == "*")]
-    global_val = float(global_val_row["meses"].iloc[0]) if not global_val_row.empty else 5.0
+    global_val = (
+        float(global_val_row["meses"].iloc[0])
+        if not global_val_row.empty
+        else COBERTURA_MINIMA_MESES
+    )
 
     def _resolver_cobertura(row):
         sku = str(row.get("sku", ""))
@@ -782,24 +813,35 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
             return float(dict_cat[cat]), "CATEGORIA"
         if not global_val_row.empty:
             return global_val, "GLOBAL"
-        return 5.0, "FALLBACK"
+        return COBERTURA_MINIMA_MESES, "FALLBACK"
 
     res = df.apply(_resolver_cobertura, axis=1, result_type="expand")
-    df["meses_cobertura_objetivo"] = res[0]
+    # 5,4 meses es el m�nimo operativo. Las configuraciones mayores se
+    # conservan; las antiguas menores ya no pueden reducir este piso.
+    cobertura_base, crecimiento_detectado, meses_extra, cobertura_objetivo = (
+        _aplicar_regla_cobertura_compra(
+            res[0],
+            df.get("mom_sellout_pct", pd.Series(float("nan"), index=df.index)),
+        )
+    )
+    df["meses_cobertura_base"] = cobertura_base
     df["origen_cobertura_objetivo"] = res[1]
+    df["crecimiento_compra_detectado"] = crecimiento_detectado
+    df["meses_extra_por_crecimiento"] = meses_extra
+    df["meses_cobertura_objetivo"] = cobertura_objetivo
 
     df["sug_target_meses"] = df["meses_cobertura_objetivo"]
     df["sug_target_uds"] = (df["sug_ritmo_mensual"] * df["sug_target_meses"]).round(0)
     df["stock_objetivo"] = df["sug_target_uds"]
     
     # 5. Inventario Disponible
-    # Si el SKU pertenece a una familia de maquila activa, el stock físico útil
+    # Si el SKU pertenece a una familia de maquila activa, el stock f�sico �til
     # para decidir la compra es la suma de todos los integrantes de la familia.
     # El stock individual se conserva en stock_act para inventario y alertas.
     df = _integrar_stock_familia_en_sugerencia(df, engine)
     
     # 5.1 Agregar ritmo de familia (si aplica) al ritmo mensual
-    # sug_ritmo_reemplazable_adicional_4_sem está en escala de 4 semanas, lo pasamos a escala mensual ( / 4.0 * 4.33)
+    # sug_ritmo_reemplazable_adicional_4_sem est� en escala de 4 semanas, lo pasamos a escala mensual ( / 4.0 * 4.33)
     ritmo_adicional_4_sem = df.get("sug_ritmo_reemplazable_adicional_4_sem", pd.Series(0, index=df.index)).fillna(0)
     ritmo_adicional_mensual = (ritmo_adicional_4_sem / 4.0) * 4.33
     df["sug_ritmo_mensual"] = (df["sug_ritmo_mensual"] + ritmo_adicional_mensual).round(0)
@@ -812,7 +854,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
     
     # Inventario disponible = stock central (sug_stock_actual) + ETA
-    # (El stock_tienda es solo informativo y NO debe usarse para el cálculo de compras)
+    # (El stock_tienda es solo informativo y NO debe usarse para el c�lculo de compras)
     inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
     
     # 6. Sugerencia Neta Bruta
@@ -820,8 +862,8 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     sug_neta = sug_neta.clip(lower=0)
     df["sugerencia_bruta"] = sug_neta
 
-    # 6.1 Detección de Quiebre de Sell-In (Sell-In <= 5 o cercano a 0 habiendo demanda)
-    # Aumenta el cupo de compra proyectado (+25% buffer o mínimo 1 mes)
+    # 6.1 Detecci�n de Quiebre de Sell-In (Sell-In <= 5 o cercano a 0 habiendo demanda)
+    # Aumenta el cupo de compra proyectado (+25% buffer o m�nimo 1 mes)
     si_cols = [c for c in df.columns if c.startswith("sellin_") and not c.startswith("sellin_ump") and not c.startswith("sellin_minimo")]
     if si_cols:
         si_primeros = df[si_cols[:2]].fillna(0)
@@ -837,7 +879,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
         df.loc[quiebre_si, "sug_ritmo_mensual"]
     )
 
-    # 6.2 Regla SELLOS: comparar la compra con la proyección del primer gráfico y agregar 100-200 (150) de margen para crecer
+    # 6.2 Regla SELLOS: comparar la compra con la proyecci�n del primer gr�fico y agregar 100-200 (150) de margen para crecer
     if "categoria" in df.columns:
         es_sellos = df["categoria"].astype(str).str.strip().str.upper() == "SELLOS"
         margen_crecer_sellos = 150.0
@@ -847,7 +889,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
             base_sellos[es_sellos & (df["sug_ritmo_mensual"] > 0)] + margen_crecer_sellos
         )
 
-    # 6.3 Proyección de Compra Masiva Año Nuevo Chino (Arribos requeridos en Febrero + Marzo + Abril)
+    # 6.3 Proyecci�n de Compra Masiva A�o Nuevo Chino (Arribos requeridos en Febrero + Marzo + Abril)
     cols_feb = [c for c in df.columns if c.startswith("sellout_feb_")]
     cols_mar = [c for c in df.columns if c.startswith("sellout_mar_")]
     cols_abr = [c for c in df.columns if c.startswith("sellout_abr_")]
@@ -863,7 +905,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     # 7. Descuento por Decrecimiento MoM <= -10% sobre la Sugerencia Neta (antes de UMP)
     def apply_growth_discount_before_ump(row):
         sug = row["sugerencia_bruta"]
-        # No aplicar descuento por decrecimiento a categoría SELLOS con margen de crecimiento
+        # No aplicar descuento por decrecimiento a categor�a SELLOS con margen de crecimiento
         if "categoria" in row and str(row["categoria"]).strip().upper() == "SELLOS":
             return sug
         mom = row.get("mom_sellout_pct")
@@ -893,14 +935,14 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 6 — Excepciones y Alertas de Inventario
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 6 - Excepciones y Alertas de Inventario
+# ������������������������������������������������������������������������������
 
 def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calcula reglas de negocio, excepciones y el semáforo final de alertas de inventario.
-    Centraliza toda la lógica de validación del SKU.
+    Calcula reglas de negocio, excepciones y el sem�foro final de alertas de inventario.
+    Centraliza toda la l�gica de validaci�n del SKU.
     """
     from datetime import datetime, timedelta
     import json
@@ -928,7 +970,11 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         estado = str(row.get("estado", "")).upper()
         transito = float(row.get("cantidad_transito", 0) if pd.notna(row.get("cantidad_transito")) else 0)
         eta_raw = row.get("eta_proxima")
-        target_meses = float(row.get("meses_cobertura_objetivo", 5.0) if pd.notna(row.get("meses_cobertura_objetivo")) else 5.0)
+        target_meses = float(
+            row.get("meses_cobertura_objetivo", COBERTURA_MINIMA_MESES)
+            if pd.notna(row.get("meses_cobertura_objetivo"))
+            else COBERTURA_MINIMA_MESES
+        )
         
         # 1. DATOS_INCOMPLETOS
         if not sku or sku == "nan" or pd.isna(row.get("nombre_producto")):
@@ -945,7 +991,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         # 3. PRODUCTO_BLOQUEADO / PRODUCTO_DESCONTINUADO
         if estado in ["BLOQUEADO", "BLOQUEADOS"]:
             excepciones.append("PRODUCTO_BLOQUEADO")
-            # Los bloqueados sí se consideran para la compra
+            # Los bloqueados s� se consideran para la compra
         elif estado in ["DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"]:
             excepciones.append("PRODUCTO_DESCONTINUADO")
             bloquea = True
@@ -977,7 +1023,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         df.at[idx, "requiere_revision"] = int(requiere)
         df.at[idx, "bloquea_compra_automatica"] = int(bloquea)
 
-        # Calculo de Semáforo
+        # Calculo de Sem�foro
         dur_solo_stock = 999.0 if ritmo == 0 else stock / ritmo
         
         alerta = "VERDE"
@@ -1013,7 +1059,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         
         # Primero evaluamos overrides de forecast o bloqueos estructurales
         if "FORECAST_MANUAL" in excepciones:
-            explicacion = "Forecast manual activo. La recomendación se calculó usando una proyección definida por usuario."
+            explicacion = "Forecast manual activo. La recomendaci�n se calcul� usando una proyecci�n definida por usuario."
         elif "PRODUCTO_BLOQUEADO" in excepciones:
             cob_actual = f"Cobertura actual: {dur_solo_stock:.1f} meses." if dur_solo_stock < 999 else "Cobertura actual: +10 meses."
             if sugerencia_final > 0:
@@ -1022,34 +1068,34 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 explicacion = f"Producto bloqueado en maestra (evaluado para compra). {cob_actual}"
         elif "PRODUCTO_DESCONTINUADO" in excepciones:
-            explicacion = "Producto descontinuado. Compra automática bloqueada."
+            explicacion = "Producto descontinuado. Compra autom�tica bloqueada."
         elif bloquea:
-            explicacion = "Condición de error bloquea la recomendación automática de compra (revisar excepciones)."
+            explicacion = "Condici�n de error bloquea la recomendaci�n autom�tica de compra (revisar excepciones)."
         else:
             cob_actual = f"Cobertura actual: {dur_solo_stock:.1f} meses." if dur_solo_stock < 999 else "Cobertura actual: +10 meses."
             
             if transito > 0:
                 if pd.isna(eta_raw):
-                    explicacion = "Tránsito registrado sin ETA. La cobertura futura no puede validarse hasta confirmar fecha de llegada."
+                    explicacion = "Tr�nsito registrado sin ETA. La cobertura futura no puede validarse hasta confirmar fecha de llegada."
                 else:
                     eta_dt = pd.to_datetime(eta_raw)
                     eta_str = eta_dt.strftime("%d %b") if pd.notna(eta_dt) else "desconocida"
                     if fecha_quiebre and eta_dt < fecha_quiebre:
-                        explicacion = f"{cob_actual} Existe tránsito de {transito:g} unidades con ETA {eta_str}, antes de la fecha estimada de quiebre. No se recomienda compra adicional por ahora."
+                        explicacion = f"{cob_actual} Existe tr�nsito de {transito:g} unidades con ETA {eta_str}, antes de la fecha estimada de quiebre. No se recomienda compra adicional por ahora."
                     else:
                         if sugerencia_final > 0:
                             sug = f"Se sugieren {sugerencia_final:g} unidades (con ajuste UMP) para alcanzar target de {target_meses} meses."
-                            explicacion = f"{cob_actual} Existe tránsito con ETA {eta_str}, pero no cubre el requerimiento a tiempo. {sug}"
+                            explicacion = f"{cob_actual} Existe tr�nsito con ETA {eta_str}, pero no cubre el requerimiento a tiempo. {sug}"
                         else:
-                            explicacion = f"{cob_actual} Existe tránsito con ETA {eta_str} y stock suficiente. No se requiere comprar."
+                            explicacion = f"{cob_actual} Existe tr�nsito con ETA {eta_str} y stock suficiente. No se requiere comprar."
             else:
                 if sugerencia_final > 0:
                     semanas_quiebre = dur_solo_stock * 4.33
                     q_str = f"Quiebre estimado en {semanas_quiebre:.1f} semanas." if dur_solo_stock < 999 else "Quiebre estimado en +50 semanas."
                     sug = f"Se sugieren {sugerencia_final:g} unidades para alcanzar target de {target_meses} meses."
-                    explicacion = f"{q_str} {cob_actual} No existe tránsito confirmado. {sug}"
+                    explicacion = f"{q_str} {cob_actual} No existe tr�nsito confirmado. {sug}"
                 else:
-                    explicacion = f"{cob_actual} No hay necesidad inminente de reposición para el target de {target_meses} meses."
+                    explicacion = f"{cob_actual} No hay necesidad inminente de reposici�n para el target de {target_meses} meses."
 
         if row.get("quiebre_sellin_detectado", 0) == 1:
             excepciones.append("QUIEBRE_SELLIN")
@@ -1062,14 +1108,14 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Paso 7 — Persistencia
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Paso 7 - Persistencia
+# ������������������������������������������������������������������������������
 
 def _persistir(df: pd.DataFrame, engine) -> int:
     """
     Sobreescribe la tabla planificacion_sop en PostgreSQL (if_exists='replace').
-    Sanitiza nombres de columna y convierte tipos problemáticos.
+    Sanitiza nombres de columna y convierte tipos problem�ticos.
     """
     log.info("Persistiendo planificacion_sop en PostgreSQL (%d filas x %d cols)...",
              *df.shape)
@@ -1113,16 +1159,16 @@ def _persistir(df: pd.DataFrame, engine) -> int:
     return count
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Función principal exportada
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
+# Funci�n principal exportada
+# ������������������������������������������������������������������������������
 
 def run_planning(archivos_proc=None) -> dict:
     """
-    Ejecuta el Módulo de Inteligencia SOP completo.
+    Ejecuta el M�dulo de Inteligencia SOP completo.
 
     Returns:
-        dict con métricas de resultado: filas, columnas, tabla destino
+        dict con m�tricas de resultado: filas, columnas, tabla destino
     """
     hoy = date.today()
 
@@ -1134,7 +1180,7 @@ def run_planning(archivos_proc=None) -> dict:
 
     engine = _build_engine()
 
-    # Paso 1: Extracción y cruce
+    # Paso 1: Extracci�n y cruce
     log.info("--- [4.1] Extraccion y cruce ---")
     df = _extraer_datos(engine)
 
@@ -1142,7 +1188,7 @@ def run_planning(archivos_proc=None) -> dict:
     log.info("--- [4.2] Base transaccional 4 semanas ---")
     df = _calcular_base_transaccional(df)
 
-    # Paso 3: Proyección 12 meses
+    # Paso 3: Proyecci�n 12 meses
     log.info("--- [4.3] Proyeccion matricial 12 meses ---")
     df, meses = _proyectar_12_meses(df, hoy)
 
@@ -1157,7 +1203,7 @@ def run_planning(archivos_proc=None) -> dict:
         if si_hist_path.exists():
             df_si_hist = pd.read_csv(si_hist_path, sep=";")
             
-            # Rename año to _ano
+            # Rename a�o to _ano
             for col in df_si_hist.columns:
                 c = col.strip().lower()
                 if c.startswith("a") and c.endswith("o"):
@@ -1173,7 +1219,7 @@ def run_planning(archivos_proc=None) -> dict:
                 df_si_hist["_ano"] = df_si_hist["_ano"].astype(str).str.strip()
                 df_si_hist["unidades_sellin"] = pd.to_numeric(df_si_hist.get("unidades_sellin", 0), errors="coerce").fillna(0)
             else:
-                log.warning(f"Columna año no encontrada en sellin_historico_clean.csv. Columnas: {df_si_hist.columns.tolist()}")
+                log.warning(f"Columna a�o no encontrada en sellin_historico_clean.csv. Columnas: {df_si_hist.columns.tolist()}")
                 df_si_hist = pd.DataFrame()
         else:
             df_si_hist = pd.DataFrame()
@@ -1250,11 +1296,11 @@ def run_planning(archivos_proc=None) -> dict:
     log.info("--- [4.7] Persistencia en PostgreSQL ---")
     count = _persistir(df, engine)
 
-    # Reporte de verificación
+    # Reporte de verificaci�n
     log.info("=" * 60)
     log.info("VERIFICACION PLANIFICACION_SOP:")
     with engine.connect() as conn:
-        # Muestra de validación: SKU, stock, ritmo, pico, yoy, sugerencia_compra
+        # Muestra de validaci�n: SKU, stock, ritmo, pico, yoy, sugerencia_compra
         rows = conn.execute(text("""
             SELECT
                 sku,
@@ -1297,9 +1343,9 @@ def run_planning(archivos_proc=None) -> dict:
     }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 # Punto de entrada standalone
-# ──────────────────────────────────────────────────────────────────────────────
+# ������������������������������������������������������������������������������
 
 if __name__ == "__main__":
     try:

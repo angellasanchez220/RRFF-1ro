@@ -3,7 +3,7 @@ import { fetchSOP, fetchMrpMateriales, generarPoProveedor } from '../api';
 import * as XLSX from 'xlsx';
 import SkuDetailModal from '../components/SkuDetailModal';
 
-// Helper: Obtener número de semana (ISO)
+// Helper: Obtener n�mero de semana (ISO)
 function getWeekNumber(d) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -36,7 +36,7 @@ const MESES_ES = [
 ];
 
 function getMonthLabel(d) {
-  return `📅 ${MESES_ES[d.getMonth()]} ${d.getFullYear()}`;
+  return `?? ${MESES_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 export default function Compras() {
@@ -54,7 +54,7 @@ export default function Compras() {
   const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
   const [selectedSku, setSelectedSku] = useState(null);
 
-  // Estados para Emisión Directa de Orden de Compra (PO)
+  // Estados para Emisi�n Directa de Orden de Compra (PO)
   const [selectedSkusForPo, setSelectedSkusForPo] = useState(new Set());
   const [showPoModal, setShowPoModal] = useState(false);
   const [poForm, setPoForm] = useState({
@@ -62,7 +62,7 @@ export default function Compras() {
     proveedor: 'PROVEEDOR PRINCIPAL',
     fecha_pedido: new Date().toISOString().split('T')[0],
     fecha_eta: '',
-    lead_time_dias: 60,
+    lead_time_dias: 120,
     observacion: '',
     items: []
   });
@@ -74,13 +74,13 @@ export default function Compras() {
   const [mrpLoading, setMrpLoading] = useState(false);
   const [mrpFilter, setMrpFilter] = useState('ALL'); // 'ALL' | 'CRITICO' | 'ALERTA'
 
-  const LEAD_TIME_DAYS = 60; // Días de tránsito (margen)
+  const LEAD_TIME_DAYS = 120; // Lead time operativo vigente
 
   const loadSopData = async () => {
     setLoading(true);
     try {
       const sopData = await fetchSOP();
-      setData(sopData.data || []);
+      setData(Array.isArray(sopData?.data) ? sopData.data : []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -108,7 +108,7 @@ export default function Compras() {
     loadMrpData();
   }, []);
 
-  // ── APLICAR FILTROS GLOBALES ──
+  // �� APLICAR FILTROS GLOBALES ��
   let filteredData = Array.isArray(data) ? data : [];
   if (filterAlert !== 'ALL') {
     filteredData = filteredData.filter(s => s.nivel_alerta === filterAlert);
@@ -153,7 +153,7 @@ export default function Compras() {
     });
   }
 
-  // Filtro específico para Compra Masiva Año Nuevo Chino
+  // Filtro espec�fico para Compra Masiva A�o Nuevo Chino
   if (filterCNY) {
     filteredData = filteredData.filter(s => (s.compra_masiva_cny_uds || 0) > 0);
   }
@@ -179,15 +179,15 @@ export default function Compras() {
     (acc, curr) => acc + (Number(curr.compra_masiva_cny_uds) || 0), 0
   );
 
-  // ── 1. PROCESAR SUGERENCIAS AUTOMÁTICAS ──
+  // �� 1. PROCESAR SUGERENCIAS AUTOM�TICAS ��
   const sugList = filteredData.filter(s => (s.sugerencia_compra_inmediata_uds || 0) > 0 || (s.sugerencia_compra_dinamica || 0) > 0 || (filterCNY && (s.compra_masiva_cny_uds || 0) > 0));
   
-  // ── PROCESAR REVISIONES (EXCEPCIONES) ──
+  // �� PROCESAR REVISIONES (EXCEPCIONES) ��
   const revisionList = filteredData.filter(s => s.requiere_revision);
   
   const groupedSug = {};
   sugList.forEach(s => {
-    // duracion_fisica_solo son MESES. 1 mes ~= 30.4 días.
+    // duracion_fisica_solo son MESES. 1 mes ~= 30.4 d�as.
     const daysToStockout = (s.duracion_fisica_solo || 0) * 30.4;
     const stockoutDate = new Date();
     stockoutDate.setDate(stockoutDate.getDate() + daysToStockout);
@@ -197,14 +197,14 @@ export default function Compras() {
     
     s.idealDateObj = idealDate;
     
-    // Si la fecha ideal ya pasó, la agrupamos como "URGENTE / ATRASADA"
+    // Si la fecha ideal ya pas�, la agrupamos como "URGENTE / ATRASADA"
     const hoy = new Date();
     let groupKey = '';
     let groupLabel = '';
     
     if (idealDate < hoy) {
       groupKey = '0000-URGENTE';
-      groupLabel = '🚨 PEDIDOS ATRASADOS (Emitir YA)';
+      groupLabel = '?? PEDIDOS ATRASADOS (Emitir YA)';
     } else if (groupBy === 'MONTH') {
       const year = idealDate.getFullYear();
       const monthNum = (idealDate.getMonth() + 1).toString().padStart(2, '0');
@@ -213,14 +213,14 @@ export default function Compras() {
     } else {
       const wk = getWeekNumber(idealDate);
       groupKey = `${wk.year}-W${wk.week.toString().padStart(2, '0')}`;
-      groupLabel = `📅 ${getWeekDateRange(idealDate)}`;
+      groupLabel = `?? ${getWeekDateRange(idealDate)}`;
     }
 
     if (!groupedSug[groupKey]) groupedSug[groupKey] = { label: groupLabel, items: [] };
     groupedSug[groupKey].items.push(s);
   });
 
-  // ── 2. PROCESAR OBSERVACIONES HUMANAS ──
+  // �� 2. PROCESAR OBSERVACIONES HUMANAS ��
   // Regex para atrapar "comprar", "compra" + [palabras opcionales] + NUMERO
   const regexNum = /compr(?:ar|a)\s*(?:unas?\s+|unos?\s+|cajas?\s+|uds?\s*)?(\d+)/i;
   const obsList = [];
@@ -233,11 +233,11 @@ export default function Compras() {
     }
   });
 
-  // Ordenar grupos de sugerencias cronológicamente
+  // Ordenar grupos de sugerencias cronol�gicamente
   const sortedGroupKeys = Object.keys(groupedSug).sort();
 
     const handleExportExcel = (onlyUrgentes = false) => {
-    // Hoja 1: Sugerencias Automáticas
+    // Hoja 1: Sugerencias Autom�ticas
     const wsSugData = [];
     const keysToExport = onlyUrgentes ? sortedGroupKeys.filter(k => k === '0000-URGENTE') : sortedGroupKeys;
     
@@ -265,7 +265,7 @@ export default function Compras() {
       sortedItems.forEach(s => {
         const fList = s.familia_skus || s.familia_maquila || [];
         const isMaq = s.es_maquilable === true || fList.length > 1;
-        const esMaquilable = isMaq ? 'Sí' : 'No';
+        const esMaquilable = isMaq ? 'S�' : 'No';
         const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
         const familiaStr = fList.length > 1
           ? fList.map(c => `${c.sku || c.codigo_femaco} (Stk: ${c.stock_act || 0})`).join(' | ')
@@ -274,16 +274,16 @@ export default function Compras() {
         wsSugData.push({
           'Grupo': group.label,
           'SKU': s.sku,
-          'Código Femaco': s.codigo_femaco || '',
+          'C�digo Femaco': s.codigo_femaco || '',
           'Nombre de Producto': s.nombre_producto,
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
           'Hermanos (Componentes)': familiaStr,
           'Ventas 4 sem': s.total_4_sem_verificado || 0,
           'Stock': s.stock_act || 0,
-          'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
+          'Duraci�n': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
-          'Compra Masiva Año Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
+          'Compra Masiva A�o Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
         });
       });
     });
@@ -292,24 +292,24 @@ export default function Compras() {
     const wsObsData = obsList.map(s => {
       const fList = s.familia_skus || s.familia_maquila || [];
       const isMaq = s.es_maquilable === true || fList.length > 1;
-      const esMaquilable = isMaq ? 'Sí' : 'No';
+      const esMaquilable = isMaq ? 'S�' : 'No';
       const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
       const familiaStr = fList.length > 1
           ? fList.map(c => `${c.sku || c.codigo_femaco} (Stock: ${c.stock_act || 0}, Venta/mes: ${c.ritmo_mensual || 0})`).join(', ')
           : '';
       return {
         'SKU': s.sku,
-        'Código Femaco': s.codigo_femaco || '',
+        'C�digo Femaco': s.codigo_femaco || '',
         'Nombre de Producto': s.nombre_producto,
         'Es Maquilable': esMaquilable,
         'Stock Total Familia Maquila': stockFamilia,
         'U/E': s.ump || '',
         'Ventas 4 sem': s.total_4_sem_verificado || 0,
         'Stock': s.stock_act || 0,
-        'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
-        'Observación Original': s.observacion || '',
+        'Duraci�n': Number(s.duracion_fisica_solo || 0).toFixed(1),
+        'Observaci�n Original': s.observacion || '',
         'Detalle Hermanos': familiaStr,
-        'Extracción (Uds)': s.extraido || '?'
+        'Extracci�n (Uds)': s.extraido || '?'
       };
     });
 
@@ -332,21 +332,21 @@ export default function Compras() {
         const diferencia = dinamico - sugerido;
         const fList = s.familia_skus || s.familia_maquila || [];
         const isMaq = s.es_maquilable === true || fList.length > 1;
-        const esMaquilable = isMaq ? 'Sí' : 'No';
+        const esMaquilable = isMaq ? 'S�' : 'No';
         const stockFamilia = isMaq && s.stock_bruto_familia != null ? s.stock_bruto_familia : (s.stock_act || 0);
         wsResumenData.push({
           'SKU': s.sku,
-          'Código Femaco': s.codigo_femaco || '',
+          'C�digo Femaco': s.codigo_femaco || '',
           'Grupo': group.label,
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
           'Ventas 4 sem': s.total_4_sem_verificado || 0,
           'Stock': s.stock_act || 0,
-          'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
+          'Duraci�n': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': sugerido,
-          'Sugerido Dinámico (Uds)': dinamico,
-          'Diferencia (Dinámico - Sugerido)': diferencia,
-          'Compra Masiva Año Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
+          'Sugerido Din�mico (Uds)': dinamico,
+          'Diferencia (Din�mico - Sugerido)': diferencia,
+          'Compra Masiva A�o Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
         });
       });
     });
@@ -355,7 +355,7 @@ export default function Compras() {
     
     if (wsSugData.length > 0) {
       const wsSug = XLSX.utils.json_to_sheet(wsSugData);
-      XLSX.utils.book_append_sheet(wb, wsSug, 'Sugerencias Automáticas');
+      XLSX.utils.book_append_sheet(wb, wsSug, 'Sugerencias Autom�ticas');
     }
     
     if (wsObsData.length > 0) {
@@ -417,7 +417,7 @@ export default function Compras() {
       fecha_pedido: new Date().toISOString().split('T')[0],
       fecha_eta: etaStr,
       lead_time_dias: LEAD_TIME_DAYS,
-      observacion: 'Emisión automática generada desde Plan de Compras S&OP',
+      observacion: 'Emisi�n autom�tica generada desde Plan de Compras S&OP',
       items: itemsFormatted
     });
     setShowPoModal(true);
@@ -459,17 +459,17 @@ export default function Compras() {
   const handleConfirmSubmitPo = async (e) => {
     e.preventDefault();
     if (!poForm.numero_oc.trim()) {
-      alert("Por favor ingresa un código / número de Orden de Compra (PO).");
+      alert("Por favor ingresa un c�digo / n�mero de Orden de Compra (PO).");
       return;
     }
     if (!poForm.items || poForm.items.length === 0) {
-      alert("No hay ítems en la orden de compra.");
+      alert("No hay �tems en la orden de compra.");
       return;
     }
     setSubmittingPo(true);
     try {
       const res = await generarPoProveedor(poForm);
-      alert(`✅ ${res.mensaje || 'Orden de Compra emitida con éxito e inyectada a Tránsito.'}`);
+      alert(`? ${res.mensaje || 'Orden de Compra emitida con �xito e inyectada a Tr�nsito.'}`);
       setShowPoModal(false);
       setSelectedSkusForPo(new Set());
       loadSopData();
@@ -506,11 +506,11 @@ export default function Compras() {
     <div className="content-area">
       <main className="main-panel" style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>🛒 Plan de Compras</h1>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>?? Plan de Compras</h1>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ fontSize: '0.85rem', color: '#666', background: '#fff', padding: '6px 12px', borderRadius: 20, border: '1px solid #ddd', display: 'flex', flexDirection: 'column' }}>
-              <span>⏱ Lead time estándar de reposición: <b>5 meses</b></span>
-              <span style={{ fontSize: '0.75rem', fontStyle: 'italic', marginTop: '2px' }}>Valor operativo provisional. Las ETA reales tienen prioridad cuando están disponibles.</span>
+              <span>? Lead time est�ndar de reposici�n: <b>120 d�as</b></span>
+              <span style={{ fontSize: '0.75rem', fontStyle: 'italic', marginTop: '2px' }}>Valor operativo provisional. Las ETA reales tienen prioridad cuando est�n disponibles.</span>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <button
@@ -520,8 +520,8 @@ export default function Compras() {
                   borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8,
                   boxShadow: '0 2px 4px rgba(37,99,235,0.25)'
                 }}
-                title="Generar Orden de Compra formal para inyectar a Tránsito">
-                <span>📝 Emitir PO</span>
+                title="Generar Orden de Compra formal para inyectar a Tr�nsito">
+                <span>?? Emitir PO</span>
                 {selectedSkusForPo.size > 0 && (
                   <span style={{ background: '#fff', color: '#2563eb', padding: '1px 7px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>
                     {selectedSkusForPo.size}
@@ -531,18 +531,18 @@ export default function Compras() {
               <button 
                 onClick={() => handleExportExcel(false)}
                 style={{ padding: '8px 16px', background: '#1d6b3e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>
-                📥 Excel (Todo)
+                ?? Excel (Todo)
               </button>
               <button 
                 onClick={() => handleExportExcel(true)}
                 style={{ padding: '8px 16px', background: '#d32f2f', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 'bold' }}>
-                📥 Excel (Urgentes)
+                ?? Excel (Urgentes)
               </button>
             </div>
           </div>
         </div>
 
-        {/* ── NAVEGACIÓN DE PESTAÑAS S&OP vs MRP ── */}
+        {/* �� NAVEGACI�N DE PESTA�AS S&OP vs MRP �� */}
         <div style={{ display: 'flex', gap: 12, borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
           <button
             onClick={() => setActiveTab('SOP')}
@@ -552,7 +552,7 @@ export default function Compras() {
               color: activeTab === 'SOP' ? '#1d6b3e' : '#64748b',
               borderBottom: activeTab === 'SOP' ? '3px solid #1d6b3e' : 'none'
             }}>
-            🛒 Abastecimiento S&OP (Productos)
+            ?? Abastecimiento S&OP (Productos)
           </button>
           <button
             onClick={() => {
@@ -566,40 +566,40 @@ export default function Compras() {
               borderBottom: activeTab === 'MRP' ? '3px solid #9333ea' : 'none',
               display: 'flex', alignItems: 'center', gap: 6
             }}>
-            <span>📦 MRP Insumos de Maquila</span>
+            <span>?? MRP Insumos de Maquila</span>
             {mrpResumen && mrpResumen.criticos > 0 && (
               <span style={{ background: '#ef4444', color: '#fff', padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 800 }}>
-                {mrpResumen.criticos} críticos
+                {mrpResumen.criticos} cr�ticos
               </span>
             )}
           </button>
         </div>
 
-        {/* ── CONTENIDO PRINCIPAL: S&OP vs MRP ── */}
+        {/* �� CONTENIDO PRINCIPAL: S&OP vs MRP �� */}
         {activeTab === 'SOP' ? (
           <>
-            {/* ── ADVERTENCIA DE REGLAS ── */}
+            {/* �� ADVERTENCIA DE REGLAS �� */}
             <div style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                ⚠️ Precaución: Reglas de Cálculo del Motor
+                ?? Precauci�n: Reglas de C�lculo del Motor
               </h4>
-          <p style={{ margin: '0 0 8px 0' }}>Estas sugerencias de compra se generan de forma automática basándose en las siguientes reglas:</p>
+          <p style={{ margin: '0 0 8px 0' }}>Estas sugerencias de compra se generan de forma autom�tica bas�ndose en las siguientes reglas:</p>
           <ul style={{ margin: 0, paddingLeft: '20px' }}>
-            <li><b>Target de Cobertura:</b> Las sugerencias buscan cubrir <b>5 meses</b> de inventario por defecto (Configurable globalmente, por SKU o categoría).</li>
-            <li><b>Lead Time (Tránsito):</b> Se asume que los pedidos tardan <b>{LEAD_TIME_DAYS} días</b> en llegar.</li>
-            <li><b>Ritmo de Venta:</b> El consumo mensual estimado se calcula en base al pico máximo histórico mensual del SKU.</li>
-            <li><b>Filtro de Tránsito:</b> Si un SKU tiene al menos 1 unidad ya en tránsito (estado Morado), <b>NO</b> se sugiere volver a comprar.</li>
+            <li><b>Target de Cobertura:</b> Las sugerencias cubren como m�nimo <b>5,4 meses</b>. Si el crecimiento mensual del SKU es igual o superior al <b>5%</b>, se agrega <b>1 mes extra</b> (6,4 meses en total).</li>
+            <li><b>Lead Time (Tr�nsito):</b> Se asume que los pedidos tardan <b>{LEAD_TIME_DAYS} d�as</b> en llegar.</li>
+            <li><b>Ritmo de Venta:</b> El consumo mensual estimado se calcula en base al pico m�ximo hist�rico mensual del SKU.</li>
+            <li><b>Filtro de Tr�nsito:</b> Si un SKU tiene al menos 1 unidad ya en tr�nsito (estado Morado), <b>NO</b> se sugiere volver a comprar.</li>
             <li><b>Disparador (Trigger):</b> Solo se sugiere comprar cuando el stock proyectado cae por debajo de 4 meses (Amarillo, Naranja o Rojo).</li>
           </ul>
         </div>
 
-        {/* ── BANNER GESTIÓN POR MAQUILA ── */}
+        {/* �� BANNER GESTI�N POR MAQUILA �� */}
         <div style={{ backgroundColor: '#ebf8ff', border: '1px solid #90cdf4', color: '#2b6cb0', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
           <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🏭 Gestión y Transformación en Maquila: Exclusión de Productos Cubiertos por Familia
+            ?? Gesti�n y Transformaci�n en Maquila: Exclusi�n de Productos Cubiertos por Familia
           </h4>
           <p style={{ margin: '0 0 6px 0' }}>
-            Todo producto que sea maquilable (pertenece a una familia de reemplazo) se abastece mediante la redistribución homogénea de su grupo familiar en <b>Maquila</b> y no se lista para compra si su familia tiene unidades suficientes. Solo pasan a compra aquellos con déficit neto familiar.
+            Todo producto que sea maquilable (pertenece a una familia de reemplazo) se abastece mediante la redistribuci�n homog�nea de su grupo familiar en <b>Maquila</b> y no se lista para compra si su familia tiene unidades suficientes. Solo pasan a compra aquellos con d�ficit neto familiar.
           </p>
           <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             <span style={{ background: '#2b6cb0', color: '#fff', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
@@ -616,13 +616,13 @@ export default function Compras() {
           </div>
         </div>
 
-        {/* ── BANNER AÑO NUEVO CHINO (FEBRERO) ── */}
+        {/* �� BANNER A�O NUEVO CHINO (FEBRERO) �� */}
         <div style={{ backgroundColor: '#fff5f5', border: '1px solid #feb2b2', color: '#9b2c2c', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
           <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🏮 Recomendación Estratégica: Compra Masiva por Año Nuevo Chino (Febrero)
+            ?? Recomendaci�n Estrat�gica: Compra Masiva por A�o Nuevo Chino (Febrero)
           </h4>
           <p style={{ margin: '0 0 6px 0' }}>
-            Las fábricas y puertos en China cierran durante semanas en febrero. Con el lead time de importación (~5 meses), los pedidos que deban arribar en <b>Febrero, Marzo y Abril</b> deben ordenarse anticipadamente en una sola <b>Compra Masiva Proyectada</b>.
+            Las f�bricas y puertos en China cierran durante semanas en febrero. Con el lead time de importaci�n de <b>120 d�as</b>, los pedidos que deban arribar en <b>Febrero, Marzo y Abril</b> deben ordenarse anticipadamente en una sola <b>Compra Masiva Proyectada</b>.
           </p>
           <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             <span style={{ background: '#c53030', color: '#fff', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
@@ -631,7 +631,7 @@ export default function Compras() {
             <button
               onClick={() => setFilterCNY(!filterCNY)}
               style={{ padding: '6px 12px', background: filterCNY ? '#742a2a' : '#fff', color: filterCNY ? '#fff' : '#c53030', border: '1px solid #c53030', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' }}>
-              {filterCNY ? '✓ Mostrando solo compras CNY' : '🏮 Filtrar solo SKUs con compra CNY'}
+              {filterCNY ? 'V Mostrando solo compras CNY' : '?? Filtrar solo SKUs con compra CNY'}
             </button>
           </div>
         </div>
@@ -639,55 +639,55 @@ export default function Compras() {
         {loading ? (
           <div className="loader-wrap"><div className="spinner" /></div>
         ) : error ? (
-          <div className="upload-result err">❌ {error}</div>
+          <div className="upload-result err">? {error}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
             
-            {/* ── FILTROS ── */}
+            {/* �� FILTROS �� */}
             <div style={{ display: 'flex', gap: 15, background: '#fff', padding: 15, borderRadius: 8, border: '1px solid #ddd' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Nivel Alerta</label>
                 <select value={filterAlert} onChange={e => setFilterAlert(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}>
                   <option value="ALL">Todas</option>
-                  <option value="ROJO">🔴 Rojo</option>
-                  <option value="NARANJA">🟠 Naranja</option>
-                  <option value="AMARILLO">🟡 Amarillo</option>
-                  <option value="MORADO">🟣 Morado</option>
-                  <option value="VERDE">🟢 Verde</option>
+                  <option value="ROJO">?? Rojo</option>
+                  <option value="NARANJA">?? Naranja</option>
+                  <option value="AMARILLO">?? Amarillo</option>
+                  <option value="MORADO">?? Morado</option>
+                  <option value="VERDE">?? Verde</option>
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Tránsito</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Tr�nsito</label>
                 <select value={filterTransit} onChange={e => setFilterTransit(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}>
                   <option value="ALL">Todos</option>
-                  <option value="WITH">Con Tránsito (&gt;0)</option>
-                  <option value="WITHOUT">Sin Tránsito (0)</option>
+                  <option value="WITH">Con Tr�nsito (&gt;0)</option>
+                  <option value="WITHOUT">Sin Tr�nsito (0)</option>
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Comparación Modelos</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Comparaci�n Modelos</label>
                 <select value={filterComparacion} onChange={e => setFilterComparacion(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc', background: '#e3f2fd' }}>
                   <option value="ALL">Todas</option>
                   <option value=">20%">Diferencia &gt;20%</option>
                   <option value="AMBAS">Ambos sugieren comprar</option>
                   <option value="SOLO_LEGACY">Solo Oficial (Legacy) compra</option>
-                  <option value="SOLO_DINAMICA">Solo Dinámico compra</option>
-                  <option value="SIN_ANALISIS">Sin análisis dinámico</option>
+                  <option value="SOLO_DINAMICA">Solo Din�mico compra</option>
+                  <option value="SIN_ANALISIS">Sin an�lisis din�mico</option>
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Crecimiento 2M</label>
                 <select value={filterCrecimiento} onChange={e => setFilterCrecimiento(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}>
                   <option value="ALL">Todos</option>
-                  <option value="ANOMALIES">Anomalías (Negativo o &gt;50%)</option>
+                  <option value="ANOMALIES">Anomal�as (Negativo o &gt;50%)</option>
                   <option value="NEG_2M">Crecimiento Negativo (2M)</option>
                   <option value="HIGH_50_2M">Crecimiento &gt;50% (2M)</option>
                 </select>
               </div>
 
-              {/* Selector de Agrupación (Mes / Semana) */}
+              {/* Selector de Agrupaci�n (Mes / Semana) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Agrupación</label>
+                <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Agrupaci�n</label>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
                     type="button"
@@ -704,7 +704,7 @@ export default function Compras() {
                     }}
                     title="Agrupar compras por Mes calendario"
                   >
-                    📅 Por Mes
+                    ?? Por Mes
                   </button>
                   <button
                     type="button"
@@ -721,26 +721,26 @@ export default function Compras() {
                     }}
                     title="Agrupar compras por Semana ISO"
                   >
-                    📆 Por Semana
+                    ?? Por Semana
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* ── SECCIÓN 1: SUGERENCIAS AUTOMÁTICAS ── */}
+            {/* �� SECCI�N 1: SUGERENCIAS AUTOM�TICAS �� */}
             <section>
               <h2 style={{ fontSize: '1.2rem', color: '#1d6b3e', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                🤖 Sugerencias del Motor
+                ?? Sugerencias del Motor
               </h2>
               
               {sortedGroupKeys.length === 0 ? (
                 <div style={{ padding: 30, textAlign: 'center', background: '#f9f9f9', borderRadius: 8, color: '#888' }}>
-                  No hay sugerencias de compra automáticas activas en este momento.
+                  No hay sugerencias de compra autom�ticas activas en este momento.
                 </div>
               ) : (
                 sortedGroupKeys.map(key => {
                   const group = groupedSug[key];
-                  // Ordenar ítems dentro del grupo: Categoría -> Familia Maquila -> Fecha ideal
+                  // Ordenar �tems dentro del grupo: Categor�a -> Familia Maquila -> Fecha ideal
                   group.items.sort((a, b) => {
                     const catA = a.categoria || '';
                     const catB = b.categoria || '';
@@ -780,14 +780,14 @@ export default function Compras() {
                                   onChange={() => toggleGroupSelection(group.items)}
                                 />
                               </th>
-                              <th>SKU / Cód. Femaco</th>
-                              <th>Categoría</th>
+                              <th>SKU / C�d. Femaco</th>
+                              <th>Categor�a</th>
                               <th>Estado & Maquila</th>
                               <th>Cobertura</th>
-                              <th>Tránsito</th>
+                              <th>Tr�nsito</th>
                               <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Legacy (Oficial)</th>
-                              <th style={{ background: '#ffebee', color: '#b71c1c', borderLeft: '2px solid #ef9a9a' }}>🏮 Masiva CNY (Feb-Abr)</th>
-                              <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Dinámico (Exp.)</th>
+                              <th style={{ background: '#ffebee', color: '#b71c1c', borderLeft: '2px solid #ef9a9a' }}>?? Masiva CNY (Feb-Abr)</th>
+                              <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Din�mico (Exp.)</th>
                               <th style={{ background: '#f5f5f5', color: '#333' }}>Comparativa</th>
                               <th>Detalle</th>
                             </tr>
@@ -820,11 +820,11 @@ export default function Compras() {
                                     <div style={{ fontSize: '0.75rem', color: '#666', maxWidth: 180, whiteSpace: 'normal' }}>{s.nombre_producto}</div>
                                     {isMaq && (
                                       <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f3e8ff', padding: '1px 6px', borderRadius: 4, fontSize: '0.68rem', color: '#6b21a8', fontWeight: 600, border: '1px solid #d8b4fe' }}>
-                                        🧩 {s.nombre_familia_maquila || 'Familia Maquila'} ({s.familia_skus?.length || 1} SKUs)
+                                        ?? {s.nombre_familia_maquila || 'Familia Maquila'} ({s.familia_skus?.length || 1} SKUs)
                                       </div>
                                     )}
                                   </td>
-                                  <td style={{ fontSize: '0.8rem', maxWidth: 120 }}>{s.categoria || '—'}</td>
+                                  <td style={{ fontSize: '0.8rem', maxWidth: 120 }}>{s.categoria || '-'}</td>
                                   <td style={{ verticalAlign: 'top' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -853,11 +853,11 @@ export default function Compras() {
                                       {isMaq && (
                                         cubiertoMaquila ? (
                                           <span title={`Cubierto por stock familiar (${Number(s.stock_bruto_familia || s.sug_stock_familia || 0).toLocaleString()} uds en familia). No requiere compra individual.`} style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #bae6fd', width: 'fit-content' }}>
-                                            🛡️ CUBIERTO MAQUILA
+                                            ??? CUBIERTO MAQUILA
                                           </span>
                                         ) : (
                                           <span title={`Parte de la familia ${s.nombre_familia_maquila || 'Maquila'} (${Number(s.stock_bruto_familia || 0).toLocaleString()} uds en stock familiar). Se debe coordinar la compra de toda la familia.`} style={{ background: '#faf5ff', color: '#7e22ce', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #d8b4fe', width: 'fit-content' }}>
-                                            🔄 FAMILIA MAQUILA
+                                            ?? FAMILIA MAQUILA
                                           </span>
                                         )
                                       )}
@@ -882,7 +882,7 @@ export default function Compras() {
                                   
                                   <td style={{ background: '#e3f2fd', color: '#0d47a1', fontSize: '0.8rem', verticalAlign: 'top' }}>
                                     <div style={{ marginBottom: '4px' }}>
-                                      <span style={{ color: '#555' }}>Compra dinámica:</span>{' '}
+                                      <span style={{ color: '#555' }}>Compra din�mica:</span>{' '}
                                       <b>{s.sugerencia_compra_dinamica != null ? Number(s.sugerencia_compra_dinamica).toLocaleString('es-CL') : 'No disponible'}</b>
                                     </div>
                                     <div style={{ marginBottom: '4px' }}>
@@ -911,7 +911,7 @@ export default function Compras() {
                                           fontWeight: 'bold',
                                           fontSize: '0.75rem'
                                         }} className="dynamic-status-sin-analisis">
-                                          Sin análisis
+                                          Sin an�lisis
                                         </span>
                                       )}
                                     </div>
@@ -919,7 +919,7 @@ export default function Compras() {
                                   
                                   <td style={{ background: '#f5f5f5', fontSize: '0.8rem' }}>
                                     {s.recomendacion_coincide === 'No comparable por falta de datos' || !s.recomendacion_coincide ? (
-                                      <span style={{ color: '#888' }}>Sin Análisis</span>
+                                      <span style={{ color: '#888' }}>Sin An�lisis</span>
                                     ) : (
                                       <div>
                                         <div style={{ fontWeight: 'bold', color: (s.diferencia_porcentual_dinamica_legacy || 0) > 0.2 ? '#d32f2f' : '#2e7d32' }}>
@@ -950,15 +950,15 @@ export default function Compras() {
 
             <hr style={{ border: 'none', borderTop: '2px dashed #eee' }} />
 
-            {/* ── SECCIÓN 2: REQUIERE REVISIÓN ── */}
+            {/* �� SECCI�N 2: REQUIERE REVISI�N �� */}
             <section>
               <h2 style={{ fontSize: '1.2rem', color: '#b35f1a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                ⚠️ Requiere Revisión (Excepciones)
+                ?? Requiere Revisi�n (Excepciones)
               </h2>
               
               {revisionList.length === 0 ? (
                 <div style={{ padding: 30, textAlign: 'center', background: '#f9f9f9', borderRadius: 8, color: '#888' }}>
-                  No hay productos que requieran revisión actualmente.
+                  No hay productos que requieran revisi�n actualmente.
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -967,8 +967,8 @@ export default function Compras() {
                             <tr>
                               <th>SKU</th>
                               <th>Nombre de Producto</th>
-                              <th>Categoría</th>
-                              <th>Stock Físico</th>
+                              <th>Categor�a</th>
+                              <th>Stock F�sico</th>
                               <th>Excepciones</th>
                               <th>Estado Compra</th>
                             </tr>
@@ -978,7 +978,7 @@ export default function Compras() {
                         <tr key={s.sku}>
                           <td><b>{s.sku}</b></td>
                           <td style={{ fontSize: '0.8rem', maxWidth: 200 }}>{s.nombre_producto}</td>
-                          <td>{s.categoria || '—'}</td>
+                          <td>{s.categoria || '-'}</td>
                           <td>{Number(s.stock_act || 0).toLocaleString('es-CL')}</td>
                           <td>
                             {s.excepciones && s.excepciones.length > 0 && (
@@ -1004,10 +1004,10 @@ export default function Compras() {
 
             <hr style={{ border: 'none', borderTop: '2px dashed #eee' }} />
 
-            {/* ── SECCIÓN 2: OBSERVACIONES HUMANAS ── */}
+            {/* �� SECCI�N 2: OBSERVACIONES HUMANAS �� */}
             <section>
               <h2 style={{ fontSize: '1.2rem', color: '#3A86C8', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                ✍️ Notas de Compra Manuales (Humano)
+                ?? Notas de Compra Manuales (Humano)
               </h2>
               
               {obsList.length === 0 ? (
@@ -1021,11 +1021,11 @@ export default function Compras() {
                             <tr>
                               <th>SKU</th>
                               <th>Nombre de Producto</th>
-                              <th>Categoría</th>
+                              <th>Categor�a</th>
                               <th>U/E</th>
-                              <th>Stock Físico</th>
-                              <th>Observación Original</th>
-                              <th>Extracción (Uds)</th>
+                              <th>Stock F�sico</th>
+                              <th>Observaci�n Original</th>
+                              <th>Extracci�n (Uds)</th>
                             </tr>
                           </thead>
                     <tbody>
@@ -1033,8 +1033,8 @@ export default function Compras() {
                         <tr key={s.sku}>
                           <td><b>{s.sku}</b></td>
                           <td style={{ fontSize: '0.8rem', maxWidth: 200 }}>{s.nombre_producto}</td>
-                          <td>{s.categoria || '—'}</td>
-                          <td>{s.ump || '—'}</td>
+                          <td>{s.categoria || '-'}</td>
+                          <td>{s.ump || '-'}</td>
                           <td>{Number(s.stock_act || 0).toLocaleString('es-CL')}</td>
                           <td style={{ fontSize: '0.8rem', fontStyle: 'italic', color: '#555', maxWidth: 300 }}>
                             "{s.observacion}"
@@ -1060,7 +1060,7 @@ export default function Compras() {
         )}
         </>
       ) : (
-        /* ── VISTA MRP DE INSUMOS DE MAQUILA ── */
+        /* �� VISTA MRP DE INSUMOS DE MAQUILA �� */
         <div>
           {/* KPI CARDS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
@@ -1073,27 +1073,27 @@ export default function Compras() {
             </div>
 
             <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #ef4444', background: '#fff' }}>
-              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Déficit Crítico 🔴</span>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>D�ficit Cr�tico ??</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#ef4444' }}>
                 {mrpResumen?.criticos || mrpData.filter(m => m.urgencia === 'CRITICO').length}
               </div>
-              <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>Stock insuficiente vs órdenes activas</span>
+              <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>Stock insuficiente vs �rdenes activas</span>
             </div>
 
             <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #f59e0b', background: '#fff' }}>
-              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Alerta de Stock 🟡</span>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Alerta de Stock ??</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#f59e0b' }}>
                 {mrpResumen?.alertas || mrpData.filter(m => m.urgencia === 'ALERTA').length}
               </div>
-              <span style={{ fontSize: '0.8rem', color: '#b45309' }}>Bajo stock mínimo de seguridad</span>
+              <span style={{ fontSize: '0.8rem', color: '#b45309' }}>Bajo stock m�nimo de seguridad</span>
             </div>
 
             <div className="card" style={{ padding: '16px 20px', borderLeft: '4px solid #10b981', background: '#fff' }}>
-              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Presupuesto Reposición</span>
+              <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', fontWeight: 600 }}>Presupuesto Reposici�n</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, margin: '6px 0', color: '#10b981' }}>
                 ${Number(mrpResumen?.presupuesto_reposicion_total || 0).toLocaleString('es-CL')}
               </div>
-              <span style={{ fontSize: '0.8rem', color: '#047857' }}>Para cubrir órdenes y stock mín.</span>
+              <span style={{ fontSize: '0.8rem', color: '#047857' }}>Para cubrir �rdenes y stock m�n.</span>
             </div>
           </div>
 
@@ -1116,7 +1116,7 @@ export default function Compras() {
                   background: mrpFilter === 'CRITICO' ? '#ef4444' : '#fff', color: mrpFilter === 'CRITICO' ? '#fff' : '#dc2626',
                   fontWeight: 600, fontSize: '0.85rem'
                 }}>
-                🔴 Críticos ({mrpData.filter(m => m.urgencia === 'CRITICO').length})
+                ?? Cr�ticos ({mrpData.filter(m => m.urgencia === 'CRITICO').length})
               </button>
               <button
                 onClick={() => setMrpFilter('ALERTA')}
@@ -1125,14 +1125,14 @@ export default function Compras() {
                   background: mrpFilter === 'ALERTA' ? '#f59e0b' : '#fff', color: mrpFilter === 'ALERTA' ? '#fff' : '#b45309',
                   fontWeight: 600, fontSize: '0.85rem'
                 }}>
-                🟡 Alertas ({mrpData.filter(m => m.urgencia === 'ALERTA').length})
+                ?? Alertas ({mrpData.filter(m => m.urgencia === 'ALERTA').length})
               </button>
             </div>
 
             <button
               onClick={loadMrpData}
               style={{ padding: '6px 14px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
-              ↻ Actualizar Necesidades MRP
+              ? Actualizar Necesidades MRP
             </button>
           </div>
 
@@ -1141,7 +1141,7 @@ export default function Compras() {
             <div className="loader-wrap"><div className="spinner" /></div>
           ) : mrpData.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', background: '#fff', borderRadius: 8, color: '#888', border: '1px solid var(--border)' }}>
-              No hay materiales registrados en el módulo de Maquila.
+              No hay materiales registrados en el m�dulo de Maquila.
             </div>
           ) : (
             <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
@@ -1149,11 +1149,11 @@ export default function Compras() {
                 <thead>
                   <tr>
                     <th>SKU / Insumo</th>
-                    <th>Categoría</th>
-                    <th>Stock Físico</th>
+                    <th>Categor�a</th>
+                    <th>Stock F�sico</th>
                     <th style={{ background: '#fef2f2', color: '#991b1b' }}>Comprometido en Maquilas</th>
                     <th style={{ background: '#f8fafc' }}>Balance Proyectado</th>
-                    <th>Stock Mínimo</th>
+                    <th>Stock M�nimo</th>
                     <th style={{ background: '#eff6ff', color: '#1e40af' }}>Sugerencia Reorden</th>
                     <th>Costo Unitario</th>
                     <th>Costo Estimado</th>
@@ -1184,7 +1184,7 @@ export default function Compras() {
                         </td>
                         <td>{Number(m.stock_minimo).toLocaleString('es-CL')} {m.unidad_medida}</td>
                         <td style={{ background: '#eff6ff', fontWeight: 'bold', color: '#1d4ed8' }}>
-                          {m.sugerencia_compra > 0 ? `${Number(m.sugerencia_compra).toLocaleString('es-CL')} ${m.unidad_medida}` : '—'}
+                          {m.sugerencia_compra > 0 ? `${Number(m.sugerencia_compra).toLocaleString('es-CL')} ${m.unidad_medida}` : '-'}
                         </td>
                         <td>${Number(m.costo_unitario).toLocaleString('es-CL')}</td>
                         <td>${Number(m.costo_estimado_compra).toLocaleString('es-CL')}</td>
@@ -1194,7 +1194,7 @@ export default function Compras() {
                             background: m.urgencia === 'CRITICO' ? '#fee2e2' : m.urgencia === 'ALERTA' ? '#fef3c7' : '#dcfce7',
                             color: m.urgencia === 'CRITICO' ? '#b91c1c' : m.urgencia === 'ALERTA' ? '#b45309' : '#15803d'
                           }}>
-                            {m.urgencia === 'CRITICO' ? '🔴 CRÍTICO' : m.urgencia === 'ALERTA' ? '🟡 ALERTA' : '🟢 OK'}
+                            {m.urgencia === 'CRITICO' ? '?? CR�TICO' : m.urgencia === 'ALERTA' ? '?? ALERTA' : '?? OK'}
                           </span>
                         </td>
                       </tr>
@@ -1206,27 +1206,27 @@ export default function Compras() {
         </div>
       )}
 
-      {/* ── MODAL: GENERADOR DIRECTO DE ORDEN DE COMPRA (PO) ── */}
+      {/* �� MODAL: GENERADOR DIRECTO DE ORDEN DE COMPRA (PO) �� */}
       {showPoModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 12, maxWidth: 960, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  📝 Emisión Directa de Orden de Compra (PO)
+                  ?? Emisi�n Directa de Orden de Compra (PO)
                 </h2>
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                  Inyecta automáticamente los ítems a Control de Embarques (Tránsito) y al Kardex
+                  Inyecta autom�ticamente los �tems a Control de Embarques (Tr�nsito) y al Kardex
                 </span>
               </div>
-              <button onClick={() => setShowPoModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+              <button onClick={() => setShowPoModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748b' }}>?</button>
             </div>
 
             <form onSubmit={handleConfirmSubmitPo}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
                 <div>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                    Código / N° de PO *
+                    C�digo / N� de PO *
                   </label>
                   <input
                     type="text"
@@ -1270,7 +1270,7 @@ export default function Compras() {
                   type="text"
                   value={poForm.observacion}
                   onChange={e => setPoForm({ ...poForm, observacion: e.target.value })}
-                  placeholder="Ej: Despacho marítimo, contenedor 40ft..."
+                  placeholder="Ej: Despacho mar�timo, contenedor 40ft..."
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                 />
               </div>
@@ -1304,7 +1304,7 @@ export default function Compras() {
                           />
                         </td>
                         <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {it.moq > 1 ? `${it.moq} uds/caja` : '—'}
+                          {it.moq > 1 ? `${it.moq} uds/caja` : '-'}
                         </td>
                         <td>
                           <input
@@ -1324,7 +1324,7 @@ export default function Compras() {
                             type="button"
                             onClick={() => handleRemovePoItem(idx)}
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold' }}>
-                            ✕
+                            ?
                           </button>
                         </td>
                       </tr>
@@ -1336,7 +1336,7 @@ export default function Compras() {
               {/* TOTALES */}
               <div style={{ background: '#f1f5f9', padding: '12px 16px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <span style={{ fontSize: '0.9rem', color: '#475569' }}>
-                  Total Ítems: <b>{poForm.items.length} SKUs</b> | Unidades Totales:{' '}
+                  Total �tems: <b>{poForm.items.length} SKUs</b> | Unidades Totales:{' '}
                   <b>{poForm.items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0).toLocaleString('es-CL')} uds</b>
                 </span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
@@ -1355,7 +1355,7 @@ export default function Compras() {
                   type="submit"
                   disabled={submittingPo}
                   style={{ padding: '9px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
-                  {submittingPo ? 'Inyectando a Tránsito...' : '🚀 Confirmar y Emitir a Tránsito'}
+                  {submittingPo ? 'Inyectando a Tr�nsito...' : '?? Confirmar y Emitir a Tr�nsito'}
                 </button>
               </div>
             </form>

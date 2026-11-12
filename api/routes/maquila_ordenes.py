@@ -158,7 +158,7 @@ def _get_inventory_and_recipes(conn):
 
 def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
     # Validaciones obligatorias de columnas
-    required = ["Número OC", "SKU", "Modelo", "Unidades compradas", "Unidades recibidas"]
+    required = ["N�mero OC", "SKU", "Modelo", "Unidades compradas", "Unidades recibidas"]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise HTTPException(400, f"Faltan columnas requeridas: {', '.join(missing)}")
@@ -167,7 +167,7 @@ def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
     df["SKU"] = df["SKU"].astype(str).str.strip()
     
     if df["SKU"].eq("").any() or df["SKU"].eq("nan").any():
-        raise HTTPException(400, "El archivo contiene filas sin SKU válido.")
+        raise HTTPException(400, "El archivo contiene filas sin SKU v�lido.")
         
     for num_col in ["Unidades compradas", "Unidades recibidas"]:
         df[num_col] = pd.to_numeric(df[num_col], errors="coerce").fillna(0)
@@ -175,11 +175,11 @@ def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
             raise HTTPException(400, f"Existen cantidades negativas en la columna '{num_col}'.")
             
     # Validar OC unica
-    ocs = df["Número OC"].dropna().unique()
+    ocs = df["N�mero OC"].dropna().unique()
     if len(ocs) > 1:
-        raise HTTPException(400, f"El archivo contiene más de un Número OC: {', '.join(map(str, ocs))}")
+        raise HTTPException(400, f"El archivo contiene m�s de un N�mero OC: {', '.join(map(str, ocs))}")
     if len(ocs) == 0:
-        raise HTTPException(400, "No se detectó ningún Número OC.")
+        raise HTTPException(400, "No se detect� ning�n N�mero OC.")
         
     oc_num = str(ocs[0])
     
@@ -189,16 +189,16 @@ def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
         "numero_oc": oc_num,
         "estado_oc": str(first_row.get("Estado OC", "")),
         "tipo_orden": str(first_row.get("Tipo de orden", "")),
-        "fecha_emision": str(first_row.get("Fecha de emisión", "")),
-        "fecha_inicio_recepcion": str(first_row.get("Fecha inicio recepción", "")),
-        "fecha_fin_recepcion": str(first_row.get("Fecha fin recepción", "")),
+        "fecha_emision": str(first_row.get("Fecha de emisi�n", "")),
+        "fecha_inicio_recepcion": str(first_row.get("Fecha inicio recepci�n", "")),
+        "fecha_fin_recepcion": str(first_row.get("Fecha fin recepci�n", "")),
         "total_lineas": len(df)
     }
     
     # Validar que todos los SKUs existan
     invalid_skus = [s for s in df["SKU"].unique() if s not in master]
     if invalid_skus:
-        raise HTTPException(400, f"Existen SKUs que no están en el maestro SOP: {', '.join(invalid_skus)}")
+        raise HTTPException(400, f"Existen SKUs que no est�n en el maestro SOP: {', '.join(invalid_skus)}")
 
     # Agrupar por SKU
     grouped = df.groupby("SKU").agg({
@@ -208,7 +208,7 @@ def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
         "Id de local": lambda x: list(x.dropna().unique()),
     }).reset_index()
     
-    # Construir distribución
+    # Construir distribuci�n
     distribucion = []
     for _, r in df.iterrows():
         distribucion.append({
@@ -370,7 +370,7 @@ def procesar_df_oc(df: pd.DataFrame, master: dict, materiales_dict: dict):
         elif faltantes_hermanos:
             estado_general = "Bloqueada por falta de Hermanos"
         else:
-            estado_general = "En preparación"
+            estado_general = "En preparaci�n"
 
     costos_resumen = {
         "costo_insumos_estimado": round(float(total_costo_insumos), 2),
@@ -407,12 +407,12 @@ async def importar_orden(
         raise HTTPException(400, "No se pudo leer el archivo CSV. Verifique el formato.")
         
     if df.empty:
-        raise HTTPException(400, "El archivo está vacío.")
+        raise HTTPException(400, "El archivo est� vac�o.")
         
     with engine.connect() as conn:
         master, materiales_dict = _get_inventory_and_recipes(conn)
         
-        ocs = df.get("Número OC", pd.Series(dtype=str)).dropna().unique()
+        ocs = df.get("N�mero OC", pd.Series(dtype=str)).dropna().unique()
         if len(ocs) == 1:
             existe = conn.execute(
                 text("SELECT 1 FROM ordenes_maquila WHERE numero_oc = :oc AND hash_archivo = :h"),
@@ -547,12 +547,16 @@ def listar_ordenes(authorization: str = Header(None)):
             "sku_count": r.sku_count,
             "maq_count": r.maq_count
         })
+
+    return {"data": out}
+
+
 @router.get("/reportes/mermas")
 @router.get("/mermas")
 def get_reporte_mermas():
     """
     Reporte consolidado de mermas y desperdicios (scrap) registrados en liquidaciones de maquila.
-    Permite auditar el % de merma real vs estándar y el impacto en costos.
+    Permite auditar el % de merma real vs est�ndar y el impacto en costos.
     """
     with engine.connect() as conn:
         try:
@@ -614,10 +618,10 @@ def get_reporte_mermas():
         records.append({
             "id": int(r["id"]),
             "orden_id": int(r["orden_id"] or 0),
-            "numero_oc": str(r["numero_oc"] or "—"),
+            "numero_oc": str(r["numero_oc"] or "-"),
             "sku_producido": str(r["sku_producido"] or ""),
             "cantidad_producida": c_prod,
-            "sku_origen": str(r["sku_origen"] or "—"),
+            "sku_origen": str(r["sku_origen"] or "-"),
             "merma_unidades_producto": m_prod,
             "tasa_merma_pct": tasa_item,
             "insumos_mermados": insumos_mermados,
@@ -799,10 +803,10 @@ def obtener_orden(id: int, authorization: str = Header(None)):
         elif faltantes_hermanos:
             estado_general = "Bloqueada por falta de Hermanos"
         else:
-            estado_general = "En preparación"
+            estado_general = "En preparaci�n"
 
     meta_dict = dict(oc._mapping)
-    # Si ya estaba liquidada, mantener ese estado histórico
+    # Si ya estaba liquidada, mantener ese estado hist�rico
     if meta_dict.get("estado_procesamiento") == "Liquidada":
         meta_dict["estado_procesamiento"] = "Liquidada"
     else:
@@ -865,17 +869,17 @@ def recalcular_orden(id: int, authorization: str = Header(None)):
         if not oc: raise HTTPException(404, "OC no encontrada")
         
         dist = conn.execute(text("SELECT * FROM orden_maquila_distribucion WHERE orden_id = :id"), {"id": id}).fetchall()
-        if not dist: raise HTTPException(400, "No hay distribución guardada para recalcular")
+        if not dist: raise HTTPException(400, "No hay distribuci�n guardada para recalcular")
         
         data = []
         for d in dist:
             data.append({
-                "Número OC": oc.numero_oc,
+                "N�mero OC": oc.numero_oc,
                 "Estado OC": oc.estado_oc,
                 "Tipo de orden": oc.tipo_orden,
-                "Fecha de emisión": oc.fecha_emision,
-                "Fecha inicio recepción": oc.fecha_inicio_recepcion,
-                "Fecha fin recepción": oc.fecha_fin_recepcion,
+                "Fecha de emisi�n": oc.fecha_emision,
+                "Fecha inicio recepci�n": oc.fecha_inicio_recepcion,
+                "Fecha fin recepci�n": oc.fecha_fin_recepcion,
                 "SKU": d.sku,
                 "Id de local": d.id_local,
                 "Local": d.local,
@@ -938,9 +942,9 @@ def recalcular_orden(id: int, authorization: str = Header(None)):
 @router.post("/{id}/liquidar")
 def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(None)):
     """
-    Ejecuta la liquidación de la orden de maquila:
-    1. Descuenta los materiales utilizados de 'materiales_maquila' (teórico + mermas).
-    2. Descuenta los productos hermanos utilizados de 'planificacion_sop' (teórico + mermas).
+    Ejecuta la liquidaci�n de la orden de maquila:
+    1. Descuenta los materiales utilizados de 'materiales_maquila' (te�rico + mermas).
+    2. Descuenta los productos hermanos utilizados de 'planificacion_sop' (te�rico + mermas).
     3. Suma los productos terminados obtenidos a 'planificacion_sop'.
     4. Registra cada movimiento en el Kardex auditado ('inventario_kardex_movimientos').
     5. Guarda el historial con costo y detalle de mermas en 'maquila_liquidaciones_historial'.
@@ -973,7 +977,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
 
         det = conn.execute(text("SELECT * FROM orden_maquila_detalle WHERE orden_id = :id"), {"id": id}).fetchall()
         if not det:
-            raise HTTPException(400, "La orden no tiene ítems de detalle")
+            raise HTTPException(400, "La orden no tiene �tems de detalle")
 
         master, materiales_dict = _get_inventory_and_recipes(conn)
 
@@ -1020,7 +1024,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                     WHERE sku = :sku OR codigo_femaco = :sku
                 """), {"st": saldo_nuevo_orig, "sku": sku_orig})
 
-                # Kardex: Salida estándar por maquila
+                # Kardex: Salida est�ndar por maquila
                 registrar_movimiento_kardex(
                     conn=conn,
                     tipo_entidad="PRODUCTO",
@@ -1049,7 +1053,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                         saldo_anterior=saldo_ant_orig - float(cant_orig_usada),
                         saldo_nuevo=saldo_nuevo_orig,
                         costo_unitario=0.0,
-                        motivo=motivo_merma or "Merma en línea de maquila",
+                        motivo=motivo_merma or "Merma en l�nea de maquila",
                         usuario=user
                     )
 
@@ -1085,7 +1089,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                 usuario=user
             )
 
-            # 3. Descontar insumos en materiales_maquila (teórico + mermas) + Kardex
+            # 3. Descontar insumos en materiales_maquila (te�rico + mermas) + Kardex
             insumos_usados = []
             insumos_mermados_list = []
 
@@ -1119,7 +1123,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
                     WHERE UPPER(sku) = :sku
                 """), {"st": saldo_nuevo_mat, "sku": mat_sku})
 
-                # Kardex: Consumo estándar insumo
+                # Kardex: Consumo est�ndar insumo
                 registrar_movimiento_kardex(
                     conn=conn,
                     tipo_entidad="MATERIAL",
@@ -1222,7 +1226,7 @@ def liquidar_orden(id: int, body: dict = Body(...), authorization: str = Header(
 
     return {
         "ok": True,
-        "mensaje": f"Orden {oc.numero_oc} liquidada con éxito. Kardex e inventarios actualizados.",
+        "mensaje": f"Orden {oc.numero_oc} liquidada con �xito. Kardex e inventarios actualizados.",
         "items_liquidados": items_liquidados,
         "costo_insumos_liquidado": float(total_costo_liquidado),
         "costo_merma_total": float(total_costo_merma)
@@ -1235,8 +1239,8 @@ def generar_ot_orden(id: int, authorization: str = Header(None)):
     Genera el detalle estructurado de la Orden de Trabajo (OT) / Hoja de Ruta para Bodega y Maquila:
     - Datos generales de la OC y lote a producir.
     - Picking List de Bodega (Insumos y Productos Hermanos a despachar).
-    - Dotación y Tiempos de fabricación calculados.
-    - Plantilla para firmas de recepción, control de mermas y entrega a bodega de producto terminado.
+    - Dotaci�n y Tiempos de fabricaci�n calculados.
+    - Plantilla para firmas de recepci�n, control de mermas y entrega a bodega de producto terminado.
     """
     with engine.connect() as conn:
         oc = conn.execute(text("SELECT * FROM ordenes_maquila WHERE id = :id"), {"id": id}).fetchone()
