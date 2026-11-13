@@ -135,9 +135,10 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
   const familyName = product.nombre_familia_maquila || 'Familia de reemplazo';
   const familyStock = product.stock_bruto_familia ??
     familySkus.reduce((sum, member) => sum + Number(member.stock_act || 0), 0);
-  const usesFamilyStockForPurchase = product.sug_usa_stock_familia === true;
-  const stockUsedForPurchase = product.sug_stock_actual ??
-    (usesFamilyStockForPurchase ? familyStock : stockFemaco);
+  // La compra nueva nunca reemplaza el stock individual por el total familiar.
+  // Las transferencias de maquila ya vienen simuladas y descontadas por SKU.
+  const usesFamilyStockForPurchase = false;
+  const stockUsedForPurchase = stockFemaco;
   const familyAdditionalStock = Math.max(0, Number(familyStock) - Number(stockFemaco));
 
   const sem1 = product.sem1_uds ?? 0;
@@ -1106,3 +1107,4 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
     </div>
   );
 }
+
