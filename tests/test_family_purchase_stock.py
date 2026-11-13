@@ -1,61 +1,159 @@
+import json
 import unittest
 
 import pandas as pd
 
-from src.services.purchase_stock_service import aplicar_stock_familia_para_sugerencia
+from src.services.maquila_service import detectar_formato_producto
+from src.services.purchase_stock_service import calcular_compra_proyectada
 
 
-class FamilyPurchaseStockTests(unittest.TestCase):
-    def setUp(self):
-        self.df = pd.DataFrame([
-            {"codigo_femaco": "COD-1", "sku": "SKU-1", "stock_act": 10},
-            {"codigo_femaco": "COD-2", "sku": "SKU-2", "stock_act": 140},
-            {"codigo_femaco": "COD-SIN-FAMILIA", "sku": "SKU-SIN-FAMILIA", "stock_act": 25},
-        ])
-        miembros = [
-            {"codigo_femaco": "COD-1", "sku": "SKU-1", "stock_act": 10},
-            {"codigo_femaco": "COD-2", "sku": "SKU-2", "stock_act": 140},
-        ]
-        self.familias = {
-            "COD-1": {
-                "familia_skus": miembros,
-                "stock_bruto_familia": 150,
-                "nombre_familia": "Familia de prueba",
-            },
-            "COD-2": {
-                "familia_skus": miembros,
-                "stock_bruto_familia": 150,
-                "nombre_familia": "Familia de prueba",
-            },
+def row(code, description, stock, demand, coverage=5.4, ump=1, transit=None):
+    transit = transit or [0, 0, 0, 0]
+    return {
+        "sku": f"SKU-{code}",
+        "codigo_femaco": code,
+        "nombre_producto": description,
+        "stock_act": stock,
+        "total_4_sem_verificado": demand,
+        "meses_cobertura_objetivo": coverage,
+        "ump": ump,
+        "transito_mes_1": transit[0],
+        "transito_mes_2": transit[1],
+        "transito_mes_3": transit[2],
+        "transito_mes_4": transit[3],
+    }
+
+
+def family(rows, conversions=None, family_id=1):
+    members = [
+        {
+            "codigo_femaco": item["codigo_femaco"],
+            "sku": item["sku"],
+            "stock_act": item["stock_act"],
         }
+        for item in rows
+    ]
+    data = {
+        "familia_skus": members,
+        "familia_ids": [family_id],
+        "clave_familia": f"FAM:{family_id}",
+        "nombre_familia": f"Familia {family_id}",
+        "conversiones_autorizadas": conversions or [],
+    }
+    return {item["codigo_femaco"]: data for item in rows}
 
-    def test_family_total_replaces_individual_stock_for_purchase(self):
-        result = aplicar_stock_familia_para_sugerencia(self.df, self.familias)
-        sku_1 = result.loc[result["sku"] == "SKU-1"].iloc[0]
 
-        self.assertEqual(sku_1["sug_stock_individual"], 10)
-        self.assertEqual(sku_1["sug_stock_familia"], 150)
-        self.assertEqual(sku_1["sug_stock_actual"], 150)
-        self.assertTrue(sku_1["sug_usa_stock_familia"])
+class ProjectedPurchaseTests(unittest.TestCase):
+    def test_format_detection_avoids_accidental_words(self):
+        self.assertEqual(detectar_formato_producto("C9405CR", "Producto"), "CR")
+        self.assertEqual(detectar_formato_producto("C-20", "Pack-PDQ"), "PDQ")
+        self.assertEqual(detectar_formato_producto("C-30", "Formato MB 20"), "MB")
+        self.assertEqual(detectar_formato_producto("C-40", "MICRO SOMBRA"), "LINEAL")
 
-        # Caso solicitado: target 139, stock SKU 10, pero familia 150.
-        sugerencia = max(139 - sku_1["sug_stock_actual"], 0)
-        self.assertEqual(sugerencia, 0)
+    def test_single_sku_uses_four_month_wait_and_confirmed_transit(self):
+        source = pd.DataFrame([
+            row("IND-1", "Producto individual", 30, 10, ump=12, transit=[0, 20, 0, 0])
+        ])
+        result = calcular_compra_proyectada(source, {})
+        item = result.iloc[0]
 
-    def test_family_deficit_is_calculated_against_total_family_stock(self):
-        result = aplicar_stock_familia_para_sugerencia(self.df, self.familias)
-        sku_1 = result.loc[result["sku"] == "SKU-1"].iloc[0]
+        self.assertEqual(item["demanda_espera_4_meses"], 40)
+        self.assertEqual(item["stock_estimado_llegada"], 10)
+        self.assertEqual(item["stock_objetivo"], 54)
+        self.assertEqual(item["sugerencia_bruta"], 44)
+        self.assertEqual(item["sugerencia_final"], 48)
+        self.assertEqual(item["deficit_espera_4_meses"], 0)
 
-        sugerencia = max(200 - sku_1["sug_stock_actual"], 0)
-        self.assertEqual(sugerencia, 50)
+    def test_two_formats_consume_own_sales_then_transform_by_recipe(self):
+        rows = [
+            row("FAM-L", "Producto base", 0, 10, ump=10),
+            row("FAM-CR", "Producto CR", 100, 5, ump=10),
+        ]
+        conversions = [{
+            "receta_id": 7,
+            "origen": "FAM-CR",
+            "destino": "FAM-L",
+            "cantidad_origen": 2,
+            "cantidad_destino": 1,
+            "prioridad": None,
+        }]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows),
+            family(rows, conversions),
+        ).set_index("codigo_femaco")
 
-    def test_sku_without_family_keeps_its_individual_stock(self):
-        result = aplicar_stock_familia_para_sugerencia(self.df, self.familias)
-        sku = result.loc[result["sku"] == "SKU-SIN-FAMILIA"].iloc[0]
+        lineal = result.loc["FAM-L"]
+        cr = result.loc["FAM-CR"]
+        self.assertEqual(lineal["maquila_recibida_4_meses"], 40)
+        self.assertEqual(lineal["deficit_espera_4_meses"], 0)
+        self.assertEqual(cr["maquila_destinada_4_meses"], 80)
+        self.assertEqual(cr["stock_estimado_llegada"], 0)
+        self.assertEqual(lineal["sugerencia_final"], 60)
+        self.assertEqual(cr["sugerencia_final"], 30)
+        self.assertEqual(lineal["familia_compra_total"], 90)
 
-        self.assertEqual(sku["sug_stock_actual"], 25)
-        self.assertFalse(sku["sug_usa_stock_familia"])
+        # Conservacion CR: 100 inicial = 20 venta propia + 80 maquila + 0 final.
+        self.assertEqual(
+            100,
+            20 + cr["maquila_destinada_4_meses"] + cr["stock_estimado_llegada"],
+        )
+
+    def test_three_formats_without_priority_reports_ambiguity(self):
+        rows = [
+            row("AMB-L", "Producto", 0, 5),
+            row("AMB-CR", "Producto CR", 30, 1),
+            row("AMB-PDQ", "Producto PDQ", 30, 1),
+        ]
+        conversions = [
+            {"origen": "AMB-CR", "destino": "AMB-L", "cantidad_origen": 1, "cantidad_destino": 1, "prioridad": None},
+            {"origen": "AMB-PDQ", "destino": "AMB-L", "cantidad_origen": 1, "cantidad_destino": 1, "prioridad": None},
+        ]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows), family(rows, conversions, family_id=2)
+        ).set_index("codigo_femaco")
+
+        lineal = result.loc["AMB-L"]
+        self.assertEqual(lineal["maquila_recibida_4_meses"], 0)
+        self.assertEqual(lineal["deficit_espera_4_meses"], 20)
+        self.assertIn("sin prioridad", lineal["ambiguedad_maquila"])
+
+    def test_four_formats_generate_four_purchases_and_family_summary(self):
+        rows = [
+            row("FOUR-L", "Producto", 0, 4),
+            row("FOUR-CR", "Producto CR", 20, 2),
+            row("FOUR-PDQ", "Producto PDQ", 12, 1),
+            row("FOUR-MB", "Producto MB", 8, 1),
+        ]
+        conversions = [
+            {"origen": "FOUR-CR", "destino": "FOUR-L", "cantidad_origen": 1, "cantidad_destino": 1, "prioridad": 1},
+            {"origen": "FOUR-PDQ", "destino": "FOUR-L", "cantidad_origen": 1, "cantidad_destino": 1, "prioridad": 2},
+            {"origen": "FOUR-MB", "destino": "FOUR-L", "cantidad_origen": 1, "cantidad_destino": 1, "prioridad": 3},
+        ]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows), family(rows, conversions, family_id=3)
+        )
+
+        self.assertEqual(set(result["formato_compra"]), {"LINEAL", "CR", "PDQ", "MB"})
+        self.assertEqual(len(result), 4)
+        self.assertTrue((result["sugerencia_final"] > 0).all())
+        self.assertTrue((result["stock_estimado_llegada"] >= 0).all())
+
+        summary = json.loads(result.iloc[0]["familia_resumen_compras"])
+        self.assertEqual(len(summary["formatos"]), 4)
+        self.assertEqual(
+            summary["total"],
+            result["sugerencia_final"].sum(),
+        )
+
+    def test_growth_coverage_is_applied_per_sku(self):
+        source = pd.DataFrame([
+            row("GROWTH", "Producto", 0, 10, coverage=6.4, ump=1)
+        ])
+        result = calcular_compra_proyectada(source, {})
+        self.assertEqual(result.iloc[0]["stock_objetivo"], 64)
+        self.assertEqual(result.iloc[0]["sugerencia_final"], 64)
 
 
 if __name__ == "__main__":
     unittest.main()
+
