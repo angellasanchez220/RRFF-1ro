@@ -30,7 +30,7 @@ PRESENTATION_MARKERS = ("PDQ", "CR", "MB")
 
 
 def _normalize_sort_text(value) -> str:
-    """Normaliza texto para ordenar sin depender de mayúsculas ni tildes."""
+    """Normaliza texto para ordenar sin depender de mayusculas ni tildes."""
     if value is None or (not isinstance(value, (list, dict, tuple, set)) and pd.isna(value)):
         value = ""
     text_value = str(value).strip().upper()
@@ -42,7 +42,7 @@ def _normalize_sort_text(value) -> str:
 
 
 def _presentation_markers(data: dict) -> set[str]:
-    """Detecta PDQ/CR/MB en códigos o en los extremos de la descripción."""
+    """Detecta PDQ/CR/MB en codigos o en los extremos de la descripcion."""
     codes = " ".join(
         _normalize_sort_text(data.get(field))
         for field in ("sku", "codigo")
@@ -60,13 +60,13 @@ def _presentation_markers(data: dict) -> set[str]:
 
 def _product_family_sort_key(data: dict):
     """Agrupa por familia y ordena Lineal, CR y luego el resto."""
-    markers = _presentation_markers(data)
-    if not markers:
-        presentation_rank = 0
-    elif "CR" in markers:
-        presentation_rank = 1
-    else:
-        presentation_rank = 2
+    from src.services.maquila_service import detectar_formato_producto
+
+    format_name = data.get("formato_compra") or detectar_formato_producto(
+        data.get("codigo"),
+        data.get("nombre"),
+    )
+    presentation_rank = {"LINEAL": 0, "CR": 1}.get(format_name, 2)
 
     family_key = _normalize_sort_text(
         data.get("nombre_familia") or data.get("sku") or data.get("codigo")
@@ -80,7 +80,7 @@ def _product_family_sort_key(data: dict):
 
 
 def _safe_sheet_name(value, used_names: set[str]) -> str:
-    """Crea un nombre de hoja válido, de hasta 31 caracteres y sin duplicados."""
+    """Crea un nombre de hoja valido, de hasta 31 caracteres y sin duplicados."""
     base = re.sub(r"[\\/*?:\[\]]", "-", str(value or "SIN SUBCATEGORIA").strip())
     base = re.sub(r"\s+", " ", base).strip(" '") or "SIN SUBCATEGORIA"
     base = base[:31]
@@ -95,7 +95,6 @@ def _safe_sheet_name(value, used_names: set[str]) -> str:
     used_names.add(candidate.casefold())
     return candidate
 
-
 def _safe_float(v, default=0.0):
     if v is None:
         return default
@@ -107,12 +106,12 @@ def _safe_float(v, default=0.0):
     except:
         return default
 
+
 def _safe_text(value, default="") -> str:
     if value is None or pd.isna(value):
         return default
     text_value = str(value).strip()
     return text_value or default
-
 
 def _safe_int(v, default=0):
     return int(round(_safe_float(v, default)))
@@ -199,6 +198,21 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         if so_val > max_so: max_so = so_val
         if si_val > max_si: max_si = si_val
 
+    purchase_trace = (
+        f"Formato: {_safe_text(row_sop.get('formato_compra'), 'LINEAL')} | "
+        f"Demanda espera 4 meses: {_safe_int(row_sop.get('demanda_espera_4_meses'))} | "
+        f"Maquila recibida/destinada: "
+        f"{_safe_int(row_sop.get('maquila_recibida_4_meses'))}/"
+        f"{_safe_int(row_sop.get('maquila_destinada_4_meses'))} | "
+        f"Stock estimado llegada: {_safe_int(row_sop.get('stock_estimado_llegada'))} | "
+        f"Target: {_safe_int(row_sop.get('stock_objetivo'))}"
+    )
+    purchase_reason = str(
+        row_sop.get("explicacion_compra_dinamica")
+        or row_sop.get("explicacion_compra")
+        or ""
+    ).strip()
+
     data = {
         "sku": real_sku,
         "categoria": _safe_text(row_sop.get("categoria"), "SIN CATEGORIA").upper(),
@@ -237,7 +251,13 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "compra": _safe_int(row_sop.get("sugerencia_final")),
         "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("sug_ritmo_mensual")), 1) if _safe_float(row_sop.get("sug_ritmo_mensual")) > 0 else 999.0,
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
-        "motivo": str(row_sop.get("explicacion_compra_dinamica") or row_sop.get("explicacion_compra") or ""),
+        "motivo": f"{purchase_trace}. {purchase_reason}".strip(),
+        "formato_compra": _safe_text(row_sop.get("formato_compra"), "LINEAL"),
+        "demanda_espera_4_meses": _safe_int(row_sop.get("demanda_espera_4_meses")),
+        "maquila_recibida_4_meses": _safe_int(row_sop.get("maquila_recibida_4_meses")),
+        "maquila_destinada_4_meses": _safe_int(row_sop.get("maquila_destinada_4_meses")),
+        "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
+        "familia_compra_total": _safe_int(row_sop.get("familia_compra_total")),
         "obs": observacion,
         "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
         "stock_familia": int(familias_map[real_codigo].get("stock_bruto_familia", inv_u)) if (familias_map and real_codigo in familias_map) else inv_u,
@@ -414,7 +434,9 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     if faltantes:
         raise ValueError(f"Los siguientes SKUs no se encontraron o no tienen datos: {', '.join(faltantes)}")
 
-    # Agrupar por subcategoría.
+    # Agrupar por subcategoria. Se conserva una etiqueta legible y se usa una
+    # clave normalizada para evitar hojas duplicadas por diferencias de tildes,
+    # mayusculas o espacios.
     agrupados = {}
     for d in datos_skus:
         subcategoria = d.get("subcategoria") or "SIN SUBCATEGORIA"
@@ -425,11 +447,12 @@ def generar_excel_skus(skus: list[str]) -> bytes:
                 "items": [],
             }
         agrupados[subcategoria_key]["items"].append(d)
-
-    # Mantener juntas las familias y ordenar Lineal, CR y resto.
+        
+    # Mantener juntas las familias de maquila y, dentro de cada familia,
+    # presentar primero Lineal, despues CR y finalmente PDQ/MB/resto.
     for group in agrupados.values():
         group["items"].sort(key=_product_family_sort_key)
-
+        
     base_dir = Path(__file__).resolve().parent.parent
     template_path = base_dir / "templates" / "RRFF_AS_PLANTILLA_APP.xlsx"
     if not template_path.exists():
@@ -439,29 +462,25 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     ws_plantilla = wb["PLANTILLA"]
     TAMANO_BLOQUE = 16
 
-    # Ordenar subcategorías alfabéticamente para las hojas.
+    # Ordenar subcategorias alfabeticamente para las hojas.
     subcategorias_ordenadas = sorted(agrupados.keys())
     used_sheet_names = set()
-
+    
     for subcategoria_key in subcategorias_ordenadas:
         group = agrupados[subcategoria_key]
         sheet_name = _safe_sheet_name(group["label"], used_sheet_names)
         ws_subcategoria = wb.copy_worksheet(ws_plantilla)
         ws_subcategoria.title = sheet_name
-
+        
+        # Poblar bloques en la hoja de la subcategoria.
         for i, data in enumerate(group["items"]):
             fila_inicio = 1 + (i * TAMANO_BLOQUE)
-
+            
             if i > 0:
-                copiar_bloque(
-                    ws_subcategoria,
-                    fila_origen_inicio=1,
-                    fila_origen_fin=TAMANO_BLOQUE,
-                    fila_destino_inicio=fila_inicio,
-                )
-
+                copiar_bloque(ws_subcategoria, fila_origen_inicio=1, fila_origen_fin=TAMANO_BLOQUE, fila_destino_inicio=fila_inicio)
+                
             poblar_bloque(ws_subcategoria, fila_inicio, data)
-
+            
     # Eliminar plantillas originales
     if "PLANTILLA" in wb.sheetnames:
         del wb["PLANTILLA"]
@@ -494,3 +513,4 @@ def generar_excel_todos_skus() -> bytes:
         raise ValueError("No se encontraron SKUs en planificacion_sop")
         
     return generar_excel_skus(skus_totales)
+
