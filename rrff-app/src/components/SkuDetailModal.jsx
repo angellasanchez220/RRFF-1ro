@@ -41,6 +41,16 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
     meses_cobertura_objetivo,
     ritmo_semanal_uds,
     total_4_sem_verificado,
+    formato_compra,
+    demanda_espera_4_meses,
+    maquila_recibida_4_meses,
+    maquila_destinada_4_meses,
+    stock_estimado_llegada,
+    deficit_espera_4_meses,
+    stock_objetivo,
+    sugerencia_bruta,
+    familia_compra_total,
+    ambiguedad_maquila,
     
     // Dinamico
     clasificacion_comportamiento,
@@ -153,8 +163,21 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Ritmo Mensual Equivalente</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_mensual_verificado||0).toFixed(0)} uds</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Actual</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(duracion_fisica_solo||0).toFixed(1)} meses</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Target</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(meses_cobertura_objetivo||5.4)} meses</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Formato detectado</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formato_compra || 'LINEAL'}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Demanda durante 4 meses</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(demanda_espera_4_meses||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Maquila recibida / destinada</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(maquila_recibida_4_meses||0).toFixed(0)} / {Number(maquila_destinada_4_meses||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Stock estimado a la llegada</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(stock_estimado_llegada||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>D�ficit durante espera</td><td style={{ textAlign: 'right', fontWeight: 'bold', color: Number(deficit_espera_4_meses||0) > 0 ? '#b91c1c' : 'inherit' }}>{Number(deficit_espera_4_meses||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Stock objetivo</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(stock_objetivo||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Compra antes de UMP</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(sugerencia_bruta||0).toFixed(0)} uds</td></tr>
+                {Number(familia_compra_total||0) > 0 && <tr><td style={{ padding: '6px 0', color: '#666' }}>Compra total familia</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(familia_compra_total).toFixed(0)} uds</td></tr>}
               </tbody>
             </table>
+            {ambiguedad_maquila && (
+              <div style={{ marginTop: 10, padding: 8, background: '#fff7ed', color: '#9a3412', borderRadius: 4, fontSize: '0.8rem' }}>
+                <b>Prioridad de maquila pendiente:</b> {ambiguedad_maquila}
+              </div>
+            )}
             <div style={{ marginTop: '20px', background: '#e8f5e9', padding: '15px', borderRadius: '6px', border: '1px solid #c8e6c9', textAlign: 'center' }}>
               <div style={{ fontSize: '0.85rem', color: '#2e7d32', fontWeight: 'bold' }}>COMPRA SUGERIDA OFICIAL</div>
               <div style={{ fontSize: '2rem', color: '#1b5e20', fontWeight: '900', margin: '5px 0' }}>{Number(sugLegacy).toLocaleString('es-CL')}</div>
@@ -433,3 +456,4 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
     </div>
   );
 }
+
