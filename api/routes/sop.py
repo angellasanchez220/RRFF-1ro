@@ -1,13 +1,13 @@
 """
-api/routes/sop.py — v2.4
+api/routes/sop.py - v2.4
 =========================
-LÓGICA CORRECTA:
-- Calendario: SIEMPRE Enero→Diciembre (año fijo).
+L�GICA CORRECTA:
+- Calendario: SIEMPRE EneroDiciembre (a�o fijo).
   * Ene-Abr 2026 = datos reales 2026 (si existen en la DB)
-  * May-Dic 2026  = proyección 2025 base (columnas sellout_may_2026…sellout_dic_2026)
+  * May-Dic 2026  = proyecci�n 2025 base (columnas sellout_may_2026.sellout_dic_2026)
   * NO usar 2027
 - Semanas: leer de fact_ventas, excluir la semana actual (incompleta).
-  sem1 = semana más reciente COMPLETADA
+  sem1 = semana m�s reciente COMPLETADA
   sem2, sem3, sem4 = semanas anteriores
 - Alertas: basadas en stock_act (Femaco), NO stock HC
 - Objetivo = (sellout_mes_anterior_estimado + total_4_sem) / 2
@@ -73,23 +73,23 @@ def _safe(v, default=0):
 
 """
 MAPEO REAL DE COLUMNAS EN LA DB:
-  sellout_may_2026 .. sellout_dic_2026  →  datos reales Mayo-Dic 2025
-  sellout_ene_2027 .. sellout_abr_2027  →  datos reales Ene-Abr 2026
-  (el planner los nombró con el año siguiente como "proyección base")
+  sellout_may_2026 .. sellout_dic_2026    datos reales Mayo-Dic 2025
+  sellout_ene_2027 .. sellout_abr_2027    datos reales Ene-Abr 2026
+  (el planner los nombr� con el a�o siguiente como "proyecci�n base")
 
-TABLA FIJA Enero→Diciembre:
-  Ene-Abr (pasados en 2026): columnas _2027 → mostrar como "Ene 2026".."Abr 2026"
-  May-Dic (no cerrados 2026): columnas _2026 → mostrar como "May 2025".."Dic 2025"
-  Mayo 2026 actual (aún no cerrado): usa columna may_2026 = dato real Mayo 2025
+TABLA FIJA EneroDiciembre:
+  Ene-Abr (pasados en 2026): columnas _2027  mostrar como "Ene 2026".."Abr 2026"
+  May-Dic (no cerrados 2026): columnas _2026  mostrar como "May 2025".."Dic 2025"
+  Mayo 2026 actual (a�n no cerrado): usa columna may_2026 = dato real Mayo 2025
 
-GRÁFICO: 12 meses cronológicos más recientes, sin proyecciones.
-  May 2025 → Jun 2025 → … → Dic 2025 → Ene 2026 → … → Abr 2026
+GR�FICO: 12 meses cronol�gicos m�s recientes, sin proyecciones.
+  May 2025  Jun 2025  .  Dic 2025  Ene 2026  .  Abr 2026
 """
 
-# Mapeo: mes_num → (abrev_db, año_db, label_display, año_display)
+# Mapeo: mes_num  (abrev_db, a�o_db, label_display, a�o_display)
 # Para hoy = Mayo 2026: Ene-Abr usan _2027 (dato real 2026), May-Dic usan _2026 (dato real 2025)
 def _get_mes_map():
-    """Devuelve lista de 12 entradas: (mes_num, nombre, abrev_db, año_db, año_label)."""
+    """Devuelve lista de 12 entradas: (mes_num, nombre, abrev_db, a�o_db, a�o_label)."""
     today = date.today()
     mes_actual = today.month   # 5
     yr = today.year            # 2026
@@ -97,23 +97,25 @@ def _get_mes_map():
     result = []
     for mes_num, nombre, abrev in MESES:
         if mes_num < mes_actual:
-            # Meses pasados del año actual -> en BD tienen año yr+1, etiqueta yr
+            # Meses pasados del a�o actual -> en BD tienen a�o yr+1, etiqueta yr
             result.append((mes_num, nombre, abrev, yr + 1, yr))
         elif mes_num == mes_actual:
-            # Mes actual -> en BD tiene año yr, etiqueta yr
-            result.append((mes_num, nombre, abrev, yr, yr))
+            # Mes actual -> en BD tiene a�o yr, etiqueta yr
+            # El mes en curso aun representa el ultimo cierre comparable del
+            # anio anterior; la etiqueta debe informar ese periodo real.
+            result.append((mes_num, nombre, abrev, yr, yr - 1))
         else:
-            # Meses del año pasado -> en BD tienen año yr, etiqueta yr-1
+            # Meses del a�o pasado -> en BD tienen a�o yr, etiqueta yr-1
             result.append((mes_num, nombre, abrev, yr, yr - 1))
     return result
 
 
 def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
     """
-    Tabla FIJA Enero→Diciembre.
-    Usa los últimos 12 meses del chart_24m para mantener la consistencia del crecimiento.
+    Tabla FIJA EneroDiciembre.
+    Usa los �ltimos 12 meses del chart_24m para mantener la consistencia del crecimiento.
     """
-    # Obtenemos los ultimos 12 meses del grafico (que ya están en orden cronologico)
+    # Obtenemos los ultimos 12 meses del grafico (que ya est�n en orden cronologico)
     last_12 = chart_24m[-12:] if len(chart_24m) >= 12 else chart_24m
     
     # Ordenamos de Enero a Diciembre para la tabla del frontend
@@ -132,7 +134,7 @@ def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
             "growth_so_pct": item.get("growth_so_pct"),
             "growth_si_pct": item.get("growth_si_pct"),
             "mom_growth_si_pct": item.get("mom_growth_si_pct"),
-            "hist_val":  item.get("Sell Out Año Anterior", 0),
+            "hist_val":  item.get("Sell Out A�o Anterior", 0),
             "hist_si_val": item.get("hist_si_val", 0)
         })
     return result
@@ -140,8 +142,8 @@ def _build_month_calendar(cols: list, row: dict, chart_24m: list) -> list:
 
 def _build_chart_24m(cols: list, row: dict) -> list:
     """
-    Gráfico continuo de 24 meses de historia.
-    Orden cronológico.
+    Gr�fico continuo de 24 meses de historia.
+    Orden cronol�gico.
     """
     mes_map = _get_mes_map()
     today = date.today()
@@ -171,7 +173,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
         col_hist = f"hist_{nombre.lower()}_{anio_hist}"
         
         # Para meses pasados que no tienen columna sellout_ (porque estaban fuera de los 12 meses proy.),
-        # usamos su columna hist_ que contiene el dato real de ese año
+        # usamos su columna hist_ que contiene el dato real de ese a�o
         if col_so not in cols:
             col_so_fallback = f"hist_{nombre.lower()}_{yr_label}"
             so_val = _safe(row.get(col_so_fallback)) if col_so_fallback in cols else 0
@@ -227,7 +229,7 @@ def _build_chart_24m(cols: list, row: dict) -> list:
             "Sell Out": so_val,
             "Sell In": si_val,
             "Stock Tienda": stock_historico,
-            "Sell Out Año Anterior": hist_val,
+            "Sell Out A�o Anterior": hist_val,
             "mom_growth_pct": mom_growth,
             "yoy_growth_pct": yoy_growth,
             "growth_pct": yoy_growth, # keep for compatibility with the small calendar label
@@ -258,13 +260,13 @@ def _build_chart_24m(cols: list, row: dict) -> list:
 
 
 
-# Mes abreviado → número
+# Mes abreviado  n�mero
 _MON = {'jan':1,'feb':2,'mar':3,'apr':4,'may':5,'jun':6,
         'jul':7,'aug':8,'sep':9,'oct':10,'nov':11,'dec':12,
         'ene':1,'abr':4,'ago':8,'dic':12}
 
 def _col_sort_key(col: str) -> tuple:
-    """Ordena columnas unidades{DD}_{mon}... cronológicamente por fecha inicio."""
+    """Ordena columnas unidades{DD}_{mon}... cronol�gicamente por fecha inicio."""
     m = re.search(r'unidades(\d+)_([a-z]+)', col)
     if m:
         return (_MON.get(m.group(2), 0), int(m.group(1)))
@@ -273,9 +275,9 @@ def _col_sort_key(col: str) -> tuple:
 
 def _get_semanas_fact_ventas(conn) -> dict:
     """
-    Lee fact_ventas. Ordena columnas CRONOLÓGICAMENTE (no alfabéticamente).
-    sem1 = semana más reciente COMPLETA, sem2, sem3, sem4 = anteriores en orden.
-    Excluye la semana actual si está incompleta (0 o < 20% del promedio).
+    Lee fact_ventas. Ordena columnas CRONOL�GICAMENTE (no alfab�ticamente).
+    sem1 = semana m�s reciente COMPLETA, sem2, sem3, sem4 = anteriores en orden.
+    Excluye la semana actual si est� incompleta (0 o < 20% del promedio).
     """
     try:
         df = pd.read_sql(text("SELECT * FROM fact_ventas"), conn)
@@ -286,7 +288,7 @@ def _get_semanas_fact_ventas(conn) -> dict:
 
     df["sku"] = df["sku"].astype(str).str.strip()
 
-    # Ordenar columnas CRONOLÓGICAMENTE por fecha de inicio de semana
+    # Ordenar columnas CRONOL�GICAMENTE por fecha de inicio de semana
     sem_cols = sorted(
         [c for c in df.columns if c.startswith("unidades")
          and c not in ("unidades_semana_actual",)],
@@ -303,11 +305,11 @@ def _get_semanas_fact_ventas(conn) -> dict:
             v = pd.to_numeric(row.get(c), errors="coerce")
             vals.append(0 if pd.isna(v) else int(v))
 
-        # vals ahora en orden cronológico: [oldest, ..., newest]
+        # vals ahora en orden cronol�gico: [oldest, ..., newest]
         semana_excluida = False
         fecha_ultima = sem_cols[-1] if sem_cols else "N/A"
         
-        # Siempre descartar la última columna porque es la semana actual (incompleta)
+        # Siempre descartar la �ltima columna porque es la semana actual (incompleta)
         if len(vals) >= 2:
             completed = vals[:-1]   # descartar semana en curso siempre
             semana_excluida = True
@@ -315,7 +317,7 @@ def _get_semanas_fact_ventas(conn) -> dict:
         else:
             completed = vals
 
-        # Las 4 semanas más recientes (completed ya es oldest→newest = [125,128,94,154])
+        # Las 4 semanas m�s recientes (completed ya es oldestnewest = [125,128,94,154])
         recent4 = completed[-4:] if len(completed) >= 4 else completed
         
         sem1 = recent4[0] if len(recent4) >= 1 else 0
@@ -344,10 +346,10 @@ def _get_semanas_fact_ventas(conn) -> dict:
     return result
 
 
-# ── GET /api/sop/ ─────────────────────────────────────────────────────────────
+# �� GET /api/sop/ �������������������������������������������������������������
 @router.get("/")
 def get_sop(include_discontinued: bool = False):
-    """Retorna S&OP; los descontinuados solo se incluyen bajo petición explícita."""
+    """Retorna S&OP; los descontinuados solo se incluyen bajo petici�n expl�cita."""
     with engine.connect() as conn:
         try:
             df_sop = pd.read_sql(text("""
@@ -374,7 +376,7 @@ def get_sop(include_discontinued: bool = False):
         except Exception:
             sem_map = {}
 
-        # Tránsito activo
+        # Tr�nsito activo
         try:
             df_tr = pd.read_sql(text("""
                 SELECT sku,
@@ -432,7 +434,7 @@ def get_sop(include_discontinued: bool = False):
                 "ritmo_mensual_verificado"):
         df[col] = df["sku"].map(lambda s: sem_map.get(s, {}).get(col, 0 if "fecha" not in col else "N/A"))
 
-    # Numéricos
+    # Num�ricos
     for col in ("stock_act", "cantidad_transito", "ump",
                 "ritmo_semanal_uds", "sem1_uds", "sem2_uds",
                 "sem3_uds", "sem4_uds", "total_4_sem_verificado",
@@ -465,7 +467,7 @@ def get_sop(include_discontinued: bool = False):
     # Ritmo mensual para cobertura: suma de las 4 semanas
     ritmo_mensual = df["total_4_sem_verificado"].replace(0, float("nan"))
 
-    # Cálculos de duración
+    # C�lculos de duraci�n
     dur_solo_stock = (df["stock_act"] / ritmo_mensual).fillna(999)
     dur_total      = ((df["stock_act"] + df["cantidad_transito"]) / ritmo_mensual).fillna(999)
 
@@ -488,21 +490,21 @@ def get_sop(include_discontinued: bool = False):
 
     df["nivel_alerta"] = df.apply(_calc_alerta, axis=1)
 
-    # Duración a mostrar en el dashboard
+    # Duraci�n a mostrar en el dashboard
     df["duracion_meses"] = df["duracion_fisica_solo"]
     df.loc[df["nivel_alerta"] == "MORADO", "duracion_meses"] = dur_total
 
     # Diccionario de explicaciones de excepciones
     EXPLICACIONES = {
-        "DATOS_INCOMPLETOS": "Faltan datos críticos (ej. nombre) o producto mal definido. Sugerencia de compra bloqueada.",
-        "STOCK_NEGATIVO": "Stock físico negativo. Validar inventario físico antes de emitir compra.",
-        "PRODUCTO_DESCONTINUADO": "Producto descontinuado. Compra automática bloqueada.",
-        "PRODUCTO_BLOQUEADO": "Producto bloqueado en maestra (se evalúa sugerencia de compra operativa).",
-        "SIN_UMP": "Existe necesidad de compra, pero falta Unidad Mínima de Pedido.",
-        "SIN_ETA_TRANSITO": "Tránsito sin ETA: no se considera como mitigación de quiebre inmediato.",
+        "DATOS_INCOMPLETOS": "Faltan datos cr�ticos (ej. nombre) o producto mal definido. Sugerencia de compra bloqueada.",
+        "STOCK_NEGATIVO": "Stock f�sico negativo. Validar inventario f�sico antes de emitir compra.",
+        "PRODUCTO_DESCONTINUADO": "Producto descontinuado. Compra autom�tica bloqueada.",
+        "PRODUCTO_BLOQUEADO": "Producto bloqueado en maestra (se eval�a sugerencia de compra operativa).",
+        "SIN_UMP": "Existe necesidad de compra, pero falta Unidad M�nima de Pedido.",
+        "SIN_ETA_TRANSITO": "Tr�nsito sin ETA: no se considera como mitigaci�n de quiebre inmediato.",
         "SIN_VENTAS_SUFICIENTES": "Sin historial suficiente para proyectar demanda de manera confiable.",
-        "PRODUCTO_NUEVO": "Producto nuevo. Requiere revisión de demanda antes de comprar.",
-        "QUIEBRE_SELLIN": "Quiebre de Sell-In detectado (Sell-In ~ 0). Se incrementó el cupo de compra proyectado para restablecer disponibilidad en tiendas."
+        "PRODUCTO_NUEVO": "Producto nuevo. Requiere revisi�n de demanda antes de comprar.",
+        "QUIEBRE_SELLIN": "Quiebre de Sell-In detectado (Sell-In ~ 0). Se increment� el cupo de compra proyectado para restablecer disponibilidad en tiendas."
     }
 
     # (Las variables sug_*, excepciones, requiere_revision, bloquea_compra_automatica
@@ -516,7 +518,7 @@ def get_sop(include_discontinued: bool = False):
         ritmo_col="total_4_sem_verificado",
     )
 
-    # Obtenemos las familias de maquila procesadas (DFS + Detección de ciclos)
+    # Obtenemos las familias de maquila procesadas (DFS + Detecci�n de ciclos)
     with engine.connect() as conn:
         familias_map = build_maquila_families(conn, lookup_df)
 
@@ -554,7 +556,7 @@ def get_sop(include_discontinued: bool = False):
         d["excepciones"] = excs
         d["explicacion_excepcion"] = [EXPLICACIONES.get(code, code) for code in excs]
         
-        # Familia (Reemplazo Simétrico)
+        # Familia (Reemplazo Sim�trico)
         sku_str = str(row["sku"]).strip()
         codigo_value = row.get("codigo_femaco")
         codigo_str = "" if pd.isna(codigo_value) else str(codigo_value).strip().upper()
@@ -567,7 +569,7 @@ def get_sop(include_discontinued: bool = False):
         if (codigo_str in familias_map) or (sku_str in familias_map):
 
             # En el modelo actual los registros FAM-* son nodos internos y los
-            # códigos internos viven en receta_maquila_componentes. Por eso no basta
+            # c�digos internos viven en receta_maquila_componentes. Por eso no basta
             # con cruzar planificacion_sop contra recetas_maquila.sku_maquilable:
             # todo miembro de una familia activa debe marcarse como maquila.
             d["es_maquilable"] = True
@@ -638,8 +640,8 @@ def get_categories():
                 df = pd.DataFrame(columns=["categoria", "subcategoria", "formato"])
     tree = {}
     for _, row in df.iterrows():
-        cat = row["categoria"] or "SIN CATEGORÍA"
-        sub = row["subcategoria"] or "SIN SUBCATEGORÍA"
+        cat = row["categoria"] or "SIN CATEGOR�A"
+        sub = row["subcategoria"] or "SIN SUBCATEGOR�A"
         fmt = row["formato"] or ""
         tree.setdefault(cat, {}).setdefault(sub, set())
         if fmt:
@@ -671,12 +673,12 @@ def get_transito_sku(sku: str):
     for _, row in df.iterrows():
         records.append({
             "id":          int(row.get("id") or 0),
-            "oc":          str(row.get("codigo_envio") or "—"),
-            "nombre":      str(row.get("nombre_pedido") or "—"),
+            "oc":          str(row.get("codigo_envio") or "-"),
+            "nombre":      str(row.get("nombre_pedido") or "-"),
             "cantidad":    int(row.get("cantidad") or 0),
-            "eta":         str(row.get("fecha_eta") or "")[:10] or "—",
-            "disponible":  str(row.get("disp") or "")[:10] or "—",
-            "origen":      str(row.get("origen_eta") or "—"),
+            "eta":         str(row.get("fecha_eta") or "")[:10] or "-",
+            "disponible":  str(row.get("disp") or "")[:10] or "-",
+            "origen":      str(row.get("origen_eta") or "-"),
             "estado":      str(row.get("estado") or "EN_TRANSITO"),
             "en_aforo":    bool(row.get("en_aforo")),
             "eta_ajustada": str(row.get("eta_ajustada") or "")[:10],
@@ -684,7 +686,7 @@ def get_transito_sku(sku: str):
     return {"sku": sku, "ordenes": records}
 
 
-# ── Observaciones ─────────────────────────────────────────────────────────────
+# �� Observaciones �������������������������������������������������������������
 @router.get("/observacion/{sku}")
 def get_observacion(sku: str):
     try:
@@ -712,7 +714,7 @@ def save_observacion(
     body: dict = Body(...),
     authorization: str = Header(None)
 ):
-    """Guarda/actualiza observación de un SKU."""
+    """Guarda/actualiza observaci�n de un SKU."""
     token   = _get_auth_header(authorization)
     payload = decode_token(token)
     permisos = payload.get("permisos", {})
@@ -735,18 +737,18 @@ def save_observacion(
     return {"ok": True, "sku": sku}
 
 
-# ── RESUMEN EJECUTIVO / TORRE DE CONTROL FINANCIERA ───────────────────────────
+# �� RESUMEN EJECUTIVO / TORRE DE CONTROL FINANCIERA ���������������������������
 @router.get("/resumen-ejecutivo")
 def get_resumen_ejecutivo():
     """
     Torre de Control Financiera & Matriz de Riesgos S&OP:
     - Capital Total en Bodega ($) y en Unidades.
-    - Distribución por nivel de alerta (Rojo, Naranja, Amarillo, Azul, Morado, Verde).
+    - Distribuci�n por nivel de alerta (Rojo, Naranja, Amarillo, Azul, Morado, Verde).
     - Capital en Sobre-Stock (Morado/Verde).
     - Capital en Riesgo de Quiebre (Rojo/Naranja).
-    - Venta Perdida Proyectada a 30 días ($) por quiebres en SKUs ROJO.
-    - DOH (Days on Hand / Días de Cobertura Global).
-    - Fill Rate / Disponibilidad de Catálogo (% SKUs activos con stock).
+    - Venta Perdida Proyectada a 30 d�as ($) por quiebres en SKUs ROJO.
+    - DOH (Days on Hand / D�as de Cobertura Global).
+    - Fill Rate / Disponibilidad de Cat�logo (% SKUs activos con stock).
     """
     with engine.connect() as conn:
         try:
@@ -798,7 +800,7 @@ def get_resumen_ejecutivo():
 
     doh_global = round(stock_total_uds / ritmo_diario_total, 1) if ritmo_diario_total > 0 else 0.0
 
-    # Venta perdida estimada a 30 días (SKUs en ROJO)
+    # Venta perdida estimada a 30 d�as (SKUs en ROJO)
     df_rojos = df[df["nivel_alerta"] == "ROJO"]
     venta_perdida_uds = float(df_rojos[ritmo_col].fillna(0).sum())
 
@@ -828,7 +830,7 @@ def get_resumen_ejecutivo():
     }
 
 
-# ── GENERADOR DIRECTO DE ÓRDENES DE COMPRA A PROVEEDOR ───────────────────────
+# �� GENERADOR DIRECTO DE �RDENES DE COMPRA A PROVEEDOR �����������������������
 @router.post("/generar-po")
 def generar_orden_compra_proveedor(
     body: dict = Body(...),
@@ -836,10 +838,10 @@ def generar_orden_compra_proveedor(
 ):
     """
     Genera una Orden de Compra formal al Proveedor desde la pantalla de Compras:
-    - Inserta los ítems seleccionados directamente en 'control_embarques'.
+    - Inserta los �tems seleccionados directamente en 'control_embarques'.
     - Quedan en estado 'EN_TRANSITO' y con origen 'SISTEMA_COMPRAS'.
     - Registra el movimiento proyectado en Kardex.
-    - Se refleja inmediatamente en el S&OP y en la gestión de Embarques.
+    - Se refleja inmediatamente en el S&OP y en la gesti�n de Embarques.
     """
     token = _get_auth_header(authorization)
     payload = decode_token(token)
@@ -854,7 +856,7 @@ def generar_orden_compra_proveedor(
     items = body.get("items") or []
 
     if not numero_oc:
-        raise HTTPException(400, "El número de Orden de Compra (PO) es obligatorio")
+        raise HTTPException(400, "El n�mero de Orden de Compra (PO) es obligatorio")
     if not items:
         raise HTTPException(400, "Debes seleccionar al menos un SKU para generar la orden")
     if not fecha_eta:
@@ -871,7 +873,7 @@ def generar_orden_compra_proveedor(
             {"c": numero_oc}
         ).fetchone()
         if exists:
-            raise HTTPException(400, f"Ya existe una Orden de Compra o Envío registrado con el código '{numero_oc}'")
+            raise HTTPException(400, f"Ya existe una Orden de Compra o Env�o registrado con el c�digo '{numero_oc}'")
 
         total_unidades = 0
         total_monto = Decimal('0.0')
@@ -934,5 +936,6 @@ def generar_orden_compra_proveedor(
         "items_count": len(items),
         "total_unidades": total_unidades,
         "total_monto": float(total_monto),
-        "mensaje": f"Orden de Compra {numero_oc} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
+        "mensaje": f"Orden de Compra {numero_oc} generada con �xito e inyectada a Tr�nsito ({total_unidades} uds)."
     }
+

@@ -1,19 +1,20 @@
 """
-api/routes/upload.py — Endpoints de carga de archivos y gestión de OCs
+api/routes/upload.py - Endpoints de carga de archivos y gesti�n de OCs
 =======================================================================
-- POST /api/upload/maestro        → reemplaza dim_productos (col T = ump)
-- POST /api/upload/inventario     → reemplaza stock en dim_productos (truncate+insert)
-- POST /api/upload/transito       → agrega OCs al control_embarques
-- GET  /api/upload/embarques      → lista todas las OCs
-- POST /api/upload/embarques/{id}/aforo   → marcar en aforo (+7d, luego +14d total)
-- POST /api/upload/embarques/{id}/eta     → cambiar ETA (atraso)
-- POST /api/upload/embarques/{id}/llegada → confirmar llegada (sale del tránsito)
-- POST /api/upload/reprocess      → reprocesar pipeline completo
+- POST /api/upload/maestro         reemplaza dim_productos (col T = ump)
+- POST /api/upload/inventario      reemplaza stock en dim_productos (truncate+insert)
+- POST /api/upload/transito        agrega OCs al control_embarques
+- GET  /api/upload/embarques       lista todas las OCs
+- POST /api/upload/embarques/{id}/aforo    marcar en aforo (+7d, luego +14d total)
+- POST /api/upload/embarques/{id}/eta      cambiar ETA (atraso)
+- POST /api/upload/embarques/{id}/llegada  confirmar llegada (sale del tr�nsito)
+- POST /api/upload/reprocess       reprocesar pipeline completo
 """
 import io
 import json
 import subprocess
 import sys
+import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -28,18 +29,44 @@ OC_DIR    = ROOT / "data" / "manual_uploads" / "ordenes_compra"
 
 router = APIRouter()
 
-# ── Auth helpers (importados de auth.py) ──────────────────────────────────────
+
+def _normalizar_cabecera_excel(value) -> str:
+    """Normaliza una cabecera Excel para comparaciones estables."""
+    if value is None or (not isinstance(value, (list, dict, tuple, set)) and pd.isna(value)):
+        value = ""
+    normalized = unicodedata.normalize("NFD", str(value).strip().upper())
+    without_accents = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(without_accents.split())
+
+
+def _buscar_fila_cabecera_inventario(df_raw: pd.DataFrame) -> int:
+    """Busca la fila que contiene la cabecera exacta STOCK UN."""
+    for row_index in range(min(len(df_raw), 25)):
+        headers = {
+            _normalizar_cabecera_excel(value)
+            for value in df_raw.iloc[row_index].tolist()
+        }
+        if "STOCK UN" in headers:
+            return row_index
+    raise ValueError(
+        "No se encontro la cabecera exacta 'STOCK UN' en las primeras 25 filas "
+        "de la hoja 'INVENTARIO ACTUAL'."
+    )
+
+# �� Auth helpers (importados de auth.py) ��������������������������������������
 from api.routes.auth import decode_token, _get_auth_header, require_admin, require_permission
 
-# ── Columnas Maestra ──────────────────────────────────────────────────────────
+# �� Columnas Maestra ����������������������������������������������������������
 # Fila 2 como header, columnas (0-based): B=1, C=2, E=4, F=5, G=6, M=12, T=19
 MAESTRO_COL_IDX = [1, 2, 4, 5, 6, 12, 19]
 MAESTRO_COL_NAMES = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "condicion", "ump"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
 # UPLOAD MAESTRA
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
 
 def _run_planner_task():
     try:
@@ -68,7 +95,7 @@ async def upload_maestro(
     try:
         (MANUAL_DIR / file.filename).write_bytes(contents)
     except PermissionError:
-        raise HTTPException(400, "El archivo está bloqueado. Ciérralo en Excel antes de subirlo.")
+        raise HTTPException(400, "El archivo est� bloqueado. Ci�rralo en Excel antes de subirlo.")
     except Exception as e:
         raise HTTPException(500, f"Error al guardar el archivo: {e}")
 
@@ -98,7 +125,7 @@ async def upload_maestro(
 
     sub.columns = ["codigo_femaco", "sku", "categoria", "subcategoria", "formato", "condicion"]
 
-    # Columna T (índice 19) = ump — opcional
+    # Columna T (�ndice 19) = ump - opcional
     if n_cols > 19:
         try:
             sub["ump"] = pd.to_numeric(
@@ -113,7 +140,7 @@ async def upload_maestro(
     sub["sku"]          = sub["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
     sub["codigo_femaco"] = sub["codigo_femaco"].astype(str).str.strip()
     
-    # Normalizar condición a las 3 categorías canónicas de la maestra
+    # Normalizar condici�n a las 3 categor�as can�nicas de la maestra
     def _norm_cond(val):
         s = str(val or "").strip().upper()
         if "BLOQUEAD" in s:
@@ -202,7 +229,7 @@ async def upload_maestro(
     except Exception as db_err:
         raise HTTPException(500, f"Error en la base de datos: {db_err}")
 
-    # Lanzar recálculo de planificación de forma asincrónica (sin bloquear la petición HTTP)
+    # Lanzar rec�lculo de planificaci�n de forma asincr�nica (sin bloquear la petici�n HTTP)
     background_tasks.add_task(_run_planner_task)
 
     preview = sub.head(20).replace({float("nan"): None}).to_dict(orient="records")
@@ -213,9 +240,9 @@ async def upload_maestro(
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UPLOAD INVENTARIO — reemplazo total de stock
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
+# UPLOAD INVENTARIO - reemplazo total de stock
+# �����������������������������������������������������������������������������
 
 
 @router.post("/inventario")
@@ -242,46 +269,75 @@ async def upload_inventario(
     except Exception as e:
         raise HTTPException(500, f"Error al guardar el archivo: {e}")
 
-    # Intentar leer con hoja "INVENTARIO ACTUAL" (que es la hoja 2 y contiene STOCK ACT en la columna FA)
+    # Buscar la hoja INVENTARIO ACTUAL y la cabecera dinamica STOCK UN.
     df = None
     try:
         xl = pd.ExcelFile(io.BytesIO(contents))
-        # Buscar hoja que contenga "INVENTARIO ACTUAL"
-        target_sheet = next((s for s in xl.sheet_names if "INVENTARIO ACTUAL" in s.upper()), None)
-        
-        if target_sheet:
-            # En INVENTARIO ACTUAL:
-            # Columna B (1): CÓD (SKU)
-            # Columna C (2): Nombre
-            # Columna FA (156): STOCK ACT
-            df = xl.parse(sheet_name=target_sheet, header=0)
-        else:
-            # Fallback a lectura de la hoja 2 (index 1) si no existe esa hoja
-            for sheet, hdr in [(1, 0), (1, 1)]:
-                try:
-                    df = pd.read_excel(io.BytesIO(contents), sheet_name=sheet, header=hdr)
-                    if len(df.columns) > 156:
-                        break
-                except Exception:
-                    continue
+        target_sheet = next(
+            (
+                sheet
+                for sheet in xl.sheet_names
+                if _normalizar_cabecera_excel(sheet) == "INVENTARIO ACTUAL"
+            ),
+            None,
+        )
+        if not target_sheet:
+            raise ValueError(
+                "No se encontro la hoja 'INVENTARIO ACTUAL'. "
+                f"Hojas disponibles: {xl.sheet_names}"
+            )
+
+        df_raw = xl.parse(sheet_name=target_sheet, header=None)
+        header_row = _buscar_fila_cabecera_inventario(df_raw)
+        df = xl.parse(sheet_name=target_sheet, header=header_row)
     except Exception as e:
         raise HTTPException(400, f"Error leyendo Excel: {e}")
 
     if df is None:
         raise HTTPException(400, "No se pudo leer el archivo de inventario.")
 
-    # Extraer columnas: buscar por nombre o usar índices por defecto
+    # Extraer columnas: buscar por nombre o usar �ndices por defecto
     try:
-        sku_cols = [c for c in df.columns if "SKU" in str(c).upper() or "CÓD" in str(c).upper()]
+        normalized_columns = {
+            column: _normalizar_cabecera_excel(column)
+            for column in df.columns
+        }
+        sku_cols = [
+            column
+            for column, normalized in normalized_columns.items()
+            if normalized == "SKU"
+        ]
+        if not sku_cols:
+            sku_cols = [
+                column
+                for column, normalized in normalized_columns.items()
+                if "SKU" in normalized
+            ]
+        if not sku_cols:
+            sku_cols = [
+                column
+                for column, normalized in normalized_columns.items()
+                if normalized in {"COD", "CODIGO"}
+            ]
+        if not sku_cols:
+            sku_cols = [
+                column
+                for column, normalized in normalized_columns.items()
+                if normalized.startswith("COD") and "CAJA" not in normalized
+            ]
         col_sku = df[sku_cols[0]] if sku_cols else df.iloc[:, 1]
 
-        stock_cols = [c for c in df.columns if "STOCK ACT" in str(c).upper()]
-        if stock_cols:
-            col_stock = df[stock_cols[0]]
-        elif len(df.columns) > 156:
-            col_stock = df.iloc[:, 156]
-        else:
-            raise ValueError("No se encontró columna 'STOCK ACT' ni columna FA (156).")
+        stock_cols = [
+            column
+            for column, normalized in normalized_columns.items()
+            if normalized == "STOCK UN"
+        ]
+        if not stock_cols:
+            raise ValueError(
+                "No se encontro la cabecera exacta 'STOCK UN' en la hoja "
+                "'INVENTARIO ACTUAL'."
+            )
+        col_stock = df[stock_cols[0]]
         
         sub = pd.DataFrame({"sku": col_sku, "stock_act": col_stock})
     except Exception as e:
@@ -318,7 +374,7 @@ async def upload_inventario(
     except Exception as db_err:
         raise HTTPException(500, f"Error actualizando el inventario: {db_err}")
 
-    # Ejecutar planner.py de forma sincrónica para que los datos estén listos en el dashboard
+    # Ejecutar planner.py de forma sincr�nica para que los datos est�n listos en el dashboard
     try:
         subprocess.run([sys.executable, str(ROOT / "src" / "planner.py")], check=True, capture_output=True)
     except Exception as e:
@@ -339,9 +395,9 @@ async def upload_inventario(
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UPLOAD TRÁNSITO / OC → control_embarques
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
+# UPLOAD TR�NSITO / OC  control_embarques
+# �����������������������������������������������������������������������������
 
 @router.post("/transito")
 async def upload_transito(
@@ -353,7 +409,7 @@ async def upload_transito(
     """
     Sube una OC Excel. Detecta columnas CODIGO_FEMACO + CANTIDAD_OC + ETA.
     Acepta nombre_pedido y eta_fecha como campos del formulario (obligatorio nombre_pedido).
-    Inserta en control_embarques (acumulativo — las anteriores se mantienen).
+    Inserta en control_embarques (acumulativo - las anteriores se mantienen).
     """
     token = _get_auth_header(authorization)
     payload = decode_token(token)
@@ -370,20 +426,20 @@ async def upload_transito(
     try:
         dest.write_bytes(contents)
     except PermissionError:
-        raise HTTPException(400, "El archivo de la OC está bloqueado. Ciérralo en Excel antes de subirlo.")
+        raise HTTPException(400, "El archivo de la OC est� bloqueado. Ci�rralo en Excel antes de subirlo.")
     except Exception as e:
         raise HTTPException(500, f"Error al guardar la OC: {e}")
 
-    # ── Leer Excel (Primeras 2 columnas) ──────────────────────────────────────
+    # �� Leer Excel (Primeras 2 columnas) ��������������������������������������
     try:
-        # Se asume fila 0 como header. Si el usuario envía la info desde la fila 1,
-        # pandas lo leerá bien. Tomamos las columnas 0 y 1.
+        # Se asume fila 0 como header. Si el usuario env�a la info desde la fila 1,
+        # pandas lo leer� bien. Tomamos las columnas 0 y 1.
         df = pd.read_excel(io.BytesIO(contents), sheet_name=0)
     except Exception as e:
         raise HTTPException(400, f"Error al leer el Excel de OC: {e}")
 
     if len(df.columns) < 2:
-        raise HTTPException(400, "El archivo debe tener al menos 2 columnas (Código y Cantidad).")
+        raise HTTPException(400, "El archivo debe tener al menos 2 columnas (C�digo y Cantidad).")
 
     df = df.iloc[:, [0, 1]].copy()
     df.columns = ["uploaded_code", "cantidad"]
@@ -397,9 +453,9 @@ async def upload_transito(
     df = df.groupby("uploaded_code", as_index=False).agg({"cantidad": "sum"})
 
     if df.empty:
-        raise HTTPException(400, "No se encontraron filas válidas con cantidad > 0")
+        raise HTTPException(400, "No se encontraron filas v�lidas con cantidad > 0")
 
-    # Cruzar con dim_productos para obtener SKU y Nombre permitiendo SKU o Código Femaco
+    # Cruzar con dim_productos para obtener SKU y Nombre permitiendo SKU o C�digo Femaco
     from api.db import engine
     dim = pd.read_sql("SELECT sku, codigo_femaco, nombre_producto FROM dim_productos", engine)
     
@@ -482,15 +538,15 @@ async def upload_transito(
             "nombre_pedido": oc_ref, "sin_sku": int(df["sku"].isna().sum())}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GESTIÓN DE EMBARQUES
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
+# GESTI�N DE EMBARQUES
+# �����������������������������������������������������������������������������
 
 @router.get("/embarques")
 def get_embarques(authorization: str = Header(None)):
     """Lista todas las OCs almacenadas en control_embarques."""
     token = _get_auth_header(authorization)
-    decode_token(token)  # solo verifica autenticación
+    decode_token(token)  # solo verifica autenticaci�n
 
     from api.db import engine
     with engine.connect() as conn:
@@ -534,8 +590,8 @@ def get_embarques(authorization: str = Header(None)):
 def marcar_aforo(emb_id: int, authorization: str = Header(None)):
     """
     Marca una OC en aforo.
-    - 1ª vez: ETA_disponible = fecha_ETA_original + 7 días
-    - Si ya pasó la semana de aforo y no llegó: ETA_disponible = fecha_ETA_original + 14 días
+    - 1� vez: ETA_disponible = fecha_ETA_original + 7 d�as
+    - Si ya pas� la semana de aforo y no lleg�: ETA_disponible = fecha_ETA_original + 14 d�as
       (y se alerta para contactar al proveedor si tampoco llega)
     """
     token = _get_auth_header(authorization)
@@ -560,7 +616,7 @@ def marcar_aforo(emb_id: int, authorization: str = Header(None)):
     fecha_aforo = row.fecha_marcado_aforo
 
     if not ya_en_aforo:
-        # Primera vez: +7 días
+        # Primera vez: +7 d�as
         nueva_disp = (eta_orig + timedelta(days=7)) if eta_orig else (today + timedelta(days=7))
         with engine.begin() as conn:
             conn.execute(text("""
@@ -571,10 +627,10 @@ def marcar_aforo(emb_id: int, authorization: str = Header(None)):
                     actualizado_en=NOW()
                 WHERE id=:i
             """), {"hoy": today, "disp": nueva_disp, "i": emb_id})
-        return {"ok": True, "msg": "Aforo marcado (+7 días). Disponible: " + str(nueva_disp), "alerta": False}
+        return {"ok": True, "msg": "Aforo marcado (+7 d�as). Disponible: " + str(nueva_disp), "alerta": False}
 
     else:
-        # Segunda vez: +14 días total → alerta proveedor
+        # Segunda vez: +14 d�as total  alerta proveedor
         nueva_disp = (eta_orig + timedelta(days=14)) if eta_orig else (today + timedelta(days=7))
         with engine.begin() as conn:
             conn.execute(text("""
@@ -586,16 +642,16 @@ def marcar_aforo(emb_id: int, authorization: str = Header(None)):
             """), {"disp": nueva_disp, "i": emb_id})
         return {
             "ok": True,
-            "msg": f"Aforo extendido (+14 días total). Disponible: {nueva_disp}",
+            "msg": f"Aforo extendido (+14 d�as total). Disponible: {nueva_disp}",
             "alerta": True,
-            "alerta_msg": "⚠️ Han pasado más de 14 días desde el ETA original. Contactar al vendedor.",
+            "alerta_msg": "?? Han pasado m�s de 14 d�as desde el ETA original. Contactar al vendedor.",
         }
 
 
 @router.post("/embarques/{emb_id}/eta")
 def cambiar_eta(emb_id: int, body: dict = Body(...), authorization: str = Header(None)):
     """
-    Cambia la ETA por atraso. La OC sigue en tránsito (RETRASADO).
+    Cambia la ETA por atraso. La OC sigue en tr�nsito (RETRASADO).
     body: { "nueva_eta": "2026-06-15", "motivo": "texto opcional" }
     """
     token = _get_auth_header(authorization)
@@ -611,7 +667,7 @@ def cambiar_eta(emb_id: int, body: dict = Body(...), authorization: str = Header
     try:
         nueva_eta = date.fromisoformat(str(nueva_eta_str)[:10])
     except ValueError:
-        raise HTTPException(400, "Formato de fecha inválido. Use YYYY-MM-DD")
+        raise HTTPException(400, "Formato de fecha inv�lido. Use YYYY-MM-DD")
 
     # Buffer aforo desde nueva ETA
     nueva_disp = nueva_eta + timedelta(days=7)
@@ -637,7 +693,7 @@ def cambiar_eta(emb_id: int, body: dict = Body(...), authorization: str = Header
 @router.post("/embarques/{emb_id}/llegada")
 def confirmar_llegada(emb_id: int, body: dict = Body(default={}), authorization: str = Header(None)):
     """
-    Confirma que la OC llegó. Estado → LLEGADO. Sale del tránsito activo.
+    Confirma que la OC lleg�. Estado  LLEGADO. Sale del tr�nsito activo.
     body: { "fecha_llegada": "2026-06-10" }  (opcional, default = hoy)
     """
     token = _get_auth_header(authorization)
@@ -683,7 +739,7 @@ def marcar_aforo_oc(nombre_pedido: str, authorization: str = Header(None)):
         ).fetchall()
         
         if not items:
-            raise HTTPException(404, "OC no encontrada o todos sus ítems ya llegaron")
+            raise HTTPException(404, "OC no encontrada o todos sus �tems ya llegaron")
 
         for row in items:
             eta_orig = row.fecha_eta
@@ -709,7 +765,7 @@ def marcar_aforo_oc(nombre_pedido: str, authorization: str = Header(None)):
                 """), {"disp": nueva_disp, "i": row.id})
             updated += 1
 
-    return {"ok": True, "msg": f"Aforo marcado para {updated} ítems de la OC {nombre_pedido}", "alerta": False}
+    return {"ok": True, "msg": f"Aforo marcado para {updated} �tems de la OC {nombre_pedido}", "alerta": False}
 
 @router.post("/embarques/oc/{nombre_pedido:path}/eta")
 def cambiar_eta_oc(nombre_pedido: str, body: dict = Body(...), authorization: str = Header(None)):
@@ -726,7 +782,7 @@ def cambiar_eta_oc(nombre_pedido: str, body: dict = Body(...), authorization: st
     try:
         nueva_eta = date.fromisoformat(str(nueva_eta_str)[:10])
     except ValueError:
-        raise HTTPException(400, "Formato inválido. Use YYYY-MM-DD")
+        raise HTTPException(400, "Formato inv�lido. Use YYYY-MM-DD")
 
     nueva_disp = nueva_eta + timedelta(days=7)
     motivo = body.get("motivo", "")
@@ -748,9 +804,9 @@ def cambiar_eta_oc(nombre_pedido: str, body: dict = Body(...), authorization: st
         }).fetchall()
         
     if not res:
-        raise HTTPException(404, "OC no encontrada o ya llegó completamente")
+        raise HTTPException(404, "OC no encontrada o ya lleg� completamente")
 
-    return {"ok": True, "msg": f"ETA actualizada para {len(res)} ítems de la OC {nombre_pedido}"}
+    return {"ok": True, "msg": f"ETA actualizada para {len(res)} �tems de la OC {nombre_pedido}"}
 
 @router.post("/embarques/oc/{nombre_pedido:path}/llegada")
 def confirmar_llegada_oc(nombre_pedido: str, body: dict = Body(default={}), authorization: str = Header(None)):
@@ -780,9 +836,9 @@ def confirmar_llegada_oc(nombre_pedido: str, body: dict = Body(default={}), auth
         """), {"f": fecha, "np": nombre_pedido}).fetchall()
         
     if not res:
-        raise HTTPException(404, "OC no encontrada o ya llegó completamente")
+        raise HTTPException(404, "OC no encontrada o ya lleg� completamente")
 
-    return {"ok": True, "msg": f"Llegada confirmada para {len(res)} ítems de la OC {nombre_pedido}"}
+    return {"ok": True, "msg": f"Llegada confirmada para {len(res)} �tems de la OC {nombre_pedido}"}
 
 @router.delete("/embarques/oc/{nombre_pedido:path}")
 def delete_embarque_oc(nombre_pedido: str, authorization: str = Header(None)):
@@ -806,12 +862,12 @@ def delete_embarque_oc(nombre_pedido: str, authorization: str = Header(None)):
     return {"ok": True, "msg": f"OC {nombre_pedido} borrada ({len(res)} SKUs eliminados)."}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, UploadFile, BackgroundTasks
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EXTRACCIÓN FEMACO SHINYAPPS (BACKGROUND TASK)
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
+# EXTRACCI�N FEMACO SHINYAPPS (BACKGROUND TASK)
+# �����������������������������������������������������������������������������
 
 import json
 from datetime import datetime
@@ -853,19 +909,19 @@ def _run_extract_task():
         res = subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), capture_output=True, text=True, timeout=120)
         if res.returncode != 0: raise subprocess.CalledProcessError(res.returncode, res.args, output=res.stdout, stderr=res.stderr)
         
-        set_task_status("extract", "done", "Sincronización de Matrix completada con éxito.")
+        set_task_status("extract", "done", "Sincronizaci�n de Matrix completada con �xito.")
     except subprocess.CalledProcessError as e:
-        msg = f"Error crítico en pipeline (fail-fast) - Etapa fallida: {e.cmd}\n\n[DETALLES DEL ERROR]:\n{e.stderr[-1000:] if e.stderr else 'Sin salida de error.'}"
+        msg = f"Error cr�tico en pipeline (fail-fast) - Etapa fallida: {e.cmd}\n\n[DETALLES DEL ERROR]:\n{e.stderr[-1000:] if e.stderr else 'Sin salida de error.'}"
         print(msg)
         set_task_status("extract", "error", msg)
     except Exception as e:
-        msg = f"Error en tarea de extracción: {e}"
+        msg = f"Error en tarea de extracci�n: {e}"
         print(msg)
         set_task_status("extract", "error", msg)
 
 @router.post("/extract")
 async def run_extract(background_tasks: BackgroundTasks, authorization: str = Header(None)):
-    """Inicia la extracción en segundo plano y responde inmediatamente."""
+    """Inicia la extracci�n en segundo plano y responde inmediatamente."""
     token = _get_auth_header(authorization)
     payload = decode_token(token)
     if payload.get("role") != "admin":
@@ -874,13 +930,13 @@ async def run_extract(background_tasks: BackgroundTasks, authorization: str = He
     background_tasks.add_task(_run_extract_task)
     return {
         "ok": True,
-        "msg": "El robot de extracción ha iniciado en segundo plano. Los datos se actualizarán en un par de minutos."
+        "msg": "El robot de extracci�n ha iniciado en segundo plano. Los datos se actualizar�n en un par de minutos."
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
 # REPROCESAR PIPELINE
-# ─────────────────────────────────────────────────────────────────────────────
+# �����������������������������������������������������������������������������
 
 def _run_reprocess_task():
     set_task_status("reprocess", "running", "Transformando datos...")
@@ -890,7 +946,7 @@ def _run_reprocess_task():
         subprocess.run([sys.executable, "src/loader.py"], cwd=str(ROOT), timeout=120)
         set_task_status("reprocess", "running", "Calculando S&OP...")
         subprocess.run([sys.executable, "src/planner.py"], cwd=str(ROOT), timeout=120)
-        set_task_status("reprocess", "done", "Reprocesamiento completado con éxito.")
+        set_task_status("reprocess", "done", "Reprocesamiento completado con �xito.")
     except Exception as e:
         msg = f"Error en tarea de reprocesamiento: {e}"
         print(msg)
@@ -898,7 +954,7 @@ def _run_reprocess_task():
 
 @router.post("/reprocess")
 async def reprocess(background_tasks: BackgroundTasks, authorization: str = Header(None)):
-    """Ejecuta transformer → planner en segundo plano."""
+    """Ejecuta transformer  planner en segundo plano."""
     token = _get_auth_header(authorization)
     payload = decode_token(token)
     if payload.get("role") != "admin":
@@ -907,7 +963,7 @@ async def reprocess(background_tasks: BackgroundTasks, authorization: str = Head
     background_tasks.add_task(_run_reprocess_task)
     return {
         "ok": True, 
-        "msg": "El pipeline de reprocesamiento ha iniciado en segundo plano. Los datos se actualizarán pronto."
+        "msg": "El pipeline de reprocesamiento ha iniciado en segundo plano. Los datos se actualizar�n pronto."
     }
 
 @router.get("/task-status")
@@ -919,3 +975,4 @@ def get_task_status():
     except Exception:
         pass
     return {}
+
