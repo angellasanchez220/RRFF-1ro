@@ -803,7 +803,7 @@ export default function Compras() {
                               <th>Estado & Maquila</th>
                               <th>Cobertura</th>
                               <th>Tránsito</th>
-                              <th>Proyecci�n 4 meses</th>
+                              <th>Proyeccion 4 meses</th>
                               <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Compra proyectada</th>
                               <th style={{ background: '#ffebee', color: '#b71c1c', borderLeft: '2px solid #ef9a9a' }}>🏮 Masiva CNY (Feb-Abr)</th>
                               <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Dinámico (Exp.)</th>
@@ -901,7 +901,7 @@ export default function Compras() {
                                     <div>Stock llegada: <b>{Number(s.stock_estimado_llegada || 0).toLocaleString('es-CL')}</b></div>
                                     <div>Objetivo ({Number(s.meses_cobertura_objetivo || 5.4).toFixed(1)} m): <b>{Number(s.stock_objetivo || 0).toLocaleString('es-CL')}</b></div>
                                     {Number(s.deficit_espera_4_meses || 0) > 0 && (
-                                      <div style={{ color: '#b91c1c' }}>D�ficit espera: <b>{Number(s.deficit_espera_4_meses).toLocaleString('es-CL')}</b></div>
+                                      <div style={{ color: '#b91c1c' }}>Deficit espera: <b>{Number(s.deficit_espera_4_meses).toLocaleString('es-CL')}</b></div>
                                     )}
                                     {s.ambiguedad_maquila && (
                                       <div style={{ color: '#b45309' }}>Revisar prioridad de maquila</div>
