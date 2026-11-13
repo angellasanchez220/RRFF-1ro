@@ -290,11 +290,46 @@ def _extraer_datos(engine) -> pd.DataFrame:
             f.total_unidades_semanas_cerradas  AS total_4_sem_uds,
             f.stock_fsico                      AS stock_fisico_matrix,
             COALESCE(t.cantidad_transito, 0)   AS cantidad_transito,
+            COALESCE(t.cantidad_transito_confirmado_4m, 0)
+                                                AS cantidad_transito_confirmado_4m,
+            COALESCE(t.transito_mes_1, 0)      AS transito_mes_1,
+            COALESCE(t.transito_mes_2, 0)      AS transito_mes_2,
+            COALESCE(t.transito_mes_3, 0)      AS transito_mes_3,
+            COALESCE(t.transito_mes_4, 0)      AS transito_mes_4,
             t.eta_proxima                      AS eta_proxima
         FROM dim_productos d
         LEFT JOIN fact_ventas f ON d.sku = f.sku
         LEFT JOIN (
-            SELECT sku, SUM(cantidad) AS cantidad_transito,
+            SELECT sku,
+                   SUM(cantidad) AS cantidad_transito,
+                   SUM(cantidad) FILTER (
+                       WHERE COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             IS NOT NULL
+                         AND COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             <= CURRENT_DATE + INTERVAL '120 days'
+                   ) AS cantidad_transito_confirmado_4m,
+                   SUM(cantidad) FILTER (
+                       WHERE COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             <= CURRENT_DATE + INTERVAL '30 days'
+                   ) AS transito_mes_1,
+                   SUM(cantidad) FILTER (
+                       WHERE COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             > CURRENT_DATE + INTERVAL '30 days'
+                         AND COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             <= CURRENT_DATE + INTERVAL '60 days'
+                   ) AS transito_mes_2,
+                   SUM(cantidad) FILTER (
+                       WHERE COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             > CURRENT_DATE + INTERVAL '60 days'
+                         AND COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             <= CURRENT_DATE + INTERVAL '90 days'
+                   ) AS transito_mes_3,
+                   SUM(cantidad) FILTER (
+                       WHERE COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             > CURRENT_DATE + INTERVAL '90 days'
+                         AND COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)
+                             <= CURRENT_DATE + INTERVAL '120 days'
+                   ) AS transito_mes_4,
                    MIN(COALESCE(eta_ajustada, fecha_disponibilidad_real, fecha_eta)) AS eta_proxima
             FROM control_embarques
             WHERE estado IN ('EN_TRANSITO', 'EN_AFORO', 'RETRASADO')
@@ -767,7 +802,9 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     log.info("Calculando Sugerencia de Compra con Target Dinámico...")
     
     # 1. Ritmo Pasado = promedio semanal * 4.33 (mes)
-    df["sug_ritmo_pasado"] = df["ritmo_semanal_uds"] * 4.33
+    df["sug_ritmo_pasado"] = pd.to_numeric(
+        df["total_4_sem_verificado"], errors="coerce"
+    ).fillna(0.0)
     
     # 2. Ritmo Futuro = promedio Sell-Out próximos 4 meses
     cols_so_prox_4 = [f"sellout_{_nombre_mes(m)[:3].lower()}_{a}" for m, a in meses[0:4]]
@@ -776,12 +813,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["sug_ritmo_futuro"] = df[exist_cols_so].mean(axis=1) if exist_cols_so else 0.0
     
     # 3. Ritmo Consolidado = MAX(Pasado, Futuro) SOLO PARA SELLOS
-    es_sellos = df["categoria"].astype(str).str.strip().str.lower() == "sellos"
-    df["sug_ritmo_mensual"] = np.where(
-        es_sellos,
-        df[["sug_ritmo_pasado", "sug_ritmo_futuro"]].max(axis=1),
-        df["sug_ritmo_pasado"]
-    ).round(0)
+    df["sug_ritmo_mensual"] = df["sug_ritmo_pasado"].round(0)
     
     # 4. Target de Stock Configurable
     try:
@@ -830,37 +862,57 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["meses_extra_por_crecimiento"] = meses_extra
     df["meses_cobertura_objetivo"] = cobertura_objetivo
 
-    df["sug_target_meses"] = df["meses_cobertura_objetivo"]
-    df["sug_target_uds"] = (df["sug_ritmo_mensual"] * df["sug_target_meses"]).round(0)
-    df["stock_objetivo"] = df["sug_target_uds"]
+    try:
+        from src.services.maquila_service import (
+            build_maquila_families,
+            build_product_lookup_by_internal_code,
+        )
+        from src.services.purchase_stock_service import calcular_compra_proyectada
+    except ModuleNotFoundError:
+        from services.maquila_service import (
+            build_maquila_families,
+            build_product_lookup_by_internal_code,
+        )
+        from services.purchase_stock_service import calcular_compra_proyectada
+
+    lookup_dict = build_product_lookup_by_internal_code(
+        df,
+        ritmo_col="total_4_sem_verificado",
+    )
+    try:
+        with engine.connect() as conn:
+            familias_map = build_maquila_families(conn, lookup_dict)
+    except Exception as exc:
+        log.warning(
+            "No se pudieron cargar recetas de maquila (%s). "
+            "Se calcularan todos los SKU de forma individual.",
+            exc,
+        )
+        familias_map = {}
+
+    df = calcular_compra_proyectada(df, familias_map, meses_espera=4)
     
     # 5. Inventario Disponible
     # Si el SKU pertenece a una familia de maquila activa, el stock físico útil
     # para decidir la compra es la suma de todos los integrantes de la familia.
     # El stock individual se conserva en stock_act para inventario y alertas.
-    df = _integrar_stock_familia_en_sugerencia(df, engine)
+    # La simulacion ya conserva el inventario individual de cada formato.
     
     # 5.1 Agregar ritmo de familia (si aplica) al ritmo mensual
     # sug_ritmo_reemplazable_adicional_4_sem está en escala de 4 semanas, lo pasamos a escala mensual ( / 4.0 * 4.33)
-    ritmo_adicional_4_sem = df.get("sug_ritmo_reemplazable_adicional_4_sem", pd.Series(0, index=df.index)).fillna(0)
-    ritmo_adicional_mensual = (ritmo_adicional_4_sem / 4.0) * 4.33
-    df["sug_ritmo_mensual"] = (df["sug_ritmo_mensual"] + ritmo_adicional_mensual).round(0)
+    # No se suma demanda de hermanos al SKU: cada formato mantiene la propia.
     
     # 5.2 Recalcular target de uds con el ritmo mensual consolidado
-    df["sug_target_uds"] = (df["sug_ritmo_mensual"] * df["sug_target_meses"]).round(0)
-    df["stock_objetivo"] = df["sug_target_uds"]
+    # El simulador ya calculo el objetivo posterior a la llegada.
 
-    df["sug_cantidad_transito"] = df.get("sug_transito_actual", df.get("cantidad_transito", pd.Series(0, index=df.index))).fillna(0)
     df["stock_tienda"] = df["stock_fisico_matrix"].fillna(0)
     
     # Inventario disponible = stock central (sug_stock_actual) + ETA
     # (El stock_tienda es solo informativo y NO debe usarse para el cálculo de compras)
-    inv_disponible = df["sug_stock_actual"] + df["sug_cantidad_transito"]
+    inv_disponible = df["stock_estimado_llegada"]
     
     # 6. Sugerencia Neta Bruta
-    sug_neta = df["sug_target_uds"] - inv_disponible
-    sug_neta = sug_neta.clip(lower=0)
-    df["sugerencia_bruta"] = sug_neta
+    # sugerencia_bruta ya considera demanda de espera, transito y maquila.
 
     # 6.1 Detección de Quiebre de Sell-In (Sell-In <= 5 o cercano a 0 habiendo demanda)
     # Aumenta el cupo de compra proyectado (+25% buffer o mínimo 1 mes)
@@ -873,21 +925,11 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["quiebre_sellin_detectado"] = quiebre_si.astype(int)
     
     # Si hay quiebre de Sell-In, se aumenta el cupo de compra proyectado
-    df.loc[quiebre_si, "sugerencia_bruta"] = np.where(
-        df.loc[quiebre_si, "sugerencia_bruta"] > 0,
-        df.loc[quiebre_si, "sugerencia_bruta"] * 1.25,
-        df.loc[quiebre_si, "sug_ritmo_mensual"]
-    )
+    # Se conserva solo como alerta; no altera la compra proyectada.
 
     # 6.2 Regla SELLOS: comparar la compra con la proyección del primer gráfico y agregar 100-200 (150) de margen para crecer
-    if "categoria" in df.columns:
-        es_sellos = df["categoria"].astype(str).str.strip().str.upper() == "SELLOS"
-        margen_crecer_sellos = 150.0
-        proy_primer_grafico = df.get("sug_ritmo_futuro", df["sug_ritmo_mensual"]).fillna(0)
-        base_sellos = np.maximum(df["sugerencia_bruta"], proy_primer_grafico)
-        df.loc[es_sellos & (df["sug_ritmo_mensual"] > 0), "sugerencia_bruta"] = (
-            base_sellos[es_sellos & (df["sug_ritmo_mensual"] > 0)] + margen_crecer_sellos
-        )
+    # No se agregan margenes paralelos: configuracion y crecimiento definen
+    # la cobertura objetivo de manera trazable.
 
     # 6.3 Proyección de Compra Masiva Año Nuevo Chino (Arribos requeridos en Febrero + Marzo + Abril)
     cols_feb = [c for c in df.columns if c.startswith("sellout_feb_")]
@@ -914,11 +956,11 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
             return max(0, sug * (1 - reduction))
         return sug
 
-    sug_ajustada_por_tendencia = df.apply(apply_growth_discount_before_ump, axis=1)
+    sug_ajustada_por_tendencia = df["sugerencia_bruta"]
     
     def check_discount(x):
         return pd.notna(x) and x <= -10.0
-    df["descuento_aplicado_por_decrecimiento"] = df.get("mom_sellout_pct", pd.Series([float("nan")]*len(df))).apply(check_discount)
+    df["descuento_aplicado_por_decrecimiento"] = False
     
     # 8. Ajuste por UMP (U/E) despues de la reduccion
     df["sugerencia_compra_inmediata_uds"] = df.apply(
@@ -1018,6 +1060,10 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
             if "PRODUCTO_NUEVO" not in excepciones:
                 excepciones.append("PRODUCTO_NUEVO")
                 requiere = True
+
+        if str(row.get("ambiguedad_maquila") or "").strip():
+            excepciones.append("AMBIGUEDAD_MAQUILA")
+            requiere = True
         
         df.at[idx, "excepciones"] = json.dumps(excepciones)
         df.at[idx, "requiere_revision"] = int(requiere)
@@ -1097,10 +1143,32 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
                 else:
                     explicacion = f"{cob_actual} No hay necesidad inminente de reposición para el target de {target_meses} meses."
 
+        if not bloquea:
+            formato = str(row.get("formato_compra") or "LINEAL")
+            demanda_espera = float(row.get("demanda_espera_4_meses", 0) or 0)
+            stock_llegada = float(row.get("stock_estimado_llegada", 0) or 0)
+            stock_objetivo = float(row.get("stock_objetivo", 0) or 0)
+            maq_recibida = float(row.get("maquila_recibida_4_meses", 0) or 0)
+            maq_destinada = float(row.get("maquila_destinada_4_meses", 0) or 0)
+            deficit_espera = float(row.get("deficit_espera_4_meses", 0) or 0)
+            transito_confirmado = float(
+                row.get("cantidad_transito_confirmado_4m", 0) or 0
+            )
+            explicacion = (
+                f"Formato {formato}. Demanda proyectada durante 4 meses: "
+                f"{demanda_espera:g} uds. Transito confirmado antes de la "
+                f"llegada: {transito_confirmado:g} uds. Maquila recibida: "
+                f"{maq_recibida:g}; destinada: {maq_destinada:g}. Stock "
+                f"estimado a la llegada: {stock_llegada:g} uds; objetivo "
+                f"posterior: {stock_objetivo:g} uds ({target_meses:g} meses). "
+                f"Deficit no cubierto durante la espera: {deficit_espera:g} uds. "
+                f"Compra sugerida con UMP: {sugerencia_final:g} uds."
+            )
+
         if row.get("quiebre_sellin_detectado", 0) == 1:
             excepciones.append("QUIEBRE_SELLIN")
             if explicacion:
-                explicacion += " [Quiebre de Sell-In detectado: cupo de compra aumentado]"
+                explicacion += " [Quiebre de Sell-In detectado como alerta informativa.]"
 
         df.at[idx, "excepciones"] = json.dumps(excepciones)
         df.at[idx, "explicacion_compra"] = explicacion
@@ -1238,6 +1306,11 @@ def run_planning(archivos_proc=None) -> dict:
     # Paso 6: Excepciones y Alertas
     log.info("--- [4.6] Excepciones y Alertas de Inventario ---")
     df = _calcular_excepciones_y_alertas(df)
+    try:
+        from src.services.purchase_stock_service import recalcular_resumen_familias
+    except ModuleNotFoundError:
+        from services.purchase_stock_service import recalcular_resumen_familias
+    df = recalcular_resumen_familias(df)
 
     # --- INTEGRACION DINAMICA ---
     if os.getenv("DYNAMIC_PLANNER_ENABLED", "true").lower() == "true":
@@ -1358,3 +1431,4 @@ if __name__ == "__main__":
     except Exception as err:
         print(f"\n[ERROR] {err}", file=sys.stderr)
         sys.exit(1)
+
