@@ -100,8 +100,9 @@ def _get_mes_map():
             # Meses pasados del año actual -> en BD tienen año yr+1, etiqueta yr
             result.append((mes_num, nombre, abrev, yr + 1, yr))
         elif mes_num == mes_actual:
-            # El mes en curso aún representa el último cierre comparable del
-            # año anterior; la etiqueta debe informar ese período real.
+            # Mes actual -> en BD tiene año yr, etiqueta yr
+            # El mes en curso aun representa el ultimo cierre comparable del
+            # anio anterior; la etiqueta debe informar ese periodo real.
             result.append((mes_num, nombre, abrev, yr, yr - 1))
         else:
             # Meses del año pasado -> en BD tienen año yr, etiqueta yr-1
@@ -439,7 +440,12 @@ def get_sop(include_discontinued: bool = False):
                 "sem3_uds", "sem4_uds", "total_4_sem_verificado",
                 "stock_fisico_matrix", "sellout_mes_anterior_estimado",
                 "meses_cobertura_objetivo", "stock_objetivo",
-                "sugerencia_bruta", "sugerencia_final"):
+                "sugerencia_bruta", "sugerencia_final",
+                "sugerencia_compra_inmediata_uds",
+                "cantidad_transito_confirmado_4m",
+                "demanda_espera_4_meses", "maquila_recibida_4_meses",
+                "maquila_destinada_4_meses", "stock_estimado_llegada",
+                "deficit_espera_4_meses", "familia_compra_total"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
         else:
@@ -505,6 +511,11 @@ def get_sop(include_discontinued: bool = False):
         "PRODUCTO_NUEVO": "Producto nuevo. Requiere revisión de demanda antes de comprar.",
         "QUIEBRE_SELLIN": "Quiebre de Sell-In detectado (Sell-In ~ 0). Se incrementó el cupo de compra proyectado para restablecer disponibilidad en tiendas."
     }
+    EXPLICACIONES["QUIEBRE_SELLIN"] = "Quiebre de Sell-In detectado (alerta informativa)."
+    EXPLICACIONES["AMBIGUEDAD_MAQUILA"] = (
+        "Hay mas de un origen posible sin prioridad configurada; "
+        "no se asigno stock de forma arbitraria."
+    )
 
     # (Las variables sug_*, excepciones, requiere_revision, bloquea_compra_automatica
     # y nivel_alerta vienen ya calculadas desde el motor principal en planner.py)
@@ -554,6 +565,16 @@ def get_sop(include_discontinued: bool = False):
             excs = []
         d["excepciones"] = excs
         d["explicacion_excepcion"] = [EXPLICACIONES.get(code, code) for code in excs]
+
+        for json_field, fallback in (
+            ("detalle_maquila_proyectada", []),
+            ("familia_resumen_compras", {}),
+        ):
+            try:
+                raw_value = d.get(json_field)
+                d[json_field] = json.loads(raw_value) if isinstance(raw_value, str) else (raw_value or fallback)
+            except Exception:
+                d[json_field] = fallback
         
         # Familia (Reemplazo Simétrico)
         sku_str = str(row["sku"]).strip()
@@ -579,6 +600,8 @@ def get_sop(include_discontinued: bool = False):
             d["familia_ids"] = familia["familia_ids"]
             d["nombre_familia_maquila"] = familia["nombre_familia"]
             d["cantidad_componentes_receta"] = familia["cantidad_miembros"]
+            d["conversiones_autorizadas"] = familia.get("conversiones_autorizadas", [])
+            d["ambiguedades_conversion"] = familia.get("ambiguedades_conversion", [])
             if familia["familia_ids"]:
                 d["receta_maquila_id"] = familia["familia_ids"][0]
         else:
@@ -937,3 +960,4 @@ def generar_orden_compra_proveedor(
         "total_monto": float(total_monto),
         "mensaje": f"Orden de Compra {numero_oc} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
     }
+
