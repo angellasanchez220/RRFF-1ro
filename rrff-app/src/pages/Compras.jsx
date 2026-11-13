@@ -875,7 +875,7 @@ export default function Compras() {
                                       {isMaq && (
                                         movimientoMaquila ? (
                                           <span title={`Recibe ${Number(s.maquila_recibida_4_meses || 0).toLocaleString('es-CL')} y destina ${Number(s.maquila_destinada_4_meses || 0).toLocaleString('es-CL')} unidades durante la espera.`} style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #bae6fd', width: 'fit-content' }}>
-                                            🛡️ CUBIERTO MAQUILA
+                                            MAQUILA PROYECTADA
                                           </span>
                                         ) : (
                                           <span title={`Compra total de la familia: ${Number(s.familia_compra_total || 0).toLocaleString('es-CL')} unidades, desglosada por SKU.`} style={{ background: '#faf5ff', color: '#7e22ce', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #d8b4fe', width: 'fit-content' }}>
