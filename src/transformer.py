@@ -1,27 +1,27 @@
 """
-transformer.py - Motor de Transformaci�n RRFF Soft
+transformer.py — Motor de Transformación RRFF Soft
 ===================================================
 Fase 2 del orquestador: lee los CSVs descargados por el extractor desde
 /data/raw, procesa el inventario manual desde /data/manual_uploads, aplica
 limpieza estructural y produce los DataFrames consolidados en /data/processed.
 
 Flujos de procesamiento:
-  2a. Maestro de Productos     maestro_productos_clean.csv
-  2b. Ventas Semanales         ventas_semanales_clean.csv
-  2c. Inventario Manual Excel  inventario_stock_clean.csv
-  2d. Join consolidado         maestro_consolidado.csv
-  2e. �rdenes de Compra OC    transito_clean.csv
-                                 (OC Excel  SKU via dim_productos, ETA + 14d aforo)
-  2f. Estado Inventario HC     estado_inventario_hc_clean.csv
+  2a. Maestro de Productos    → maestro_productos_clean.csv
+  2b. Ventas Semanales        → ventas_semanales_clean.csv
+  2c. Inventario Manual Excel → inventario_stock_clean.csv
+  2d. Join consolidado        → maestro_consolidado.csv
+  2e. Órdenes de Compra OC   → transito_clean.csv
+                                 (OC Excel → SKU via dim_productos, ETA + 14d aforo)
+  2f. Estado Inventario HC    → estado_inventario_hc_clean.csv
                                  (Stock por tienda/HC desde Shiny Datos app)
 
 Transformaciones aplicadas:
-  1. Auto-detecci�n de formato CSV (sep, encoding)
-  2. Estandarizaci�n de nombres de columnas (min�sculas + guiones_bajos)
-  3. Eliminaci�n de registros completamente vac�os
-  4. Normalizaci�n de separadores num�ricos (coma/punto)
+  1. Auto-detección de formato CSV (sep, encoding)
+  2. Estandarización de nombres de columnas (minúsculas + guiones_bajos)
+  3. Eliminación de registros completamente vacíos
+  4. Normalización de separadores numéricos (coma/punto)
   5. Escaneo de /data/manual_uploads: hoja 'INVENTARIO ACTUAL' y cabecera 'STOCK UN'
-  6. Left join Maestro  Inventario por SKU
+  6. Left join Maestro ← Inventario por SKU
   7. Informe de calidad por DataFrame
 
 Dependencias: pandas, openpyxl
@@ -33,9 +33,9 @@ from pathlib import Path
 
 import pandas as pd
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Rutas
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 BASE_DIR      = Path(__file__).resolve().parent.parent
 RAW_DIR       = BASE_DIR / "data" / "raw"
@@ -45,32 +45,32 @@ MANUAL_DIR    = BASE_DIR / "data" / "manual_uploads"
 PROC_DIR.mkdir(parents=True, exist_ok=True)
 MANUAL_DIR.mkdir(parents=True, exist_ok=True)
 
-# ������������������������������������������������������������������������������
-# Par�metros de lectura (detectados en perfilado de datos 2026-05-11)
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
+# Parámetros de lectura (detectados en perfilado de datos 2026-05-11)
+# ──────────────────────────────────────────────────────────────────────────────
 
-# Par�metros base de lectura (detectados en perfilado 2026-05-11)
+# Parámetros base de lectura (detectados en perfilado 2026-05-11)
 # El separador real se auto-detecta por archivo (ver _detect_csv_params)
-BASE_ENCODING = "utf-8-sig"   # Shiny exports - UTF-8 con BOM
+BASE_ENCODING = "utf-8-sig"   # Shiny exports — UTF-8 con BOM
 
-# Columnas con coma decimal que requieren normalizaci�n (por nombre pre-estandarizaci�n)
+# Columnas con coma decimal que requieren normalización (por nombre pre-estandarización)
 COLS_DECIMAL_COMA_MAESTRO = ["Gancheras"]
 COLS_DECIMAL_COMA_VENTAS  = ["OC_X_RECIBIR", "TRF ENVIADO"]  # formato Shiny download
 
-# �� Inventario Manual (Excel) �������������������������������������������������
+# ── Inventario Manual (Excel) ─────────────────────────────────────────────────
 INVENTARIO_SHEET_NAME = "INVENTARIO ACTUAL"
-INVENTARIO_COL_SKU    = "SKU"               # columna B - llave de join
-INVENTARIO_COL_STOCK  = "STOCK UN"          # posicion dinamica por cabecera
+INVENTARIO_COL_SKU    = "SKU"               # columna B — llave de join
+INVENTARIO_COL_STOCK  = "STOCK UN"          # posición dinámica por cabecera
 
-# �� Estado de Inventario HC (CSV desde Shiny) ���������������������������������
+# ── Estado de Inventario HC (CSV desde Shiny) ─────────────────────────────────
 # Columnas candidatas para Stock HC (se busca por nombre aproximado)
 HC_COL_SKU_CANDIDATAS   = ["sku", "codigo", "cod"]
 HC_COL_STOCK_CANDIDATAS = ["stock_fisico", "stock_hc", "stock_tiendas", "stock_hc_", "stock_fisico_hc",
                             "stock_disponible", "stock"]  # en orden de prioridad
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Logger
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -80,9 +80,9 @@ logging.basicConfig(
 log = logging.getLogger("transformer")
 
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 def _detect_csv_params(path: Path) -> dict:
     """
     Auto-detecta el separador y encoding del CSV inspeccionando las primeras lineas.
@@ -121,18 +121,18 @@ def _detect_csv_params(path: Path) -> dict:
 def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Estandariza los nombres de columnas:
-      - Convierte a min�sculas
+      - Convierte a minúsculas
       - Reemplaza espacios y barras por guiones_bajos
       - Elimina caracteres especiales residuales
-      - Colapsa guiones_bajos m�ltiples
+      - Colapsa guiones_bajos múltiples
     """
     new_cols = (
         df.columns
         .str.strip()
         .str.lower()
-        .str.replace(r"[\s/\-]+", "_", regex=True)      # espacios, /, -  _
-        .str.replace(r"[^a-z0-9_�������]", "", regex=True)  # caracteres raros fuera
-        .str.replace(r"_+", "_", regex=True)             # colapsar __ m�ltiples
+        .str.replace(r"[\s/\-]+", "_", regex=True)      # espacios, /, - → _
+        .str.replace(r"[^a-z0-9_áéíóúüñ]", "", regex=True)  # caracteres raros fuera
+        .str.replace(r"_+", "_", regex=True)             # colapsar __ múltiples
         .str.strip("_")                                  # limpiar bordes
     )
     df.columns = new_cols
@@ -140,20 +140,20 @@ def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _drop_empty_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Elimina filas donde TODOS los valores son NaN/vac�os."""
+    """Elimina filas donde TODOS los valores son NaN/vacíos."""
     before = len(df)
     df = df.dropna(how="all")
     dropped = before - len(df)
     if dropped:
-        log.info("  Filas completamente vac�as eliminadas: %d", dropped)
+        log.info("  Filas completamente vacías eliminadas: %d", dropped)
     return df.reset_index(drop=True)
 
 
 def _fix_decimal_comma(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     """
-    En columnas con coma como separador decimal (formato espa�ol),
+    En columnas con coma como separador decimal (formato español),
     reemplaza ',' por '.' y convierte a float.
-    Solo act�a sobre columnas que existen en el DataFrame (post-estandarizaci�n).
+    Solo actúa sobre columnas que existen en el DataFrame (post-estandarización).
     """
     for col in cols:
         if col in df.columns:
@@ -184,19 +184,19 @@ def _quality_report(df: pd.DataFrame, nombre: str) -> None:
         log.info("  [%s] Columnas con nulos: %s", nombre, cols_nulas)
 
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Sub-transformaciones por reporte
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _transform_maestro_productos() -> pd.DataFrame:
     """
     Carga y limpia el Maestro de Productos.
 
-    Pasos espec�ficos:
-      1. Lectura base con par�metros detectados
-      2. Estandarizaci�n de columnas
-      3. Eliminaci�n de filas vac�as
-      4. Normalizaci�n de decimales en columna 'gancheras'
+    Pasos específicos:
+      1. Lectura base con parámetros detectados
+      2. Estandarización de columnas
+      3. Eliminación de filas vacías
+      4. Normalización de decimales en columna 'gancheras'
       5. Informe de calidad
     """
     src = RAW_DIR / "maestro_productos.csv"
@@ -211,11 +211,11 @@ def _transform_maestro_productos() -> pd.DataFrame:
     df = _standardize_columns(df)
     log.info("  Columnas estandarizadas: %s", list(df.columns))
 
-    # 2. Eliminar filas completamente vac�as
+    # 2. Eliminar filas completamente vacías
     df = _drop_empty_rows(df)
 
     # 3. Normalizar decimal coma en 'gancheras'
-    #    (el nombre ya est� estandarizado en este punto)
+    #    (el nombre ya está estandarizado en este punto)
     df = _fix_decimal_comma(df, ["gancheras"])
 
     # 4. Informe de calidad
@@ -259,7 +259,7 @@ def _transform_ventas_semanales() -> pd.DataFrame:
     df = _drop_empty_rows(df)
 
     if fmt == "shiny":
-        # �� Formato Shiny: 45 columnas, decimales con coma ��������������������
+        # ── Formato Shiny: 45 columnas, decimales con coma ────────────────────
         log.info("  Aplicando normalizacion formato Shiny (45 cols)...")
         df = _fix_decimal_comma(df, ["oc_x_recibir", "trf_enviado"])
 
@@ -280,7 +280,7 @@ def _transform_ventas_semanales() -> pd.DataFrame:
             df["fecha_carga"] = pd.to_datetime(df["fecha_carga"], errors="coerce")
 
     else:
-        # �� Formato DataTable: 9 columnas, miles con punto ��������������������
+        # ── Formato DataTable: 9 columnas, miles con punto ────────────────────
         # Ejemplo: "17.948" en la tabla = 17948 unidades (punto = separador de miles)
         log.info("  Aplicando normalizacion formato DataTable (columnas de unidades)...")
         cols_numericas = [c for c in df.columns if c not in ["sku", "producto"]]
@@ -289,7 +289,7 @@ def _transform_ventas_semanales() -> pd.DataFrame:
             df[col] = (
                 df[col]
                 .astype(str)
-                .str.replace(".", "", regex=False)   # "17.948"  "17948"
+                .str.replace(".", "", regex=False)   # "17.948" → "17948"
                 .str.strip()
             )
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
@@ -301,15 +301,15 @@ def _transform_ventas_semanales() -> pd.DataFrame:
     return df
 
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Estado de Inventario HC (CSV desde extractor Shiny)
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _transform_estado_inventario() -> pd.DataFrame | None:
     """
-    Procesa el archivo ventas_semanales.csv descargado del M�dulo 3 de Matrix
-    para extraer el Stock F�sico (Stock HC).
-    Detecta autom�ticamente la columna de Stock HC buscando por nombres candidatos.
+    Procesa el archivo ventas_semanales.csv descargado del Módulo 3 de Matrix
+    para extraer el Stock Físico (Stock HC).
+    Detecta automáticamente la columna de Stock HC buscando por nombres candidatos.
 
     Retorna DataFrame con columnas: ['sku', 'stock_hc']
     Retorna None si el archivo no existe o no tiene la columna.
@@ -349,7 +349,7 @@ def _transform_estado_inventario() -> pd.DataFrame | None:
     col_hc = None
     if len(df.columns) >= 9:
         col_hc = df.columns[8]  # Columna I en Excel
-        log.info("  Usando Columna I (�ndice 8) para Stock HC: '%s'", col_hc)
+        log.info("  Usando Columna I (índice 8) para Stock HC: '%s'", col_hc)
     else:
         for cand in HC_COL_STOCK_CANDIDATAS:
             if cand in df.columns:
@@ -386,7 +386,7 @@ def _transform_estado_inventario() -> pd.DataFrame | None:
     )
     df_hc["stock_hc"] = pd.to_numeric(df_hc["stock_hc"], errors="coerce").fillna(0).astype(int)
 
-    # Eliminar duplicados (conservar el �ltimo)
+    # Eliminar duplicados (conservar el último)
     df_hc = df_hc.drop_duplicates(subset="sku", keep="last").reset_index(drop=True)
 
     _quality_report(df_hc, "estado_inventario_hc")
@@ -395,9 +395,9 @@ def _transform_estado_inventario() -> pd.DataFrame | None:
 
 
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Inventario Manual (Excel /data/manual_uploads)
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _scan_manual_uploads() -> Path | None:
     """
@@ -438,7 +438,7 @@ def _normalizar_cabecera_inventario(value) -> str:
 
 
 def _read_inventario_excel(path: Path) -> pd.DataFrame:
-    """Lee INVENTARIO ACTUAL y ubica STOCK UN por cabecera dinamica."""
+    """Lee INVENTARIO ACTUAL y ubica STOCK UN por cabecera dinámica."""
     log.info("Leyendo hoja de inventario desde: %s", path.name)
 
     xl = pd.ExcelFile(path)
@@ -470,7 +470,7 @@ def _read_inventario_excel(path: Path) -> pd.DataFrame:
 
     if header_row is None:
         raise ValueError(
-            f"No se encontro la cabecera exacta '{INVENTARIO_COL_STOCK}' en "
+            f"No se encontró la cabecera exacta '{INVENTARIO_COL_STOCK}' en "
             f"las primeras 25 filas de la hoja '{INVENTARIO_SHEET_NAME}'."
         )
 
@@ -487,7 +487,7 @@ def _read_inventario_excel(path: Path) -> pd.DataFrame:
     ]
     if not stock_columns:
         raise ValueError(
-            f"No se encontro la cabecera exacta '{INVENTARIO_COL_STOCK}' en "
+            f"No se encontró la cabecera exacta '{INVENTARIO_COL_STOCK}' en "
             f"la hoja '{INVENTARIO_SHEET_NAME}'."
         )
 
@@ -519,29 +519,21 @@ def _read_inventario_excel(path: Path) -> pd.DataFrame:
     col_sku = df[sku_columns[0]] if sku_columns else df.iloc[:, 1]
     col_stock = df[stock_columns[0]]
 
-    # Consolidar SKU: Si B est� vac�o/nulo, usar A
     sku_final = col_sku.copy()
     mask_empty = sku_final.isna() | (sku_final.astype(str).str.strip() == "") | (sku_final.astype(str).str.strip().str.lower() == "nan") | (sku_final.astype(str).str.strip() == "0")
     sku_final.loc[mask_empty] = col_caja.loc[mask_empty]
 
     df_clean = pd.DataFrame({"sku": sku_final, "stock_act": col_stock})
-
-    # Normalizar SKU: limpiar espacios, convertir a string puro
     df_clean["sku"] = df_clean["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
-
-    # STOCK ACT: convertir a entero (admite NaN con Int64)
     df_clean["stock_act"] = pd.to_numeric(df_clean["stock_act"], errors="coerce").fillna(0).astype("Int64")
-    
-    # Eliminar filas vac�as o nulas en SKU
     df_clean = df_clean[df_clean["sku"].notna() & (df_clean["sku"] != "") & (df_clean["sku"] != "nan") & (df_clean["sku"] != "0")]
     df_clean = df_clean.reset_index(drop=True)
 
-    # Detectar y reportar duplicados de SKU en el inventario
     dups = df_clean[df_clean["sku"].duplicated(keep=False)]
     if not dups.empty:
         log.warning(
             "  SKUs duplicados en el inventario (%d filas). "
-            "Se conservara el ultimo valor por SKU.", len(dups)
+            "Se conservará el último valor por SKU.", len(dups)
         )
         df_clean = df_clean.drop_duplicates(subset="sku", keep="last")
 
@@ -609,13 +601,13 @@ def _merge_maestro_inventario(
     return df_result
 
 
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 # Bases Historicas
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _transform_sellout_historico() -> pd.DataFrame:
     """
-    Sell Out Historico - columnas por indice (estructura confirmada):
+    Sell Out Historico — columnas por indice (estructura confirmada):
       C (idx 2) = Mes
       D (idx 3) = Ano
       N (idx13) = SKU
@@ -652,18 +644,18 @@ def _transform_sellout_historico() -> pd.DataFrame:
     ]
 
     df_grouped = df_clean.groupby(["sku", "ano", "mes"])["unidades_sellout"].sum().reset_index()
-    df_grouped.rename(columns={"ano": "a�o"}, inplace=True)
+    df_grouped.rename(columns={"ano": "año"}, inplace=True)
     log.info("  Sell Out agrupado: %d combinaciones sku/ano/mes", len(df_grouped))
     return df_grouped
 
 
 def _transform_sellin_historico() -> pd.DataFrame:
     """
-    Sell In Historico - columnas por indice (estructura confirmada):
+    Sell In Historico — columnas por indice (estructura confirmada):
       E (idx 4) = Mes
       F (idx 5) = Ano
       N (idx13) = SKU
-      U (idx20) = Unidades_Confirmadas   columna correcta (no Unidades_Informadas)
+      U (idx20) = Unidades_Confirmadas  ← columna correcta (no Unidades_Informadas)
     Agrupa por SKU+Ano+Mes sumando Unidades_Confirmadas.
     """
     path = RAW_DIR / "sellin_historico.csv"
@@ -696,12 +688,12 @@ def _transform_sellin_historico() -> pd.DataFrame:
     ]
 
     df_grouped = df_clean.groupby(["sku", "ano", "mes"])["unidades_sellin"].sum().reset_index()
-    df_grouped.rename(columns={"ano": "a�o"}, inplace=True)
+    df_grouped.rename(columns={"ano": "año"}, inplace=True)
     log.info("  Sell In agrupado: %d combinaciones sku/ano/mes", len(df_grouped))
     # Verificar dato del usuario: SKU 7064349 junio 2025
     check = df_grouped[
         (df_grouped["sku"] == "7064349") &
-        (df_grouped["a�o"] == "2025") &
+        (df_grouped["año"] == "2025") &
         (df_grouped["mes"] == "junio")
     ]
     if not check.empty:
@@ -711,7 +703,7 @@ def _transform_sellin_historico() -> pd.DataFrame:
 
 def _transform_stock_historico() -> pd.DataFrame:
     """
-    Stock Historico - columnas por indice (estructura confirmada):
+    Stock Historico — columnas por indice (estructura confirmada):
       0 (idx 0) = Fecha Carga (YYYY-MM-DD)
       1 (idx 1) = SKU
      17 (idx17) = Stock Fisico
@@ -759,19 +751,19 @@ def _transform_stock_historico() -> pd.DataFrame:
     # Ordenar cronologicamente para poder tomar el "last"
     df_daily = df_daily.sort_values("fecha_carga")
     
-    # Quedarse con el stock m�ximo registrado en cualquier d�a de ese mes para cada SKU
+    # Quedarse con el stock máximo registrado en cualquier día de ese mes para cada SKU
     df_monthly = df_daily.groupby(["sku", "ano", "mes"])["stock_fisico"].max().reset_index()
     
     # Formatear
-    df_monthly = df_monthly.rename(columns={"ano": "a�o"})
-    df_monthly = df_monthly[["sku", "a�o", "mes", "stock_fisico"]]
+    df_monthly = df_monthly.rename(columns={"ano": "año"})
+    df_monthly = df_monthly[["sku", "año", "mes", "stock_fisico"]]
     
     log.info("  Stock Historico agrupado: %d combinaciones sku/ano/mes (fin de mes)", len(df_monthly))
     return df_monthly
 
-# ������������������������������������������������������������������������������
-# Funci�n principal exportada
-# ������������������������������������������������������������������������������
+# ──────────────────────────────────────────────────────────────────────────────
+# Función principal exportada
+# ──────────────────────────────────────────────────────────────────────────────
 
 def run_transformation(archivos_raw=None):
     """
@@ -878,7 +870,7 @@ def run_transformation(archivos_raw=None):
         log.error("Error en Join Consolidado: %s", exc)
         resultados["maestro_consolidado.csv"] = None
 
-    # -- 2e: Transito (OC en tr�nsito)
+    # -- 2e: Transito (OC en tránsito)
     log.info("--- [2e] Procesando: OC Transito (maritime/terrestrial) ---")
     try:
         _db_url = os.getenv("DATABASE_URL")
@@ -1007,4 +999,3 @@ if __name__ == "__main__":
     except Exception as err:
         print(f"\n[ERROR] {err}", file=sys.stderr)
         sys.exit(1)
-

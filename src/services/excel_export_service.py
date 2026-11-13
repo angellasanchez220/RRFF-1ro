@@ -30,7 +30,7 @@ PRESENTATION_MARKERS = ("PDQ", "CR", "MB")
 
 
 def _normalize_sort_text(value) -> str:
-    """Normaliza texto para ordenar sin depender de mayusculas ni tildes."""
+    """Normaliza texto para ordenar sin depender de mayúsculas ni tildes."""
     if value is None or (not isinstance(value, (list, dict, tuple, set)) and pd.isna(value)):
         value = ""
     text_value = str(value).strip().upper()
@@ -42,7 +42,7 @@ def _normalize_sort_text(value) -> str:
 
 
 def _presentation_markers(data: dict) -> set[str]:
-    """Detecta PDQ/CR/MB en codigos o en los extremos de la descripcion."""
+    """Detecta PDQ/CR/MB en códigos o en los extremos de la descripción."""
     codes = " ".join(
         _normalize_sort_text(data.get(field))
         for field in ("sku", "codigo")
@@ -62,11 +62,11 @@ def _product_family_sort_key(data: dict):
     """Agrupa por familia y ordena Lineal, CR y luego el resto."""
     markers = _presentation_markers(data)
     if not markers:
-        presentation_rank = 0  # Lineal
+        presentation_rank = 0
     elif "CR" in markers:
         presentation_rank = 1
     else:
-        presentation_rank = 2  # PDQ, MB u otra presentacion marcada
+        presentation_rank = 2
 
     family_key = _normalize_sort_text(
         data.get("nombre_familia") or data.get("sku") or data.get("codigo")
@@ -80,7 +80,7 @@ def _product_family_sort_key(data: dict):
 
 
 def _safe_sheet_name(value, used_names: set[str]) -> str:
-    """Crea un nombre de hoja valido, de hasta 31 caracteres y sin duplicados."""
+    """Crea un nombre de hoja válido, de hasta 31 caracteres y sin duplicados."""
     base = re.sub(r"[\\/*?:\[\]]", "-", str(value or "SIN SUBCATEGORIA").strip())
     base = re.sub(r"\s+", " ", base).strip(" '") or "SIN SUBCATEGORIA"
     base = base[:31]
@@ -95,6 +95,7 @@ def _safe_sheet_name(value, used_names: set[str]) -> str:
     used_names.add(candidate.casefold())
     return candidate
 
+
 def _safe_float(v, default=0.0):
     if v is None:
         return default
@@ -106,12 +107,12 @@ def _safe_float(v, default=0.0):
     except:
         return default
 
-
 def _safe_text(value, default="") -> str:
     if value is None or pd.isna(value):
         return default
     text_value = str(value).strip()
     return text_value or default
+
 
 def _safe_int(v, default=0):
     return int(round(_safe_float(v, default)))
@@ -130,7 +131,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
             return None
         row_sop = df_sop.iloc[0].to_dict()
         
-        # Obtener el SKU real can�nico desde la base de datos (por si se busc� por c�digo femaco)
+        # Obtener el SKU real canónico desde la base de datos (por si se buscó por código femaco)
         real_sku = str(row_sop.get("sku", sku))
         codigo_value = row_sop.get("codigo_femaco")
         real_codigo = "" if pd.isna(codigo_value) else str(codigo_value).strip().upper()
@@ -159,14 +160,14 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
             for c in fam["familia_skus"]:
                 nt_str = " [NO TRANSFORMABLE]" if c.get("no_transformable") else ""
                 comp_strs.append(
-                    f"C�D {c['codigo_femaco']} / SKU {c['sku']} "
+                    f"CÓD {c['codigo_femaco']} / SKU {c['sku']} "
                     f"Stock {int(c['stock_act'])} / RV {int(c['ritmo_mensual'])}{nt_str}"
                 )
             fam_str = f"Familia SKU:\n" + "\n".join(comp_strs) + f"\n\nStock bruto familia: {int(fam['stock_bruto_familia'])} uds."
             
             reemplazos = [r['sku'] for r in fam["reemplazos_validos"]]
             if reemplazos:
-                fam_str += f"\n\nReemplazos v�lidos para C�D {real_codigo}:\n" + ", ".join(reemplazos)
+                fam_str += f"\n\nReemplazos válidos para CÓD {real_codigo}:\n" + ", ".join(reemplazos)
             
             if observacion:
                 observacion = observacion + "\n\n" + fam_str
@@ -285,7 +286,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(7, 0, data["estado"])
     set_val(9, 0, data["ue"])
     set_val(10, 0, "Maquilable:" if data.get("tiene_familia") else "")
-    set_val(11, 0, "S�" if data.get("tiene_familia") else "NO")
+    set_val(11, 0, "SÍ" if data.get("tiene_familia") else "NO")
     set_val(12, 0, "Stock Familia:" if data.get("tiene_familia") else "")
     set_val(13, 0, data.get("stock_familia", "") if data.get("tiene_familia") else "")
     
@@ -305,7 +306,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(4, 11, data["s3"])
     set_val(5, 11, data["s4"])
     set_val(6, 11, data["tot4s"])
-    set_val(7, 10, "Duraci�n")
+    set_val(7, 10, "Duración")
     set_val(7, 11, data["cob"])
     set_val(8, 10, "Objetivo")
     set_val(8, 11, data["obj"])
@@ -334,7 +335,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
                 set_val(col_idx, 7, str(eta)[:10])
         else:
             set_val(col_idx, 7, "-")
-        set_val(col_idx, 8, "-")  # Duraci�n no disponible
+        set_val(col_idx, 8, "-")  # Duración no disponible
 
     # Pintar cabecera (primera fila del bloque) si tiene familia
     if data.get("tiene_familia"):
@@ -378,8 +379,8 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(12, 10, "Motivo")
     set_val(13, 10, data["motivo"] if data["motivo"] else "-")
     
-    # Observaci�n
-    set_val(12, 11, "Observaci�n")
+    # Observación
+    set_val(12, 11, "Observación")
     set_val(13, 11, data["obs"] if data["obs"] else "-")
 
 
@@ -413,9 +414,7 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     if faltantes:
         raise ValueError(f"Los siguientes SKUs no se encontraron o no tienen datos: {', '.join(faltantes)}")
 
-    # Agrupar por subcategoria. Se conserva una etiqueta legible y se usa una
-    # clave normalizada para evitar hojas duplicadas por diferencias de tildes,
-    # mayusculas o espacios.
+    # Agrupar por subcategoría.
     agrupados = {}
     for d in datos_skus:
         subcategoria = d.get("subcategoria") or "SIN SUBCATEGORIA"
@@ -426,12 +425,11 @@ def generar_excel_skus(skus: list[str]) -> bytes:
                 "items": [],
             }
         agrupados[subcategoria_key]["items"].append(d)
-        
-    # Mantener juntas las familias de maquila y, dentro de cada familia,
-    # presentar primero Lineal, despues CR y finalmente PDQ/MB/resto.
+
+    # Mantener juntas las familias y ordenar Lineal, CR y resto.
     for group in agrupados.values():
         group["items"].sort(key=_product_family_sort_key)
-        
+
     base_dir = Path(__file__).resolve().parent.parent
     template_path = base_dir / "templates" / "RRFF_AS_PLANTILLA_APP.xlsx"
     if not template_path.exists():
@@ -441,25 +439,29 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     ws_plantilla = wb["PLANTILLA"]
     TAMANO_BLOQUE = 16
 
-    # Ordenar subcategorias alfabeticamente para las hojas.
+    # Ordenar subcategorías alfabéticamente para las hojas.
     subcategorias_ordenadas = sorted(agrupados.keys())
     used_sheet_names = set()
-    
+
     for subcategoria_key in subcategorias_ordenadas:
         group = agrupados[subcategoria_key]
         sheet_name = _safe_sheet_name(group["label"], used_sheet_names)
         ws_subcategoria = wb.copy_worksheet(ws_plantilla)
         ws_subcategoria.title = sheet_name
-        
-        # Poblar bloques en la hoja de la subcategoria.
+
         for i, data in enumerate(group["items"]):
             fila_inicio = 1 + (i * TAMANO_BLOQUE)
-            
+
             if i > 0:
-                copiar_bloque(ws_subcategoria, fila_origen_inicio=1, fila_origen_fin=TAMANO_BLOQUE, fila_destino_inicio=fila_inicio)
-                
+                copiar_bloque(
+                    ws_subcategoria,
+                    fila_origen_inicio=1,
+                    fila_origen_fin=TAMANO_BLOQUE,
+                    fila_destino_inicio=fila_inicio,
+                )
+
             poblar_bloque(ws_subcategoria, fila_inicio, data)
-            
+
     # Eliminar plantillas originales
     if "PLANTILLA" in wb.sheetnames:
         del wb["PLANTILLA"]
@@ -477,7 +479,7 @@ def generate_excel_for_sku(sku: str) -> bytes:
     return generar_excel_skus([sku])
 
 def generar_excel_todos_skus() -> bytes:
-    """Genera un archivo Excel �nico conteniendo todos los SKUs de planificacion_sop en orden alfanum�rico."""
+    """Genera un archivo Excel único conteniendo todos los SKUs de planificacion_sop en orden alfanumérico."""
     with engine.connect() as conn:
         df = pd.read_sql(text("""
             SELECT sku
@@ -492,4 +494,3 @@ def generar_excel_todos_skus() -> bytes:
         raise ValueError("No se encontraron SKUs en planificacion_sop")
         
     return generar_excel_skus(skus_totales)
-
