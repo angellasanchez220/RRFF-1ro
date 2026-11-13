@@ -64,6 +64,19 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(item["sugerencia_final"], 48)
         self.assertEqual(item["deficit_espera_4_meses"], 0)
 
+    def test_transit_without_confirmed_eta_is_not_used(self):
+        item = row("NO-ETA", "Producto individual", 0, 5)
+        for month in range(1, 5):
+            item.pop(f"transito_mes_{month}")
+        item["cantidad_transito"] = 100
+        item["cantidad_transito_confirmado_4m"] = 0
+
+        result = calcular_compra_proyectada(pd.DataFrame([item]), {})
+        projected = result.iloc[0]
+        self.assertEqual(projected["sug_transito_actual"], 0)
+        self.assertEqual(projected["stock_estimado_llegada"], 0)
+        self.assertEqual(projected["deficit_espera_4_meses"], 20)
+
     def test_two_formats_consume_own_sales_then_transform_by_recipe(self):
         rows = [
             row("FAM-L", "Producto base", 0, 10, ump=10),
