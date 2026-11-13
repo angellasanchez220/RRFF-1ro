@@ -279,8 +279,17 @@ export default function Compras() {
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
           'Hermanos (Componentes)': familiaStr,
+          'Formato': s.formato_compra || 'LINEAL',
           'Ventas 4 sem': s.total_4_sem_verificado || 0,
           'Stock': s.stock_act || 0,
+          'Demanda espera 4 meses': s.demanda_espera_4_meses || 0,
+          'Maquila recibida': s.maquila_recibida_4_meses || 0,
+          'Maquila destinada': s.maquila_destinada_4_meses || 0,
+          'Stock estimado llegada': s.stock_estimado_llegada || 0,
+          'Cobertura objetivo meses': s.meses_cobertura_objetivo || 5.4,
+          'Stock objetivo': s.stock_objetivo || 0,
+          'Sugerencia bruta': s.sugerencia_bruta || 0,
+          'Total compra familia': s.familia_compra_total || 0,
           'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': s.sugerencia_compra_inmediata_uds || 0,
           'Compra Masiva Año Nuevo Chino (Feb-Abr)': s.compra_masiva_cny_uds || 0
@@ -340,8 +349,17 @@ export default function Compras() {
           'Grupo': group.label,
           'Es Maquilable': esMaquilable,
           'Stock Total Familia Maquila': stockFamilia,
+          'Formato': s.formato_compra || 'LINEAL',
           'Ventas 4 sem': s.total_4_sem_verificado || 0,
           'Stock': s.stock_act || 0,
+          'Demanda espera 4 meses': s.demanda_espera_4_meses || 0,
+          'Maquila recibida': s.maquila_recibida_4_meses || 0,
+          'Maquila destinada': s.maquila_destinada_4_meses || 0,
+          'Stock estimado llegada': s.stock_estimado_llegada || 0,
+          'Cobertura objetivo meses': s.meses_cobertura_objetivo || 5.4,
+          'Stock objetivo': s.stock_objetivo || 0,
+          'Sugerencia bruta': s.sugerencia_bruta || 0,
+          'Total compra familia': s.familia_compra_total || 0,
           'Duración': Number(s.duracion_fisica_solo || 0).toFixed(1),
           'Sugerido (Uds)': sugerido,
           'Sugerido Dinámico (Uds)': dinamico,
@@ -785,7 +803,8 @@ export default function Compras() {
                               <th>Estado & Maquila</th>
                               <th>Cobertura</th>
                               <th>Tránsito</th>
-                              <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Legacy (Oficial)</th>
+                              <th>Proyecci�n 4 meses</th>
+                              <th style={{ background: '#e8f5e9', borderLeft: '2px solid #a5d6a7', color: '#1b5e20' }}>Compra proyectada</th>
                               <th style={{ background: '#ffebee', color: '#b71c1c', borderLeft: '2px solid #ef9a9a' }}>🏮 Masiva CNY (Feb-Abr)</th>
                               <th style={{ background: '#e3f2fd', color: '#0d47a1' }}>Dinámico (Exp.)</th>
                               <th style={{ background: '#f5f5f5', color: '#333' }}>Comparativa</th>
@@ -797,7 +816,7 @@ export default function Compras() {
                               const stockoutDate = new Date(s.idealDateObj);
                               stockoutDate.setDate(stockoutDate.getDate() + LEAD_TIME_DAYS);
                               const isMaq = Boolean(s.es_maquilable || (s.familia_skus && s.familia_skus.length > 1));
-                              const cubiertoMaquila = isMaq && s.sug_usa_stock_familia && (Number(s.sug_stock_familia) >= Number(s.sug_target_uds) || Number(s.sugerencia_compra_inmediata_uds) === 0);
+                              const movimientoMaquila = Number(s.maquila_recibida_4_meses || 0) > 0 || Number(s.maquila_destinada_4_meses || 0) > 0;
                               
                               return (
                                 <tr key={s.sku} style={isMaq ? { background: '#fdfbfe' } : {}}>
@@ -816,6 +835,9 @@ export default function Compras() {
                                           [{s.codigo_femaco}]
                                         </span>
                                       )}
+                                    </div>
+                                    <div style={{ marginTop: 3, fontSize: '0.7rem', fontWeight: 800, color: '#475569' }}>
+                                      FORMATO: {s.formato_compra || 'LINEAL'}
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: '#666', maxWidth: 180, whiteSpace: 'normal' }}>{s.nombre_producto}</div>
                                     {isMaq && (
@@ -851,12 +873,12 @@ export default function Compras() {
 
                                       {/* Estado de Maquila Familiar */}
                                       {isMaq && (
-                                        cubiertoMaquila ? (
-                                          <span title={`Cubierto por stock familiar (${Number(s.stock_bruto_familia || s.sug_stock_familia || 0).toLocaleString()} uds en familia). No requiere compra individual.`} style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #bae6fd', width: 'fit-content' }}>
+                                        movimientoMaquila ? (
+                                          <span title={`Recibe ${Number(s.maquila_recibida_4_meses || 0).toLocaleString('es-CL')} y destina ${Number(s.maquila_destinada_4_meses || 0).toLocaleString('es-CL')} unidades durante la espera.`} style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #bae6fd', width: 'fit-content' }}>
                                             🛡️ CUBIERTO MAQUILA
                                           </span>
                                         ) : (
-                                          <span title={`Parte de la familia ${s.nombre_familia_maquila || 'Maquila'} (${Number(s.stock_bruto_familia || 0).toLocaleString()} uds en stock familiar). Se debe coordinar la compra de toda la familia.`} style={{ background: '#faf5ff', color: '#7e22ce', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #d8b4fe', width: 'fit-content' }}>
+                                          <span title={`Compra total de la familia: ${Number(s.familia_compra_total || 0).toLocaleString('es-CL')} unidades, desglosada por SKU.`} style={{ background: '#faf5ff', color: '#7e22ce', padding: '2px 6px', borderRadius: 4, fontSize: '0.68rem', fontWeight: 700, border: '1px solid #d8b4fe', width: 'fit-content' }}>
                                             🔄 FAMILIA MAQUILA
                                           </span>
                                         )
@@ -871,6 +893,20 @@ export default function Compras() {
                                   </td>
                                   <td>{Number(s.duracion_fisica_solo || 0).toFixed(1)} m</td>
                                   <td>{Number(s.cantidad_transito || 0).toLocaleString('es-CL')}</td>
+                                  <td style={{ minWidth: 190, fontSize: '0.74rem', lineHeight: 1.45 }}>
+                                    <div>Stock actual: <b>{Number(s.stock_act || 0).toLocaleString('es-CL')}</b></div>
+                                    <div>Venta 4 sem.: <b>{Number(s.total_4_sem_verificado || 0).toLocaleString('es-CL')}</b></div>
+                                    <div>Demanda espera: <b>{Number(s.demanda_espera_4_meses || 0).toLocaleString('es-CL')}</b></div>
+                                    <div>Maquila recibida / destinada: <b>{Number(s.maquila_recibida_4_meses || 0).toLocaleString('es-CL')} / {Number(s.maquila_destinada_4_meses || 0).toLocaleString('es-CL')}</b></div>
+                                    <div>Stock llegada: <b>{Number(s.stock_estimado_llegada || 0).toLocaleString('es-CL')}</b></div>
+                                    <div>Objetivo ({Number(s.meses_cobertura_objetivo || 5.4).toFixed(1)} m): <b>{Number(s.stock_objetivo || 0).toLocaleString('es-CL')}</b></div>
+                                    {Number(s.deficit_espera_4_meses || 0) > 0 && (
+                                      <div style={{ color: '#b91c1c' }}>D�ficit espera: <b>{Number(s.deficit_espera_4_meses).toLocaleString('es-CL')}</b></div>
+                                    )}
+                                    {s.ambiguedad_maquila && (
+                                      <div style={{ color: '#b45309' }}>Revisar prioridad de maquila</div>
+                                    )}
+                                  </td>
                                   
                                   <td style={{ fontWeight: 'bold', background: '#E7F7ED', color: '#1d6b3e', borderLeft: '2px solid #a5d6a7' }}>
                                     {Number(s.sugerencia_compra_inmediata_uds || 0).toLocaleString('es-CL')}
@@ -1367,3 +1403,4 @@ export default function Compras() {
     </div>
   );
 }
+
