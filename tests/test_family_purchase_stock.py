@@ -66,6 +66,16 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(item["sugerencia_final"], 48)
         self.assertEqual(item["deficit_espera_4_meses"], 0)
 
+    def test_purchase_prefers_selected_monthly_demand_over_raw_four_weeks(self):
+        item = row("MAX-DEMAND", "Producto individual", 100, 28, ump=1)
+        item["demanda_mensual_compra"] = 40
+        result = calcular_compra_proyectada(pd.DataFrame([item]), {})
+        projected = result.iloc[0]
+
+        self.assertEqual(projected["demanda_espera_4_meses"], 160)
+        self.assertEqual(projected["stock_objetivo"], 216)
+        self.assertEqual(projected["sugerencia_final"], 216)
+
     def test_transit_without_confirmed_eta_is_not_used(self):
         item = row("NO-ETA", "Producto individual", 0, 5)
         for month in range(1, 5):
