@@ -439,6 +439,9 @@ def get_sop(include_discontinued: bool = False):
                 "ritmo_semanal_uds", "sem1_uds", "sem2_uds",
                 "sem3_uds", "sem4_uds", "total_4_sem_verificado",
                 "stock_fisico_matrix", "sellout_mes_anterior_estimado",
+                 "ritmo_4_semanas_30d", "ritmo_mensual_4_meses",
+                 "ritmo_mensual_5_meses", "ritmo_duracion_mensual",
+                 "demanda_mensual_compra", "sug_ritmo_mensual",
                 "meses_cobertura_objetivo", "stock_objetivo",
                 "sugerencia_bruta", "sugerencia_final",
                 "sugerencia_compra_inmediata_uds",
@@ -465,12 +468,14 @@ def get_sop(include_discontinued: bool = False):
             df["eta_proxima"], errors="coerce"
         )
 
-    # Objetivo = (sellout_mes_ant_estimado + total_4_sem) / 2
-    df["objetivo"] = ((df["sellout_mes_anterior_estimado"] + df["total_4_sem_verificado"]) / 2
-                      ).round(0).astype(int)
+    # Objetivo operativo: unidades requeridas para la cobertura configurada.
+    df["objetivo"] = df["stock_objetivo"].round(0).astype(int)
 
-    # Ritmo mensual para cobertura: suma de las 4 semanas
-    ritmo_mensual = df["total_4_sem_verificado"].replace(0, float("nan"))
+    # Duracion: mayor entre promedio 5 meses y 4 semanas mensualizadas a 30 dias.
+    ritmo_mensual = df["ritmo_duracion_mensual"].where(
+        df["ritmo_duracion_mensual"] > 0,
+        df["total_4_sem_verificado"] * (30.0 / 28.0),
+    ).replace(0, float("nan"))
 
     # Cálculos de duración
     dur_solo_stock = (df["stock_act"] / ritmo_mensual).fillna(999)
@@ -960,4 +965,3 @@ def generar_orden_compra_proveedor(
         "total_monto": float(total_monto),
         "mensaje": f"Orden de Compra {numero_oc} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
     }
-
