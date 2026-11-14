@@ -80,6 +80,79 @@ DIAS_BASE_CUATRO_SEMANAS = 28.0
 DIAS_MES_PLANIFICACION = 30.0
 ESTADOS_DESCONTINUADOS = {"DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"}
 
+MESES_NUMERO = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+
+def _cargar_historial_sellout_mensual(proc_dir):
+    """Combina el historial validado con el Sell-Out limpio mas reciente.
+
+    El Excel usa ``sellout_historico_clean.csv`` para mostrar los meses. La
+    cobertura debe leer la misma informacion; de lo contrario, un archivo
+    validado desactualizado puede ocultar un crecimiento que si aparece en el
+    reporte. Para periodos repetidos prevalece el Sell-Out limpio.
+    """
+    frames = []
+    validado_path = Path(proc_dir) / "historial_mensual_sku_validado.csv"
+    if validado_path.exists():
+        validado = pd.read_csv(validado_path, dtype=str)
+        validado.columns = [c.replace("\ufeff", "").strip() for c in validado.columns]
+        required = {"sku", "anio", "mes", "sellout"}
+        if required.issubset(validado.columns):
+            validado = validado[["sku", "anio", "mes", "sellout"]].copy()
+            validado["_prioridad_fuente"] = 1
+            frames.append(validado)
+
+    limpio_path = Path(proc_dir) / "sellout_historico_clean.csv"
+    if limpio_path.exists():
+        limpio = pd.read_csv(
+            limpio_path,
+            sep=";",
+            dtype=str,
+            encoding="utf-8-sig",
+        )
+        limpio.columns = [c.replace("\ufeff", "").strip() for c in limpio.columns]
+        year_col = next(
+            (c for c in limpio.columns if c.lower().startswith("a") and c.lower().endswith("o")),
+            None,
+        )
+        if year_col and {"sku", "mes", "unidades_sellout"}.issubset(limpio.columns):
+            limpio = limpio[["sku", year_col, "mes", "unidades_sellout"]].copy()
+            limpio.rename(
+                columns={year_col: "anio", "unidades_sellout": "sellout"},
+                inplace=True,
+            )
+            limpio["mes"] = (
+                limpio["mes"].astype(str).str.strip().str.lower().map(MESES_NUMERO)
+            )
+            limpio["_prioridad_fuente"] = 2
+            frames.append(limpio)
+
+    if not frames:
+        raise FileNotFoundError("No existe historial mensual de Sell-Out procesado")
+
+    historial = pd.concat(frames, ignore_index=True)
+    historial["sku"] = historial["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+    historial["anio"] = pd.to_numeric(historial["anio"], errors="coerce")
+    historial["mes"] = pd.to_numeric(historial["mes"], errors="coerce")
+    historial["sellout"] = pd.to_numeric(historial["sellout"], errors="coerce")
+    historial.dropna(subset=["sku", "anio", "mes", "sellout"], inplace=True)
+    historial.sort_values("_prioridad_fuente", inplace=True)
+    historial.drop_duplicates(["sku", "anio", "mes"], keep="last", inplace=True)
+    return historial[["sku", "anio", "mes", "sellout"]]
+
 
 def _mensualizar_ventas_cuatro_semanas(total_cuatro_semanas):
     """Convierte 28 dias cerrados a una demanda mensual comparable de 30 dias."""
@@ -553,12 +626,8 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         proc_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
         
         # --- DURACION 4 MESES Y MOM ---
-        hist_mensual = pd.read_csv(proc_dir / "historial_mensual_sku_validado.csv", dtype=str)
-        hist_mensual.columns = [c.replace('\ufeff', '').strip() for c in hist_mensual.columns]
-        hist_mensual["sku"] = hist_mensual["sku"].astype(str).str.strip()
-        hist_mensual["anio"] = pd.to_numeric(hist_mensual["anio"], errors="coerce")
-        hist_mensual["mes"] = pd.to_numeric(hist_mensual["mes"], errors="coerce")
-        hist_mensual["sellout"] = pd.to_numeric(hist_mensual["sellout"], errors="coerce").fillna(0)
+        hist_mensual = _cargar_historial_sellout_mensual(proc_dir)
+        df["sku"] = df["sku"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
         
         hoy = date.today()
         fecha_actual = datetime.date(hoy.year, hoy.month, 1)
