@@ -175,8 +175,9 @@ def calcular_compra_proyectada(
 ) -> pd.DataFrame:
     """Simula espera, ventas, transitos y maquila sin mutar inventario real.
 
-    La demanda mensual es la venta de las ultimas cuatro semanas cerradas. En
-    cada familia se atiende primero LINEAL, luego CR y finalmente MB/PDQ. Un
+    La demanda mensual usa el mayor valor entre el promedio de los ultimos
+    cuatro meses cerrados y las ultimas cuatro semanas mensualizadas a 30 dias.
+    En cada familia se atiende primero LINEAL, luego CR y finalmente MB/PDQ. Un
     formato de menor prioridad puede cubrir uno superior sólo mediante receta
     real; si la proporción no está informada se usa 1:1.
     """
@@ -218,7 +219,15 @@ def calcular_compra_proyectada(
             "stock_inicial": max(_numero(row.get("stock_act")), 0.0),
             "stock": max(_numero(row.get("stock_act")), 0.0),
             "demanda_mensual": max(
-                _numero(row.get("total_4_sem_verificado")),
+                _numero(
+                    row.get(
+                        "demanda_mensual_compra",
+                        row.get(
+                            "sug_ritmo_mensual",
+                            row.get("total_4_sem_verificado"),
+                        ),
+                    )
+                ),
                 0.0,
             ),
             "transitos": _transitos_mensuales(row, meses_espera),
