@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -9,6 +10,7 @@ from src.planner import (
     MESES_EXTRA_POR_CRECIMIENTO,
     UMBRAL_CRECIMIENTO_COMPRA_PCT,
     _aplicar_regla_cobertura_compra,
+    _aplicar_ajuste_ano_nuevo_chino,
     _calcular_crecimiento_compra,
     _cargar_historial_sellout_mensual,
     _estado_excluye_compra,
@@ -33,6 +35,32 @@ class PurchaseBusinessRulesTests(unittest.TestCase):
         self.assertEqual(detected.tolist(), [False, True, True, False])
         self.assertEqual(extra.tolist(), [0.0, 1.0, 1.0, 0.0])
         self.assertEqual(target.tolist(), [4.2, 5.2, 5.2, 7.0])
+
+    def test_november_and_december_add_cny_month(self):
+        coverage = pd.Series([4.2, 5.2])
+
+        applies_nov, extra_nov, target_nov = _aplicar_ajuste_ano_nuevo_chino(
+            coverage, date(2026, 11, 14)
+        )
+        applies_dec, extra_dec, target_dec = _aplicar_ajuste_ano_nuevo_chino(
+            coverage, date(2026, 12, 1)
+        )
+
+        self.assertTrue(applies_nov)
+        self.assertTrue(applies_dec)
+        self.assertEqual(extra_nov.tolist(), [1.0, 1.0])
+        self.assertEqual(target_nov.tolist(), [5.2, 6.2])
+        self.assertEqual(target_dec.tolist(), [5.2, 6.2])
+
+    def test_other_months_do_not_add_cny_month(self):
+        coverage = pd.Series([4.2, 5.2])
+        applies, extra, target = _aplicar_ajuste_ano_nuevo_chino(
+            coverage, date(2027, 1, 10)
+        )
+
+        self.assertFalse(applies)
+        self.assertEqual(extra.tolist(), [0.0, 0.0])
+        self.assertEqual(target.tolist(), [4.2, 5.2])
 
     def test_four_weeks_are_monthlyized_to_thirty_days(self):
         result = _mensualizar_ventas_cuatro_semanas(pd.Series([159, 280]))
