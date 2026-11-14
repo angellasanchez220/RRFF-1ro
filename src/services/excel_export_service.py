@@ -167,6 +167,18 @@ def _safe_text(value, default="") -> str:
 def _safe_int(v, default=0):
     return int(round(_safe_float(v, default)))
 
+
+def _calcular_coberturas_compra_export(total_4_semanas, compra_sugerida, stock_llegada):
+    """Retorna cobertura de la compra y duracion remanente justo al arribo."""
+    demanda_4_semanas = _safe_float(total_4_semanas)
+    if demanda_4_semanas <= 0:
+        return 999.0, 999.0
+    compra = max(_safe_float(compra_sugerida), 0.0)
+    stock_proyectado = max(_safe_float(stock_llegada), 0.0)
+    cobertura_compra = round(compra / demanda_4_semanas, 2)
+    duracion_al_arribo = round(stock_proyectado / demanda_4_semanas, 2)
+    return cobertura_compra, duracion_al_arribo
+
 def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
     """Extrae la informaci\u00f3n consolidada de un SKU para exportaci\u00f3n a Excel."""
     with engine.connect() as conn:
@@ -264,6 +276,15 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         or ""
     ).strip()
 
+    total_4_semanas = _safe_int(ventas_sku.get("total_4_sem_verificado"))
+    compra_final = _safe_int(row_sop.get("sugerencia_final"))
+    stock_estimado_llegada = _safe_int(row_sop.get("stock_estimado_llegada"))
+    cobertura_compra, duracion_al_arribo = _calcular_coberturas_compra_export(
+        total_4_semanas,
+        compra_final,
+        stock_estimado_llegada,
+    )
+
     data = {
         "sku": real_sku,
         "categoria": _safe_text(row_sop.get("categoria"), "SIN CATEGORIA").upper(),
@@ -295,12 +316,14 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "s2": _safe_int(ventas_sku.get("sem2_uds")),
         "s3": _safe_int(ventas_sku.get("sem3_uds")),
         "s4": _safe_int(ventas_sku.get("sem4_uds")),
-        "tot4s": _safe_int(ventas_sku.get("total_4_sem_verificado")),
+        "tot4s": total_4_semanas,
         
         "obj": _safe_int(row_sop.get("stock_objetivo")),
         "sug_bruta": _safe_int(row_sop.get("sugerencia_bruta")),
-        "compra": _safe_int(row_sop.get("sugerencia_final")),
+        "compra": compra_final,
         "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("ritmo_duracion_mensual")), 1) if _safe_float(row_sop.get("ritmo_duracion_mensual")) > 0 else 999.0,
+        "cobertura_compra_4_semanas": cobertura_compra,
+        "duracion_al_arribo_4_semanas": duracion_al_arribo,
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
         "motivo": f"{purchase_trace}. {purchase_reason}".strip(),
         "formato_compra": _safe_text(row_sop.get("formato_compra"), "LINEAL"),
@@ -314,7 +337,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "transito_confirmado_4_meses": _safe_int(row_sop.get("sug_transito_actual")),
         "maquila_recibida_4_meses": _safe_int(row_sop.get("maquila_recibida_4_meses")),
         "maquila_destinada_4_meses": _safe_int(row_sop.get("maquila_destinada_4_meses")),
-        "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
+        "stock_estimado_llegada": stock_estimado_llegada,
         "deficit_espera_4_meses": _safe_int(row_sop.get("deficit_espera_4_meses")),
         "target_meses": _safe_float(row_sop.get("sug_target_meses"), 4.2),
         "crecimiento_compra_pct": _safe_float(row_sop.get("crecimiento_compra_pct")),
@@ -491,7 +514,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     
     set_val(10, 6, data["max_so"])
     set_val(10, 7, data["max_si"])
-    set_val(10, 10, data["cob"])
+    set_val(10, 10, data.get("duracion_al_arribo_4_semanas", data["cob"]))
     
     set_val(2, 11, data["s1"])
     set_val(3, 11, data["s2"])
@@ -551,9 +574,9 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     
     # Cobertura
     set_val(12, 8, "Cobertura")
-    cob = data.get("cob")
+    cob = data.get("cobertura_compra_4_semanas", data.get("cob"))
     if pd.notna(cob) and cob < 999.0:
-        set_val(13, 8, f"{str(cob).replace('.', ',')} meses")
+        set_val(13, 8, f"{cob:.2f}".replace(".", ",") + " meses")
     else:
         set_val(13, 8, "+10 meses" if pd.notna(cob) else "-")
         
