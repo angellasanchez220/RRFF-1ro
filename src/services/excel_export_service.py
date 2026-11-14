@@ -316,7 +316,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "maquila_destinada_4_meses": _safe_int(row_sop.get("maquila_destinada_4_meses")),
         "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
         "deficit_espera_4_meses": _safe_int(row_sop.get("deficit_espera_4_meses")),
-        "target_meses": _safe_float(row_sop.get("sug_target_meses"), 5.4),
+        "target_meses": _safe_float(row_sop.get("sug_target_meses"), 4.2),
         "crecimiento_compra_pct": _safe_float(row_sop.get("crecimiento_compra_pct")),
         "crecimiento_compra_detectado": bool(row_sop.get("crecimiento_compra_detectado")),
         "meses_extra_por_crecimiento": _safe_float(row_sop.get("meses_extra_por_crecimiento")),
@@ -387,7 +387,7 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         f"D\u00e9ficit no cubierto durante espera: {data.get('deficit_espera_4_meses', 0)} uds\n"
         f"Stock estimado al arribo: {data.get('stock_estimado_llegada', 0)} uds\n"
         "Stock llegada = stock + tr\u00e1nsito + maquila recibida - maquila destinada - ventas atendidas.\n"
-        f"Objetivo: {str(data.get('target_meses', 5.4)).replace('.', ',')} meses = "
+        f"Objetivo: {str(data.get('target_meses', 4.2)).replace('.', ',')} meses = "
         f"{data.get('obj', 0)} uds\n"
         f"Compra bruta = max(objetivo - stock llegada, 0): {data.get('sug_bruta', 0)} uds\n"
         f"Compra final: {data.get('compra', 0)} uds (bruta redondeada a UMP {data.get('ue', 1)})\n"
