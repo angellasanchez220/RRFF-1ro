@@ -14,7 +14,12 @@ except ModuleNotFoundError:
 
 
 MESES_ESPERA_CONTENEDOR = 4
-FORMATOS_DONANTES_LINEAL = {"CR", "PDQ", "MB"}
+PRIORIDAD_FORMATO_DEFAULT = {
+    "LINEAL": 1,
+    "CR": 2,
+    "MB": 3,
+    "PDQ": 3,
+}
 
 
 def _numero(value, default=0.0):
@@ -62,6 +67,27 @@ def _clave_familia(row, familia):
     return "FAM-CODES:" + ",".join(codigos)
 
 
+def _prioridad_default(formato):
+    return PRIORIDAD_FORMATO_DEFAULT.get(str(formato or "").strip().upper(), 99)
+
+
+def _prioridad_planificacion(familia, identifier, sku, formato):
+    """Obtiene la prioridad editable del integrante o aplica la regla base."""
+    identifier = str(identifier or "").strip().upper()
+    sku = str(sku or "").strip().upper()
+    for member in familia.get("familia_skus") or []:
+        member_codes = {
+            str(member.get("codigo_femaco") or "").strip().upper(),
+            str(member.get("sku") or "").strip().upper(),
+        }
+        if identifier not in member_codes and sku not in member_codes:
+            continue
+        priority = _numero(member.get("prioridad_planificacion"), 0.0)
+        if priority > 0:
+            return int(priority)
+    return _prioridad_default(formato)
+
+
 def _transitos_mensuales(row, meses_espera):
     buckets = []
     has_buckets = any(
@@ -77,8 +103,18 @@ def _transitos_mensuales(row, meses_espera):
     return [0.0] * (meses_espera - 1) + [confirmed]
 
 
-def _resolver_conversiones(candidates, states, identifier_to_position):
-    """Devuelve reglas utilizables o una ambiguedad sin imponer prioridad."""
+def _resolver_conversiones(
+    candidates,
+    states,
+    identifier_to_position,
+    target_priority,
+):
+    """Devuelve conversiones de menor prioridad sin duplicar inventario.
+
+    Una prioridad numérica menor se atiende primero. Por eso un origen sólo
+    puede desarmarse para un destino más prioritario. Las prioridades iguales
+    no se transforman entre sí; MB y PDQ quedan protegidos en el último nivel.
+    """
     by_source = {}
     ambiguities = []
     for conversion in candidates:
@@ -87,7 +123,7 @@ def _resolver_conversiones(candidates, states, identifier_to_position):
         if source_position is None:
             continue
         source_state = states[source_position]
-        if source_state["formato"] not in FORMATOS_DONANTES_LINEAL:
+        if source_state["prioridad"] <= target_priority:
             continue
         origin_qty = max(_numero(conversion.get("cantidad_origen"), 1.0), 0.0001)
         destination_qty = max(_numero(conversion.get("cantidad_destino"), 1.0), 0.0001)
@@ -98,6 +134,15 @@ def _resolver_conversiones(candidates, states, identifier_to_position):
             "cantidad_origen": origin_qty,
             "cantidad_destino": destination_qty,
             "source_position": source_position,
+            "prioridad_origen": int(
+                _numero(
+                    conversion.get(
+                        "prioridad_origen",
+                        conversion.get("prioridad"),
+                    ),
+                    source_state["prioridad"],
+                )
+            ),
         })
 
     usable = []
@@ -113,21 +158,14 @@ def _resolver_conversiones(candidates, states, identifier_to_position):
             continue
         usable.append(rules[0])
 
-    if len(usable) <= 1:
-        return usable, ambiguities
-
-    priorities = [rule.get("prioridad") for rule in usable]
-    if all(priority is not None for priority in priorities):
-        return sorted(
-            usable,
-            key=lambda rule: (rule["prioridad"], rule["origen"]),
-        ), ambiguities
-
-    ambiguities.append(
-        "Multiples origenes con stock y sin prioridad de maquila: "
-        + ", ".join(sorted(rule["origen"] for rule in usable))
-    )
-    return [], ambiguities
+    return sorted(
+        usable,
+        key=lambda rule: (
+            rule["prioridad_origen"],
+            _prioridad_default(states[rule["source_position"]]["formato"]),
+            rule["origen"],
+        ),
+    ), ambiguities
 
 
 def calcular_compra_proyectada(
@@ -137,9 +175,10 @@ def calcular_compra_proyectada(
 ) -> pd.DataFrame:
     """Simula espera, ventas, transitos y maquila sin mutar inventario real.
 
-    La demanda mensual es la venta de las ultimas cuatro semanas cerradas. Se
-    consumen primero las ventas propias de todos los formatos y solo despues
-    se permite que CR/PDQ/MB cubran un deficit LINEAL mediante una receta real.
+    La demanda mensual es la venta de las ultimas cuatro semanas cerradas. En
+    cada familia se atiende primero LINEAL, luego CR y finalmente MB/PDQ. Un
+    formato de menor prioridad puede cubrir uno superior sólo mediante receta
+    real; si la proporción no está informada se usa 1:1.
     """
     if df.empty:
         return df.copy()
@@ -164,10 +203,17 @@ def calcular_compra_proyectada(
             row.get("codigo_femaco"),
             row.get("nombre_producto"),
         )
+        priority = _prioridad_planificacion(
+            family,
+            identifier,
+            sku_identifier,
+            format_name,
+        )
         states[position] = {
             "identifier": identifier,
             "sku": str(row.get("sku") or "").strip(),
             "formato": format_name,
+            "prioridad": priority,
             "family_key": family_key,
             "stock_inicial": max(_numero(row.get("stock_act")), 0.0),
             "stock": max(_numero(row.get("stock_act")), 0.0),
@@ -188,73 +234,81 @@ def calcular_compra_proyectada(
             identifier_to_position[sku_identifier] = position
 
     for month in range(1, meses_espera + 1):
-        monthly_shortages = {}
-
-        for position, state in states.items():
+        # El tránsito confirmado se incorpora antes de atender la demanda del
+        # mes. Luego cada familia usa una sola bolsa física de inventario.
+        for state in states.values():
             state["stock"] += state["transitos"][month - 1]
-            own_demand = state["demanda_mensual"]
-            own_fulfilled = min(state["stock"], own_demand)
-            state["stock"] -= own_fulfilled
-            monthly_shortages[position] = max(own_demand - own_fulfilled, 0.0)
 
         for positions in family_groups.values():
-            for target_position in positions:
+            ordered_positions = sorted(
+                positions,
+                key=lambda position: (
+                    states[position]["prioridad"],
+                    _prioridad_default(states[position]["formato"]),
+                    states[position]["identifier"],
+                ),
+            )
+            for target_position in ordered_positions:
                 target = states[target_position]
-                shortage = monthly_shortages[target_position]
-                if target["formato"] != "LINEAL" or shortage <= 1e-9:
-                    continue
+                own_demand = target["demanda_mensual"]
+                own_fulfilled = min(target["stock"], own_demand)
+                target["stock"] -= own_fulfilled
+                shortage = max(own_demand - own_fulfilled, 0.0)
 
-                family = family_by_position[target_position]
-                target_identifier = target["identifier"]
-                candidates = [
-                    conversion
-                    for conversion in family.get("conversiones_autorizadas") or []
-                    if str(conversion.get("destino") or "").strip().upper()
-                    == target_identifier
-                ]
-                usable, ambiguities = _resolver_conversiones(
-                    candidates,
-                    states,
-                    identifier_to_position,
-                )
-                target["ambiguedades"].extend(ambiguities)
+                if shortage > 1e-9:
+                    family = family_by_position[target_position]
+                    target_identifier = target["identifier"]
+                    candidates = [
+                        conversion
+                        for conversion in family.get("conversiones_autorizadas") or []
+                        if str(conversion.get("destino") or "").strip().upper()
+                        == target_identifier
+                    ]
+                    usable, ambiguities = _resolver_conversiones(
+                        candidates,
+                        states,
+                        identifier_to_position,
+                        target["prioridad"],
+                    )
+                    target["ambiguedades"].extend(ambiguities)
 
-                for conversion in usable:
-                    if shortage <= 1e-9:
-                        break
-                    source_position = conversion["source_position"]
-                    source = states[source_position]
-                    origin_qty = conversion["cantidad_origen"]
-                    destination_qty = conversion["cantidad_destino"]
-                    max_batches = math.floor((source["stock"] + 1e-9) / origin_qty)
-                    needed_batches = math.ceil(shortage / destination_qty)
-                    batches = min(max_batches, needed_batches)
-                    if batches <= 0:
-                        continue
+                    for conversion in usable:
+                        if shortage <= 1e-9:
+                            break
+                        source_position = conversion["source_position"]
+                        source = states[source_position]
+                        origin_qty = conversion["cantidad_origen"]
+                        destination_qty = conversion["cantidad_destino"]
+                        max_batches = math.floor((source["stock"] + 1e-9) / origin_qty)
+                        needed_batches = math.ceil(shortage / destination_qty)
+                        batches = min(max_batches, needed_batches)
+                        if batches <= 0:
+                            continue
 
-                    consumed = batches * origin_qty
-                    produced = batches * destination_qty
-                    used_for_shortage = min(produced, shortage)
-                    source["stock"] = max(source["stock"] - consumed, 0.0)
-                    source["maquila_destinada"] += consumed
-                    target["stock"] += max(produced - used_for_shortage, 0.0)
-                    target["maquila_recibida"] += produced
-                    shortage -= used_for_shortage
-                    event = {
-                        "mes": month,
-                        "origen": source["identifier"],
-                        "destino": target_identifier,
-                        "unidades_origen": consumed,
-                        "unidades_destino": used_for_shortage,
-                        "receta_id": conversion.get("receta_id"),
-                    }
-                    source["eventos"].append(event)
-                    target["eventos"].append(event)
+                        consumed = batches * origin_qty
+                        produced = batches * destination_qty
+                        used_for_shortage = min(produced, shortage)
+                        source["stock"] = max(source["stock"] - consumed, 0.0)
+                        source["maquila_destinada"] += consumed
+                        target["stock"] += max(produced - used_for_shortage, 0.0)
+                        target["maquila_recibida"] += produced
+                        shortage -= used_for_shortage
+                        event = {
+                            "mes": month,
+                            "origen": source["identifier"],
+                            "destino": target_identifier,
+                            "prioridad_origen": source["prioridad"],
+                            "prioridad_destino": target["prioridad"],
+                            "unidades_origen": consumed,
+                            "unidades_producidas": produced,
+                            "unidades_destino": used_for_shortage,
+                            "proporcion": f"{origin_qty:g}:{destination_qty:g}",
+                            "receta_id": conversion.get("receta_id"),
+                        }
+                        source["eventos"].append(event)
+                        target["eventos"].append(event)
 
-                monthly_shortages[target_position] = max(shortage, 0.0)
-
-        for position, shortage in monthly_shortages.items():
-            states[position]["deficit"] += max(shortage, 0.0)
+                target["deficit"] += max(shortage, 0.0)
 
     for position, state in states.items():
         row = result.loc[position]
@@ -271,6 +325,7 @@ def calcular_compra_proyectada(
         confirmed_transit = sum(state["transitos"])
 
         result.at[position, "formato_compra"] = state["formato"]
+        result.at[position, "prioridad_planificacion"] = state["prioridad"]
         result.at[position, "clave_familia_compra"] = state["family_key"]
         result.at[position, "sug_nombre_familia"] = family.get("nombre_familia", "")
         result.at[position, "sug_usa_stock_familia"] = state["maquila_recibida"] > 0
@@ -370,4 +425,3 @@ def aplicar_stock_familia_para_sugerencia(
 ) -> pd.DataFrame:
     """Compatibilidad: aplica el nuevo modelo sin consolidar stock por SKU."""
     return calcular_compra_proyectada(df, familias_map)
-
