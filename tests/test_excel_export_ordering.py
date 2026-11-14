@@ -47,6 +47,18 @@ def test_marker_in_code_prevents_product_from_being_lineal():
     assert [item["sku"] for item in ordered] == ["SKU-BASE-1", "SKU-PDQ-1"]
 
 
+def test_pack_in_description_is_sorted_as_cr():
+    items = [
+        _item("2", "PACK TARUGOS 8 MM"),
+        _item("1", "TARUGOS 8 MM"),
+        _item("3", "TARUGOS 8 MM PDQ"),
+    ]
+
+    ordered = sorted(items, key=_product_family_sort_key)
+
+    assert [item["sku"] for item in ordered] == ["1", "2", "3"]
+
+
 def test_sheet_names_are_valid_limited_and_unique():
     used = set()
     first = _safe_sheet_name("Ventanas/Correderas: formato muy extenso", used)
