@@ -50,6 +50,25 @@ def _familia_para_fila(row, familias_map):
     return familias_map.get(codigo) or familias_map.get(sku) or {}
 
 
+def _formato_para_fila(row, familia):
+    """Prefiere el formato ya resuelto con contexto de familia."""
+    identifiers = {
+        str(row.get("codigo_femaco") or "").strip().upper(),
+        str(row.get("sku") or "").strip().upper(),
+    }
+    for member in familia.get("familia_skus") or []:
+        member_identifiers = {
+            str(member.get("codigo_femaco") or "").strip().upper(),
+            str(member.get("sku") or "").strip().upper(),
+        }
+        if identifiers & member_identifiers and member.get("formato_compra"):
+            return str(member["formato_compra"]).strip().upper()
+    return detectar_formato_producto(
+        row.get("codigo_femaco"),
+        row.get("nombre_producto"),
+    )
+
+
 def _clave_familia(row, familia):
     miembros = familia.get("familia_skus") or []
     if len(miembros) <= 1:
@@ -200,10 +219,7 @@ def calcular_compra_proyectada(
         family_by_position[position] = family
         family_groups.setdefault(family_key, []).append(position)
 
-        format_name = detectar_formato_producto(
-            row.get("codigo_femaco"),
-            row.get("nombre_producto"),
-        )
+        format_name = _formato_para_fila(row, family)
         priority = _prioridad_planificacion(
             family,
             identifier,
