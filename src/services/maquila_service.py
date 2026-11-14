@@ -29,6 +29,12 @@ def _contiene_marcador(value, marcador):
     return bool(re.search(rf"(?<![A-Z]){re.escape(marcador)}(?![A-Z])", normalized))
 
 
+def _tiene_multiplicador_final(descripcion):
+    """Detecta presentaciones compuestas terminadas en X + cantidad (ej. X 2)."""
+    normalized = _normalizar_identificador(descripcion)
+    return bool(re.search(r"X\s*\d+(?:[.,]\d+)?\s*$", normalized))
+
+
 def detectar_formato_producto(codigo_femaco, descripcion):
     """Clasifica un producto como LINEAL, CR, PDQ o MB."""
     marcadores = [
@@ -38,6 +44,10 @@ def detectar_formato_producto(codigo_femaco, descripcion):
         or _contiene_marcador(descripcion, marcador)
     ]
     if not marcadores:
+        # Un multiplicador final indica una presentacion compuesta/CR. La
+        # medida intermedia (p. ej. 50MMX33M) no basta: debe terminar en X N.
+        if _tiene_multiplicador_final(descripcion):
+            return "CR"
         # En la nomenclatura comercial, PACK corresponde al formato CR.
         # Se exige la palabra completa para no confundir, por ejemplo,
         # PACKAGING con un producto CR. Los marcadores explícitos PDQ/MB/CR
@@ -48,6 +58,42 @@ def detectar_formato_producto(codigo_femaco, descripcion):
     # Una descripcion/codigo con mas de un marcador queda trazable; el orden
     # solo entrega un valor estable para no romper la planificacion.
     return marcadores[0]
+
+
+def ajustar_formatos_contexto_familia(miembros):
+    """Resuelve excepciones cuyo formato depende de los integrantes familiares.
+
+    Si la familia contiene exclusivamente un PACK simple y un MB PACK, el PACK
+    es la unidad base LINEAL y el MB PACK es su compuesto CR.
+    """
+    adjusted = [dict(member) for member in (miembros or [])]
+    if len(adjusted) != 2:
+        return adjusted
+
+    pure_pack = []
+    mb_pack = []
+    for member in adjusted:
+        description = member.get("nombre_producto")
+        code = member.get("codigo_femaco")
+        has_pack = _contiene_marcador(description, "PACK")
+        explicit = {
+            marker
+            for marker in FORMATOS_MAQUILA
+            if _contiene_marcador(code, marker)
+            or _contiene_marcador(description, marker)
+        }
+        if has_pack and not explicit:
+            pure_pack.append(member)
+        if has_pack and explicit == {"MB"}:
+            mb_pack.append(member)
+
+    if len(pure_pack) == 1 and len(mb_pack) == 1:
+        pure_pack[0]["formato_compra"] = "LINEAL"
+        mb_pack[0]["formato_compra"] = "CR"
+        pure_pack[0]["regla_formato_familia"] = "PACK_BASE_LINEAL"
+        mb_pack[0]["regla_formato_familia"] = "MB_PACK_COMPUESTO_CR"
+
+    return adjusted
 
 
 def prioridad_formato_default(formato):
@@ -263,6 +309,7 @@ def build_maquila_families(conn, lookup_dict):
                 if component.get("nodo") == nodo_alcanzable
                 and component.get("prioridad_planificacion") is not None
             ]
+            info["prioridad_configurada"] = bool(configured_priorities)
             info["prioridad_planificacion"] = (
                 min(configured_priorities)
                 if configured_priorities
@@ -279,6 +326,18 @@ def build_maquila_families(conn, lookup_dict):
                     stock_reemplazable += info["stock_act"]
                     transito_reemplazable += info["cantidad_transito"]
                     ritmo_reemplazable += info["ritmo_mensual"]
+
+        familia_list = ajustar_formatos_contexto_familia(familia_list)
+        formatos_por_codigo = {
+            str(member.get("codigo_femaco") or "").strip().upper(): member.get("formato_compra")
+            for member in familia_list
+        }
+        for member in familia_list:
+            if not member.get("prioridad_configurada"):
+                member["prioridad_planificacion"] = prioridad_formato_default(
+                    member.get("formato_compra")
+                )
+            member.pop("prioridad_configurada", None)
 
         familias_conectadas = [
             familia_meta[nodo]
@@ -314,13 +373,19 @@ def build_maquila_families(conn, lookup_dict):
                         "prioridad_origen": (
                             origen.get("prioridad_planificacion")
                             or prioridad_formato_default(
-                                get_info(origen["nodo"])["formato_compra"]
+                                formatos_por_codigo.get(
+                                    str(origen_codigo).strip().upper(),
+                                    get_info(origen["nodo"])["formato_compra"],
+                                )
                             )
                         ),
                         "prioridad_destino": (
                             destino.get("prioridad_planificacion")
                             or prioridad_formato_default(
-                                get_info(destino["nodo"])["formato_compra"]
+                                formatos_por_codigo.get(
+                                    str(destino_codigo).strip().upper(),
+                                    get_info(destino["nodo"])["formato_compra"],
+                                )
                             )
                         ),
                     })
