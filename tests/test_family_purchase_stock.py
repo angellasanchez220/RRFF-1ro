@@ -7,7 +7,7 @@ from src.services.maquila_service import detectar_formato_producto
 from src.services.purchase_stock_service import calcular_compra_proyectada
 
 
-def row(code, description, stock, demand, coverage=5.4, ump=1, transit=None):
+def row(code, description, stock, demand, coverage=5.4, ump=1, transit=None, priority=None):
     transit = transit or [0, 0, 0, 0]
     return {
         "sku": f"SKU-{code}",
@@ -17,6 +17,7 @@ def row(code, description, stock, demand, coverage=5.4, ump=1, transit=None):
         "total_4_sem_verificado": demand,
         "meses_cobertura_objetivo": coverage,
         "ump": ump,
+        "prioridad_planificacion": priority,
         "transito_mes_1": transit[0],
         "transito_mes_2": transit[1],
         "transito_mes_3": transit[2],
@@ -30,6 +31,7 @@ def family(rows, conversions=None, family_id=1):
             "codigo_femaco": item["codigo_femaco"],
             "sku": item["sku"],
             "stock_act": item["stock_act"],
+            "prioridad_planificacion": item.get("prioridad_planificacion"),
         }
         for item in rows
     ]
@@ -111,7 +113,7 @@ class ProjectedPurchaseTests(unittest.TestCase):
             20 + cr["maquila_destinada_4_meses"] + cr["stock_estimado_llegada"],
         )
 
-    def test_three_formats_without_priority_reports_ambiguity(self):
+    def test_default_priority_uses_cr_before_furniture(self):
         rows = [
             row("AMB-L", "Producto", 0, 5),
             row("AMB-CR", "Producto CR", 30, 1),
@@ -126,9 +128,73 @@ class ProjectedPurchaseTests(unittest.TestCase):
         ).set_index("codigo_femaco")
 
         lineal = result.loc["AMB-L"]
-        self.assertEqual(lineal["maquila_recibida_4_meses"], 0)
-        self.assertEqual(lineal["deficit_espera_4_meses"], 20)
-        self.assertIn("sin prioridad", lineal["ambiguedad_maquila"])
+        cr = result.loc["AMB-CR"]
+        pdq = result.loc["AMB-PDQ"]
+        self.assertEqual(lineal["maquila_recibida_4_meses"], 20)
+        self.assertEqual(lineal["deficit_espera_4_meses"], 0)
+        self.assertEqual(cr["maquila_destinada_4_meses"], 20)
+        self.assertEqual(pdq["maquila_destinada_4_meses"], 0)
+        self.assertEqual(lineal["ambiguedad_maquila"], "")
+
+    def test_lineal_is_covered_before_cr_own_demand(self):
+        rows = [
+            row("FIRST-L", "Producto", 0, 5),
+            row("FIRST-CR", "Producto CR", 7, 5),
+        ]
+        conversions = [{
+            "origen": "FIRST-CR",
+            "destino": "FIRST-L",
+            "cantidad_origen": 1,
+            "cantidad_destino": 1,
+        }]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows),
+            family(rows, conversions, family_id=20),
+            meses_espera=1,
+        ).set_index("codigo_femaco")
+
+        self.assertEqual(result.loc["FIRST-L", "maquila_recibida_4_meses"], 5)
+        self.assertEqual(result.loc["FIRST-L", "deficit_espera_4_meses"], 0)
+        self.assertEqual(result.loc["FIRST-CR", "deficit_espera_4_meses"], 3)
+
+    def test_missing_recipe_ratio_defaults_to_one_to_one(self):
+        rows = [
+            row("RATIO-L", "Producto", 0, 4),
+            row("RATIO-CR", "Producto CR", 4, 0),
+        ]
+        conversions = [{
+            "origen": "RATIO-CR",
+            "destino": "RATIO-L",
+            "cantidad_origen": None,
+            "cantidad_destino": None,
+        }]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows),
+            family(rows, conversions, family_id=21),
+            meses_espera=1,
+        ).set_index("codigo_femaco")
+
+        self.assertEqual(result.loc["RATIO-L", "maquila_recibida_4_meses"], 4)
+        self.assertEqual(result.loc["RATIO-CR", "maquila_destinada_4_meses"], 4)
+
+    def test_configured_priority_can_choose_pdq_before_cr(self):
+        rows = [
+            row("CUSTOM-L", "Producto", 0, 5, priority=1),
+            row("CUSTOM-CR", "Producto CR", 10, 0, priority=3),
+            row("CUSTOM-PDQ", "Producto PDQ", 10, 0, priority=2),
+        ]
+        conversions = [
+            {"origen": "CUSTOM-CR", "destino": "CUSTOM-L"},
+            {"origen": "CUSTOM-PDQ", "destino": "CUSTOM-L"},
+        ]
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows),
+            family(rows, conversions, family_id=22),
+            meses_espera=1,
+        ).set_index("codigo_femaco")
+
+        self.assertEqual(result.loc["CUSTOM-PDQ", "maquila_destinada_4_meses"], 5)
+        self.assertEqual(result.loc["CUSTOM-CR", "maquila_destinada_4_meses"], 0)
 
     def test_four_formats_generate_four_purchases_and_family_summary(self):
         rows = [
@@ -148,7 +214,8 @@ class ProjectedPurchaseTests(unittest.TestCase):
 
         self.assertEqual(set(result["formato_compra"]), {"LINEAL", "CR", "PDQ", "MB"})
         self.assertEqual(len(result), 4)
-        self.assertTrue((result["sugerencia_final"] > 0).all())
+        self.assertTrue((result["sugerencia_final"] >= 0).all())
+        self.assertEqual(result["sugerencia_final"].notna().sum(), 4)
         self.assertTrue((result["stock_estimado_llegada"] >= 0).all())
 
         summary = json.loads(result.iloc[0]["familia_resumen_compras"])
@@ -169,4 +236,3 @@ class ProjectedPurchaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
