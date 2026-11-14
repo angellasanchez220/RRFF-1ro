@@ -53,6 +53,14 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(detectar_formato_producto("C-35", "PACK TARUGOS 8 MM"), "CR")
         self.assertEqual(detectar_formato_producto("C-36", "PACK-TARUGOS 8 MM"), "CR")
         self.assertEqual(detectar_formato_producto("C-37", "PACKAGING TARUGOS"), "LINEAL")
+        self.assertEqual(
+            detectar_formato_producto("C-38", "CINTAS DEMARCA 50MMX33MX 2"),
+            "CR",
+        )
+        self.assertEqual(
+            detectar_formato_producto("C-39", "CINTAS DEMARCA 50MMX33M"),
+            "LINEAL",
+        )
         self.assertEqual(detectar_formato_producto("C-40", "MICRO SOMBRA"), "LINEAL")
 
     def test_single_sku_uses_four_month_wait_and_confirmed_transit(self):
@@ -125,6 +133,32 @@ class ProjectedPurchaseTests(unittest.TestCase):
             100,
             20 + cr["maquila_destinada_4_meses"] + cr["stock_estimado_llegada"],
         )
+
+    def test_pack_and_mb_pack_family_use_lineal_and_cr_context(self):
+        rows = [
+            row("PACK-BASE", "PACK CINTA DEMARCA", 0, 5),
+            row("PACK-MB", "MB PACK CINTA DEMARCA", 20, 1),
+        ]
+        family_data = family(rows, [
+            {
+                "origen": "PACK-MB",
+                "destino": "PACK-BASE",
+                "cantidad_origen": 1,
+                "cantidad_destino": 1,
+            }
+        ], family_id=23)
+        for family_value in family_data.values():
+            family_value["familia_skus"][0]["formato_compra"] = "LINEAL"
+            family_value["familia_skus"][1]["formato_compra"] = "CR"
+
+        result = calcular_compra_proyectada(
+            pd.DataFrame(rows), family_data, meses_espera=1
+        ).set_index("codigo_femaco")
+
+        self.assertEqual(result.loc["PACK-BASE", "formato_compra"], "LINEAL")
+        self.assertEqual(result.loc["PACK-MB", "formato_compra"], "CR")
+        self.assertEqual(result.loc["PACK-BASE", "prioridad_planificacion"], 1)
+        self.assertEqual(result.loc["PACK-MB", "prioridad_planificacion"], 2)
 
     def test_default_priority_uses_cr_before_furniture(self):
         rows = [
