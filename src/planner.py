@@ -72,8 +72,8 @@ N_SEMANAS_BASE = 4
 
 # Reglas operativas vigentes de compra.
 # Si el último mes cerrado creció al menos 5%, se agrega un mes completo
-# de demanda a la cobertura base de 5,4 meses.
-COBERTURA_MINIMA_MESES = 5.4
+# de demanda a la cobertura base de 4,2 meses.
+COBERTURA_MINIMA_MESES = 4.2
 UMBRAL_CRECIMIENTO_COMPRA_PCT = 5.0
 MESES_EXTRA_POR_CRECIMIENTO = 1.0
 DIAS_BASE_CUATRO_SEMANAS = 28.0
@@ -974,7 +974,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
         return COBERTURA_MINIMA_MESES, "FALLBACK"
 
     res = df.apply(_resolver_cobertura, axis=1, result_type="expand")
-    # 5,4 meses es el mínimo operativo. Las configuraciones mayores se
+    # 4,2 meses es el mínimo operativo. Las configuraciones mayores se
     # conservan; las antiguas menores ya no pueden reducir este piso.
     cobertura_base, crecimiento_detectado, meses_extra, cobertura_objetivo = (
         _aplicar_regla_cobertura_compra(
