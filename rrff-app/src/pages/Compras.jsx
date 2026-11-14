@@ -51,7 +51,6 @@ export default function Compras() {
   const [filterCrecimiento, setFilterCrecimiento] = useState('ALL');
   const [filterSearch, setFilterSearch] = useState('');
   const [filterCNY, setFilterCNY] = useState(false);
-  const [filterExcluirMaquila, setFilterExcluirMaquila] = useState(true);
   const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
   const [selectedSku, setSelectedSku] = useState(null);
 
@@ -165,23 +164,6 @@ export default function Compras() {
   // Filtro específico para Compra Masiva Año Nuevo Chino
   if (filterCNY) {
     filteredData = filteredData.filter(s => (s.compra_masiva_cny_uds || 0) > 0);
-  }
-
-  // Productos cubiertos por Maquila familiar
-  const maquilaCubiertos = (Array.isArray(data) ? data : []).filter(s => 
-    s.sug_usa_stock_familia && (Number(s.sug_stock_familia) >= Number(s.sug_target_uds) || (Number(s.sugerencia_compra_inmediata_uds) === 0))
-  );
-
-  // Regla: Los productos maquilables con stock familiar suficiente se gestionan en Maquila
-  if (filterExcluirMaquila) {
-    filteredData = filteredData.filter(s => {
-      if (s.sug_usa_stock_familia) {
-        const stockFam = Number(s.sug_stock_familia) || 0;
-        const targetFam = Number(s.sug_target_uds) || 0;
-        if (stockFam >= targetFam) return false;
-      }
-      return true;
-    });
   }
 
   const totalCNYUds = (Array.isArray(data) ? data : []).reduce(
@@ -623,24 +605,11 @@ export default function Compras() {
         {/* ── BANNER GESTIÓN POR MAQUILA ── */}
         <div style={{ backgroundColor: '#ebf8ff', border: '1px solid #90cdf4', color: '#2b6cb0', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', fontSize: '0.9rem', lineHeight: '1.5' }}>
           <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🏭 Gestión y Transformación en Maquila: Exclusión de Productos Cubiertos por Familia
+            🏭 Gestión y transformación durante la espera
           </h4>
-          <p style={{ margin: '0 0 6px 0' }}>
-            Todo producto que sea maquilable (pertenece a una familia de reemplazo) se abastece mediante la redistribución homogénea de su grupo familiar en <b>Maquila</b> y no se lista para compra si su familia tiene unidades suficientes. Solo pasan a compra aquellos con déficit neto familiar.
+          <p style={{ margin: 0 }}>
+            El stock familiar puede transformarse para cubrir déficits durante los cuatro meses de espera, respetando recetas y prioridades. Esto <b>no reemplaza la compra individual</b>: cada LINEAL, CR, PDQ o MB repone su propia cobertura al llegar el contenedor. Un SKU queda sin compra únicamente si su propio stock proyectado al arribo ya cubre su objetivo.
           </p>
-          <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-            <span style={{ background: '#2b6cb0', color: '#fff', padding: '4px 12px', borderRadius: 20, fontWeight: 'bold', fontSize: '0.85rem' }}>
-              {maquilaCubiertos.length} productos cubiertos por Maquila (0 compra)
-            </span>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 600, color: '#2b6cb0' }}>
-              <input
-                type="checkbox"
-                checked={filterExcluirMaquila}
-                onChange={e => setFilterExcluirMaquila(e.target.checked)}
-              />
-              Ocultar cubiertos por Maquila (Activo por regla de negocio)
-            </label>
-          </div>
         </div>
 
         {/* ── BANNER AÑO NUEVO CHINO (FEBRERO) ── */}
