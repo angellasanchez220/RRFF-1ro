@@ -338,7 +338,7 @@ def calcular_compra_proyectada(
     for position, state in states.items():
         row = result.loc[position]
         coverage_months = max(
-            _numero(row.get("meses_cobertura_objetivo"), 5.4),
+            _numero(row.get("meses_cobertura_objetivo"), 4.2),
             0.0,
         )
         target_stock = round(state["demanda_mensual"] * coverage_months, 0)
