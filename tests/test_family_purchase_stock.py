@@ -50,6 +50,9 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(detectar_formato_producto("C9405CR", "Producto"), "CR")
         self.assertEqual(detectar_formato_producto("C-20", "Pack-PDQ"), "PDQ")
         self.assertEqual(detectar_formato_producto("C-30", "Formato MB 20"), "MB")
+        self.assertEqual(detectar_formato_producto("C-35", "PACK TARUGOS 8 MM"), "CR")
+        self.assertEqual(detectar_formato_producto("C-36", "PACK-TARUGOS 8 MM"), "CR")
+        self.assertEqual(detectar_formato_producto("C-37", "PACKAGING TARUGOS"), "LINEAL")
         self.assertEqual(detectar_formato_producto("C-40", "MICRO SOMBRA"), "LINEAL")
 
     def test_single_sku_uses_four_month_wait_and_confirmed_transit(self):
