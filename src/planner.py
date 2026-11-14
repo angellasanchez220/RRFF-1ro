@@ -160,6 +160,17 @@ def _mensualizar_ventas_cuatro_semanas(total_cuatro_semanas):
     return total * (DIAS_MES_PLANIFICACION / DIAS_BASE_CUATRO_SEMANAS)
 
 
+def _calcular_crecimiento_compra(ritmo_4_semanas_30d, promedio_5_meses):
+    """Compara el ritmo reciente mensualizado contra el promedio de 5 meses."""
+    reciente = pd.to_numeric(ritmo_4_semanas_30d, errors="coerce")
+    promedio = pd.to_numeric(promedio_5_meses, errors="coerce")
+    crecimiento = ((reciente - promedio) / promedio.replace(0, float("nan"))) * 100.0
+    # Si los cinco meses fueron realmente cero y ahora existen ventas, hay
+    # crecimiento suficiente para activar el mes adicional.
+    crecimiento = crecimiento.mask((promedio == 0) & (reciente > 0), 100.0)
+    return crecimiento
+
+
 def _estado_excluye_compra(estado):
     """Solo los descontinuados/inactivos quedan fuera; BLOQUEADO sigue comprando."""
     return str(estado or "").strip().upper() in ESTADOS_DESCONTINUADOS
@@ -666,6 +677,10 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         df["ritmo_duracion_mensual"] = pd.concat(
             [df["ritmo_mensual_5_meses"], df["ritmo_4_semanas_30d"]], axis=1
         ).max(axis=1)
+        df["crecimiento_compra_pct"] = _calcular_crecimiento_compra(
+            df["ritmo_4_semanas_30d"],
+            df["ritmo_mensual_5_meses"],
+        )
         
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
@@ -697,6 +712,7 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         df["ritmo_mensual_5_meses"] = 0.0
         df["demanda_mensual_compra"] = df["ritmo_4_semanas_30d"]
         df["ritmo_duracion_mensual"] = df["ritmo_4_semanas_30d"]
+        df["crecimiento_compra_pct"] = float("nan")
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
         df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_duracion_mensual"].replace(0, float("nan"))
@@ -963,7 +979,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     cobertura_base, crecimiento_detectado, meses_extra, cobertura_objetivo = (
         _aplicar_regla_cobertura_compra(
             res[0],
-            df.get("mom_sellout_pct", pd.Series(float("nan"), index=df.index)),
+            df.get("crecimiento_compra_pct", pd.Series(float("nan"), index=df.index)),
         )
     )
     df["meses_cobertura_base"] = cobertura_base
