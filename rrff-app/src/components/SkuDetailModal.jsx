@@ -160,7 +160,10 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
               <tbody>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Ritmo Semanal Verificado</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_semanal_verificado||0).toFixed(1)} uds</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Venta {skuData.cantidad_semanas_validas || 4} Semanas Válidas</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(total_4_sem_verificado||0).toFixed(0)} uds</td></tr>
-                <tr><td style={{ padding: '6px 0', color: '#666' }}>Ritmo Mensual Equivalente</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_mensual_verificado||0).toFixed(0)} uds</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>4 semanas mensualizadas (30 días)</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_4_semanas_30d||0).toFixed(1)} uds/mes</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Promedio últimos 4 meses</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_mensual_4_meses||0).toFixed(1)} uds/mes</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Demanda elegida para compra</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.demanda_mensual_compra||0).toFixed(1)} uds/mes</td></tr>
+                <tr><td style={{ padding: '6px 0', color: '#666' }}>Promedio últimos 5 meses</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(skuData.ritmo_mensual_5_meses||0).toFixed(1)} uds/mes</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Actual</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(duracion_fisica_solo||0).toFixed(1)} meses</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Cobertura Target</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{Number(meses_cobertura_objetivo||5.4)} meses</td></tr>
                 <tr><td style={{ padding: '6px 0', color: '#666' }}>Formato detectado</td><td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formato_compra || 'LINEAL'}</td></tr>
@@ -456,4 +459,3 @@ export default function SkuDetailModal({ skuData, onClose, allProducts = [] }) {
     </div>
   );
 }
-
