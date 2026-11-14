@@ -143,6 +143,7 @@ def test_cr_family_block_contains_full_calculation_box():
         "stock_estimado_llegada": 5,
         "target_meses": 4.2,
         "crecimiento_compra_pct": 12.5,
+        "umbral_crecimiento_compra_pct": 10.0,
         "crecimiento_compra_detectado": True,
         "meses_extra_por_crecimiento": 1.0,
         "obj": 108,
@@ -158,6 +159,7 @@ def test_cr_family_block_contains_full_calculation_box():
     assert "Demanda en espera (4 meses): 80 uds" in worksheet["N2"].value
     assert "Compra final: 108 uds" in worksheet["N2"].value
     assert "Crecimiento 4 semanas vs promedio 5 meses: 12.5%" in worksheet["N2"].value
+    assert "Umbral para sumar mes extra: 10.0%" in worksheet["N2"].value
     assert "Mes extra por crecimiento: 1.0" in worksheet["N2"].value
     assert "N1:R1" in {str(item) for item in worksheet.merged_cells.ranges}
     assert "N2:R16" in {str(item) for item in worksheet.merged_cells.ranges}
