@@ -8,6 +8,7 @@ from src.services.excel_export_service import (
     _deduplicate_export_data,
     _safe_sheet_name,
     _poblar_caja_calculo_cr,
+    _calcular_coberturas_compra_export,
     copiar_bloque,
 )
 from src.transformer import _read_inventario_excel
@@ -76,6 +77,17 @@ def test_exact_duplicate_export_blocks_are_removed_only_once():
     changed = {**first, "stock": 11}
 
     assert _deduplicate_export_data([first, duplicate, changed]) == [first, changed]
+
+
+def test_purchase_coverage_and_green_duration_are_separate():
+    coverage, arrival_duration = _calcular_coberturas_compra_export(
+        total_4_semanas=404,
+        compra_sugerida=2256,
+        stock_llegada=1,
+    )
+
+    assert coverage == 5.58
+    assert arrival_duration == 0.0
 
 
 def test_each_family_has_one_unique_color_per_sheet():
