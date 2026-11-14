@@ -317,6 +317,9 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
         "deficit_espera_4_meses": _safe_int(row_sop.get("deficit_espera_4_meses")),
         "target_meses": _safe_float(row_sop.get("sug_target_meses"), 5.4),
+        "crecimiento_ultimo_mes_pct": _safe_float(row_sop.get("mom_sellout_pct")),
+        "crecimiento_compra_detectado": bool(row_sop.get("crecimiento_compra_detectado")),
+        "meses_extra_por_crecimiento": _safe_float(row_sop.get("meses_extra_por_crecimiento")),
         "familia_compra_total": _safe_int(row_sop.get("familia_compra_total")),
         "ambiguedad_maquila": _safe_text(row_sop.get("ambiguedad_maquila")),
         "detalle_maquila_proyectada": _safe_text(row_sop.get("detalle_maquila_proyectada")),
@@ -375,6 +378,8 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         f"Demanda elegida para compra: {data.get('demanda_mensual_compra', 0):.1f} uds/mes\n"
         f"Promedio 5 meses cerrados: {data.get('ritmo_mensual_5_meses', 0):.1f} uds/mes\n"
         f"Ritmo elegido para duración: {data.get('ritmo_duracion_mensual', 0):.1f} uds/mes\n"
+        f"Crecimiento último mes: {data.get('crecimiento_ultimo_mes_pct', 0):.1f}%\n"
+        f"Mes extra por crecimiento: {data.get('meses_extra_por_crecimiento', 0):.1f}\n"
         f"Demanda en espera (4 meses): {data.get('demanda_espera_4_meses', 0)} uds\n"
         f"Tr\u00e1nsito confirmado dentro de 4 meses: {data.get('transito_confirmado_4_meses', 0)} uds\n"
         f"Maquila recibida / destinada: {data.get('maquila_recibida_4_meses', 0)} / "
@@ -396,7 +401,9 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
     from openpyxl.utils import get_column_letter
 
     start_col, end_col = 14, 18  # N:R, al costado de Observaciones (L:M)
-    start_row, end_row = fila_inicio + 10, fila_inicio + 15
+    # La caja ocupa exactamente el mismo bloque de 16 filas que el producto:
+    # comienza en su encabezado y termina antes del siguiente SKU.
+    start_row, end_row = fila_inicio, fila_inicio + 15
 
     for merged in list(ws.merged_cells.ranges):
         if (
@@ -447,8 +454,6 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
 
     for col in range(start_col, end_col + 1):
         ws.column_dimensions[get_column_letter(col)].width = 11
-    for row in range(start_row + 1, end_row + 1):
-        ws.row_dimensions[row].height = max(ws.row_dimensions[row].height or 15, 55)
 
 
 def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
