@@ -87,6 +87,31 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(projected["stock_objetivo"], 216)
         self.assertEqual(projected["sugerencia_final"], 216)
 
+    def test_four_point_five_months_now_still_requires_purchase(self):
+        item = row("SAFE-45", "Producto individual", 450, 100, ump=1)
+        item["demanda_mensual_compra"] = 100
+
+        projected = calcular_compra_proyectada(
+            pd.DataFrame([item]), {}
+        ).iloc[0]
+
+        self.assertEqual(projected["stock_estimado_llegada"], 50)
+        self.assertEqual(projected["stock_objetivo"], 540)
+        self.assertEqual(projected["sugerencia_bruta"], 490)
+        self.assertEqual(projected["sugerencia_final"], 490)
+
+    def test_even_one_unit_gap_at_arrival_generates_purchase(self):
+        item = row("SAFE-ONE", "Producto individual", 939, 100, ump=1)
+        item["demanda_mensual_compra"] = 100
+
+        projected = calcular_compra_proyectada(
+            pd.DataFrame([item]), {}
+        ).iloc[0]
+
+        self.assertEqual(projected["stock_estimado_llegada"], 539)
+        self.assertEqual(projected["stock_objetivo"], 540)
+        self.assertEqual(projected["sugerencia_final"], 1)
+
     def test_transit_without_confirmed_eta_is_not_used(self):
         item = row("NO-ETA", "Producto individual", 0, 5)
         for month in range(1, 5):
