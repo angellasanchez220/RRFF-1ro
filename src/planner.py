@@ -76,6 +76,20 @@ N_SEMANAS_BASE = 4
 COBERTURA_MINIMA_MESES = 5.4
 UMBRAL_CRECIMIENTO_COMPRA_PCT = 5.0
 MESES_EXTRA_POR_CRECIMIENTO = 1.0
+DIAS_BASE_CUATRO_SEMANAS = 28.0
+DIAS_MES_PLANIFICACION = 30.0
+ESTADOS_DESCONTINUADOS = {"DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"}
+
+
+def _mensualizar_ventas_cuatro_semanas(total_cuatro_semanas):
+    """Convierte 28 dias cerrados a una demanda mensual comparable de 30 dias."""
+    total = pd.to_numeric(total_cuatro_semanas, errors="coerce").fillna(0.0)
+    return total * (DIAS_MES_PLANIFICACION / DIAS_BASE_CUATRO_SEMANAS)
+
+
+def _estado_excluye_compra(estado):
+    """Solo los descontinuados/inactivos quedan fuera; BLOQUEADO sigue comprando."""
+    return str(estado or "").strip().upper() in ESTADOS_DESCONTINUADOS
 
 
 def _aplicar_regla_cobertura_compra(cobertura_configurada, crecimiento_mom):
@@ -548,14 +562,16 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
         
         hoy = date.today()
         fecha_actual = datetime.date(hoy.year, hoy.month, 1)
-        fechas_4_meses = []
-        for i in range(1, 5):
+        fechas_5_meses = []
+        for i in range(1, 6):
             m_cerrado = fecha_actual.month - i
             a_cerrado = fecha_actual.year
             while m_cerrado < 1:
                 m_cerrado += 12
                 a_cerrado -= 1
-            fechas_4_meses.append((m_cerrado, a_cerrado))
+            fechas_5_meses.append((m_cerrado, a_cerrado))
+
+        fechas_4_meses = fechas_5_meses[:4]
         
         sellout_4_meses_cerrados = pd.Series(0.0, index=df.index)
         for m_c, a_c in fechas_4_meses:
@@ -564,10 +580,27 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
             sellout_4_meses_cerrados += df["sku"].map(mapping).fillna(0)
         
         df["ritmo_mensual_4_meses"] = sellout_4_meses_cerrados / 4.0
+
+        sellout_5_meses_cerrados = sellout_4_meses_cerrados.copy()
+        m_5, a_5 = fechas_5_meses[4]
+        sub_5 = hist_mensual[(hist_mensual["mes"] == m_5) & (hist_mensual["anio"] == a_5)]
+        mapping_5 = sub_5.set_index("sku")["sellout"].to_dict()
+        sellout_5_meses_cerrados += df["sku"].map(mapping_5).fillna(0)
+        df["ritmo_mensual_5_meses"] = sellout_5_meses_cerrados / 5.0
+
+        df["ritmo_4_semanas_30d"] = _mensualizar_ventas_cuatro_semanas(
+            df["total_4_sem_verificado"]
+        )
+        df["demanda_mensual_compra"] = pd.concat(
+            [df["ritmo_mensual_4_meses"], df["ritmo_4_semanas_30d"]], axis=1
+        ).max(axis=1)
+        df["ritmo_duracion_mensual"] = pd.concat(
+            [df["ritmo_mensual_5_meses"], df["ritmo_4_semanas_30d"]], axis=1
+        ).max(axis=1)
         
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
-        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_duracion_mensual"].replace(0, float("nan"))
         
         m_1, a_1 = fechas_4_meses[0]
         m_2, a_2 = fechas_4_meses[1]
@@ -588,10 +621,16 @@ def _calcular_yoy_y_picos(df: pd.DataFrame, meses: list, df_si_hist: pd.DataFram
 
     except Exception as e:
         log.warning(f"No se pudo cargar historial_mensual_sku_validado.csv: {e}. Usando estimaciones fallback para MoM y duración.")
-        df["ritmo_mensual_4_meses"] = df["ritmo_semanal_uds"] * 4.33
+        df["ritmo_4_semanas_30d"] = _mensualizar_ventas_cuatro_semanas(
+            df["total_4_sem_verificado"]
+        )
+        df["ritmo_mensual_4_meses"] = 0.0
+        df["ritmo_mensual_5_meses"] = 0.0
+        df["demanda_mensual_compra"] = df["ritmo_4_semanas_30d"]
+        df["ritmo_duracion_mensual"] = df["ritmo_4_semanas_30d"]
         stock_tienda = df.get("stock_fisico_matrix", pd.Series(0, index=df.index)).fillna(0)
         stock_central = df["stock_act"].fillna(0)
-        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_mensual_4_meses"].replace(0, float("nan"))
+        df["duracion_4_meses"] = (stock_central + stock_tienda) / df["ritmo_duracion_mensual"].replace(0, float("nan"))
         df["mom_sellout_pct"] = float("nan")
         sellout_4_meses_cerrados = pd.Series(0.0, index=df.index)
         tiene_historial_mensual = False
@@ -801,19 +840,21 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     # -------------------------------------------------------------------------
     log.info("Calculando Sugerencia de Compra con Target Dinámico...")
     
-    # 1. Ritmo Pasado = promedio semanal * 4.33 (mes)
+    # 1. Ritmo reciente = ultimas cuatro semanas mensualizadas a 30 dias.
     df["sug_ritmo_pasado"] = pd.to_numeric(
-        df["total_4_sem_verificado"], errors="coerce"
+        df.get("ritmo_4_semanas_30d", 0.0), errors="coerce"
     ).fillna(0.0)
     
-    # 2. Ritmo Futuro = promedio Sell-Out próximos 4 meses
-    cols_so_prox_4 = [f"sellout_{_nombre_mes(m)[:3].lower()}_{a}" for m, a in meses[0:4]]
-    # Asegurar que las columnas existen y sacar promedio
-    exist_cols_so = [c for c in cols_so_prox_4 if c in df.columns]
-    df["sug_ritmo_futuro"] = df[exist_cols_so].mean(axis=1) if exist_cols_so else 0.0
+    # 2. Ritmo historico = promedio de los ultimos cuatro meses cerrados.
+    df["sug_ritmo_futuro"] = pd.to_numeric(
+        df.get("ritmo_mensual_4_meses", 0.0), errors="coerce"
+    ).fillna(0.0)
     
-    # 3. Ritmo Consolidado = MAX(Pasado, Futuro) SOLO PARA SELLOS
-    df["sug_ritmo_mensual"] = df["sug_ritmo_pasado"].round(0)
+    # 3. Demanda de compra = el mayor entre promedio 4 meses y 4 semanas a 30 dias.
+    df["sug_ritmo_mensual"] = pd.concat(
+        [df["sug_ritmo_pasado"], df["sug_ritmo_futuro"]], axis=1
+    ).max(axis=1)
+    df["demanda_mensual_compra"] = df["sug_ritmo_mensual"]
     
     # 4. Target de Stock Configurable
     try:
@@ -1008,7 +1049,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         sku = str(row.get("sku", ""))
         stock = float(row.get("stock_act", 0) if pd.notna(row.get("stock_act")) else 0)
         ump = float(row.get("ump", 0) if pd.notna(row.get("ump")) else 0)
-        ritmo = float(row.get("sug_ritmo_mensual", 0) if pd.notna(row.get("sug_ritmo_mensual")) else 0)
+        ritmo = float(row.get("ritmo_duracion_mensual", 0) if pd.notna(row.get("ritmo_duracion_mensual")) else 0)
         estado = str(row.get("estado", "")).upper()
         transito = float(row.get("cantidad_transito", 0) if pd.notna(row.get("cantidad_transito")) else 0)
         eta_raw = row.get("eta_proxima")
@@ -1034,7 +1075,7 @@ def _calcular_excepciones_y_alertas(df: pd.DataFrame) -> pd.DataFrame:
         if estado in ["BLOQUEADO", "BLOQUEADOS"]:
             excepciones.append("PRODUCTO_BLOQUEADO")
             # Los bloqueados sí se consideran para la compra
-        elif estado in ["DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"]:
+        elif _estado_excluye_compra(estado):
             excepciones.append("PRODUCTO_DESCONTINUADO")
             bloquea = True
 
@@ -1431,4 +1472,3 @@ if __name__ == "__main__":
     except Exception as err:
         print(f"\n[ERROR] {err}", file=sys.stderr)
         sys.exit(1)
-
