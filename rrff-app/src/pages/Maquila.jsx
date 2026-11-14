@@ -171,6 +171,7 @@ export default function FamiliasReemplazo() {
           codigo_femaco: m.codigo_femaco || m.sku_componente || '',
           nombre_componente: m.nombre_componente || m.nombre_producto || '',
           cantidad_por_unidad: m.cantidad_por_unidad != null ? m.cantidad_por_unidad : 1.0,
+          prioridad_planificacion: m.prioridad_planificacion != null ? m.prioridad_planificacion : '',
           costo_unitario: m.costo_unitario != null ? Number(m.costo_unitario) : 0,
           tipo_componente: m.tipo_componente || 'PRODUCTO',
           unidad_medida: m.unidad_medida || 'UN',
@@ -258,6 +259,9 @@ export default function FamiliasReemplazo() {
           ...m,
           codigo_femaco: m.codigo_femaco.trim().toUpperCase(),
           cantidad_por_unidad: Number(m.cantidad_por_unidad) || 1.0,
+          prioridad_planificacion: m.tipo_componente === 'PRODUCTO' && Number(m.prioridad_planificacion) > 0
+            ? Number(m.prioridad_planificacion)
+            : null,
           costo_unitario: Number(m.costo_unitario) || 0
         })),
         tiempos: formData.tiempos.filter(t => t.tiempo_minutos !== '' && Number(t.tiempo_minutos) > 0).map(t => ({
@@ -305,6 +309,7 @@ export default function FamiliasReemplazo() {
           codigo_femaco: defaultCodigo,
           nombre_componente: defaultNombre,
           cantidad_por_unidad: 1.0,
+          prioridad_planificacion: '',
           costo_unitario: defaultCosto,
           tipo_componente: tipo,
           unidad_medida: defaultUm,
@@ -328,6 +333,7 @@ export default function FamiliasReemplazo() {
     // Si cambia de tipo
     if (field === 'tipo_componente') {
       if (val === 'MATERIAL') {
+        newMembers[idx].prioridad_planificacion = '';
         const mat = materialesMaquila.find(x => x.sku === newMembers[idx].codigo_femaco) || materialesMaquila[0];
         if (mat) {
           newMembers[idx].codigo_femaco = mat.sku;
@@ -984,7 +990,7 @@ export default function FamiliasReemplazo() {
                         costo_hora: '',
                         costo_maquila_estimado: 0,
                         miembros: [
-                          { codigo_femaco: '', nombre_componente: '', cantidad_por_unidad: 1.0, costo_unitario: 0, tipo_componente: 'PRODUCTO', unidad_medida: 'UN', no_transformable: false, observacion: '' }
+                          { codigo_femaco: '', nombre_componente: '', cantidad_por_unidad: 1.0, prioridad_planificacion: '', costo_unitario: 0, tipo_componente: 'PRODUCTO', unidad_medida: 'UN', no_transformable: false, observacion: '' }
                         ], 
                         tiempos: [] 
                       });
@@ -1437,6 +1443,9 @@ export default function FamiliasReemplazo() {
                     <div style={{ padding: '12px 16px', background: '#f8fafc', borderLeft: '4px solid #0284c7', borderRadius: '6px', marginBottom: '16px', fontSize: '0.88rem', color: '#334155', lineHeight: 1.5 }}>
                       <strong>ℹ️ Cómo funciona la proporción y costos:</strong> Especifica cuántas unidades se requieren de cada componente para obtener <b>1 unidad terminada</b> e indica su costo por unidad.<br/>
                       <em>Ejemplo:</em> Para hacer 1 unidad del Producto B se requieren <b>3 unidades</b> del Producto A, <b>1</b> Etiqueta XXXXX y <b>2</b> Mangas de celofán.
+                      <span style={{ display: 'block', marginTop: '6px', color: '#0369a1', fontWeight: 600 }}>
+                        Prioridad de cobertura: vac&iacute;a usa autom&aacute;ticamente 1 LINEAL, 2 CR y 3 MB/PDQ. Un n&uacute;mero menor se atiende primero y los muebles s&oacute;lo se desarman si los formatos anteriores no alcanzan.
+                      </span>
                       <span style={{ display: 'block', marginTop: '6px', color: '#b45309', fontWeight: 600 }}>
                         🏷️ <b>Materiales e Insumos:</b> Se seleccionan del catálogo creado en el módulo <a href="#/materiales-maquila" style={{ color: '#0284c7', textDecoration: 'underline' }}>Materiales Maquila</a>, donde también puedes subir el Excel de inventario con costos (columnas <code>sku</code>, <code>descripcion</code>, <code>categoria</code>, <code>unidades</code> y <code>costo</code>).
                       </span>
@@ -1449,6 +1458,7 @@ export default function FamiliasReemplazo() {
                             <th style={{ padding: '10px 12px', width: '220px' }}>Código Interno / Material *</th>
                             <th style={{ padding: '10px 12px' }}>Descripción / Insumo y Stock</th>
                             <th style={{ padding: '10px 12px', width: '110px', textAlign: 'center' }}>Proporción *</th>
+                            <th style={{ padding: '10px 12px', width: '105px', textAlign: 'center' }}>Prioridad compra</th>
                             <th style={{ padding: '10px 12px', width: '80px', textAlign: 'center' }}>Unidad</th>
                             <th style={{ padding: '10px 12px', width: '120px', textAlign: 'center' }}>Costo Unit. ($)</th>
                             <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right' }}>Subtotal ($)</th>
@@ -1595,6 +1605,24 @@ export default function FamiliasReemplazo() {
                                   </div>
                                 </td>
 
+                                {/* Prioridad de cobertura */}
+                                <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  {!isMaterial ? (
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="1"
+                                      value={m.prioridad_planificacion ?? ''}
+                                      onChange={e => updateMiembro(i, 'prioridad_planificacion', e.target.value)}
+                                      style={{ width: '70px', padding: '6px', textAlign: 'center', borderRadius: '4px', border: '1.5px solid #8b5cf6', fontWeight: 800, color: '#6d28d9' }}
+                                      placeholder="Auto"
+                                      title={'Menor n\u00famero = se cubre primero. Vac\u00edo usa LINEAL 1, CR 2, MB/PDQ 3.'}
+                                    />
+                                  ) : (
+                                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No aplica</span>
+                                  )}
+                                </td>
+
                                 {/* Unidad de Medida */}
                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                                   <input 
@@ -1670,7 +1698,7 @@ export default function FamiliasReemplazo() {
                           })}
                           {formData.miembros.length === 0 && (
                             <tr>
-                              <td colSpan="10" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
+                              <td colSpan="11" style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
                                 Agrega integrantes con los botones superiores (+ Producto Hermano o + Material / Insumo).
                               </td>
                             </tr>
