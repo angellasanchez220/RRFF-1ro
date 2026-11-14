@@ -27,6 +27,18 @@ def _codigo_miembro(miembro):
     return str(miembro.get("codigo_femaco") or miembro.get("sku") or "").strip().upper()
 
 
+def _prioridad_miembro(miembro):
+    """Prioridad opcional; vacía deja que el planner aplique LINEAL/CR/MB-PDQ."""
+    value = miembro.get("prioridad_planificacion")
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        priority = int(value)
+        return priority if priority > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _check_descontinuados(conn, codigos):
     if not codigos:
         return
@@ -94,6 +106,7 @@ def get_receta(receta_id: int):
                     COALESCE(NULLIF(TRIM(c.nombre_componente), ''), NULLIF(TRIM(p.nombre_producto), ''), c.sku_componente) AS nombre_producto,
                     COALESCE(NULLIF(TRIM(c.nombre_componente), ''), NULLIF(TRIM(p.nombre_producto), ''), '') AS nombre_componente,
                     COALESCE(c.cantidad_por_unidad, 1.0) AS cantidad_por_unidad,
+                    c.prioridad_planificacion,
                     COALESCE(c.tipo_componente, 'PRODUCTO') AS tipo_componente,
                     COALESCE(c.unidad_medida, 'UN') AS unidad_medida,
                     COALESCE(c.costo_unitario, 0) AS costo_unitario,
@@ -135,6 +148,11 @@ def get_receta(receta_id: int):
             for c in comps:
                 c['no_transformable'] = bool(c['no_transformable'])
                 c['cantidad_por_unidad'] = float(c['cantidad_por_unidad'])
+                c['prioridad_planificacion'] = (
+                    int(c['prioridad_planificacion'])
+                    if c.get('prioridad_planificacion') is not None
+                    else None
+                )
                 c['costo_unitario'] = float(c.get('costo_unitario') or 0)
                 
             receta_dict['miembros'] = comps
@@ -250,13 +268,18 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                 um = str(m.get("unidad_medida") or "UN").strip()
                 obs = str(m.get("observacion") or "").strip()
                 nt = bool(m.get("no_transformable", False))
+                prioridad = _prioridad_miembro(m) if tipo == "PRODUCTO" else None
 
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (
                         receta_id, sku_componente, cantidad_por_unidad, no_transformable,
-                        tipo_componente, nombre_componente, unidad_medida, costo_unitario, observacion
+                        tipo_componente, nombre_componente, unidad_medida, costo_unitario,
+                        observacion, prioridad_planificacion
                     )
-                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou, :obs)
+                    VALUES (
+                        :rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou,
+                        :obs, :prioridad
+                    )
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
@@ -266,7 +289,8 @@ def create_receta(body: dict = Body(...), authorization: str = Header(None)):
                     "nombre": nombre_c,
                     "um": um,
                     "costou": costo_u,
-                    "obs": obs
+                    "obs": obs,
+                    "prioridad": prioridad,
                 })
 
             for t in tiempos:
@@ -397,13 +421,18 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                 um = str(m.get("unidad_medida") or "UN").strip()
                 obs = str(m.get("observacion") or "").strip()
                 nt = bool(m.get("no_transformable", False))
+                prioridad = _prioridad_miembro(m) if tipo == "PRODUCTO" else None
 
                 conn.execute(text("""
                     INSERT INTO receta_maquila_componentes (
                         receta_id, sku_componente, cantidad_por_unidad, no_transformable,
-                        tipo_componente, nombre_componente, unidad_medida, costo_unitario, observacion
+                        tipo_componente, nombre_componente, unidad_medida, costo_unitario,
+                        observacion, prioridad_planificacion
                     )
-                    VALUES (:rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou, :obs)
+                    VALUES (
+                        :rid, :skuc, :qty, :nt, :tipo, :nombre, :um, :costou,
+                        :obs, :prioridad
+                    )
                 """), {
                     "rid": receta_id, 
                     "skuc": codigo,
@@ -413,7 +442,8 @@ def update_receta(receta_id: int, body: dict = Body(...), authorization: str = H
                     "nombre": nombre_c,
                     "um": um,
                     "costou": costo_u,
-                    "obs": obs
+                    "obs": obs,
+                    "prioridad": prioridad,
                 })
 
             # Sincronizar tiempos
