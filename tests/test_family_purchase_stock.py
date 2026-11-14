@@ -7,7 +7,7 @@ from src.services.maquila_service import detectar_formato_producto
 from src.services.purchase_stock_service import calcular_compra_proyectada
 
 
-def row(code, description, stock, demand, coverage=5.4, ump=1, transit=None, priority=None):
+def row(code, description, stock, demand, coverage=4.2, ump=1, transit=None, priority=None):
     transit = transit or [0, 0, 0, 0]
     return {
         "sku": f"SKU-{code}",
@@ -72,9 +72,9 @@ class ProjectedPurchaseTests(unittest.TestCase):
 
         self.assertEqual(item["demanda_espera_4_meses"], 40)
         self.assertEqual(item["stock_estimado_llegada"], 10)
-        self.assertEqual(item["stock_objetivo"], 54)
-        self.assertEqual(item["sugerencia_bruta"], 44)
-        self.assertEqual(item["sugerencia_final"], 48)
+        self.assertEqual(item["stock_objetivo"], 42)
+        self.assertEqual(item["sugerencia_bruta"], 32)
+        self.assertEqual(item["sugerencia_final"], 36)
         self.assertEqual(item["deficit_espera_4_meses"], 0)
 
     def test_purchase_prefers_selected_monthly_demand_over_raw_four_weeks(self):
@@ -84,8 +84,8 @@ class ProjectedPurchaseTests(unittest.TestCase):
         projected = result.iloc[0]
 
         self.assertEqual(projected["demanda_espera_4_meses"], 160)
-        self.assertEqual(projected["stock_objetivo"], 216)
-        self.assertEqual(projected["sugerencia_final"], 216)
+        self.assertEqual(projected["stock_objetivo"], 168)
+        self.assertEqual(projected["sugerencia_final"], 168)
 
     def test_four_point_five_months_now_still_requires_purchase(self):
         item = row("SAFE-45", "Producto individual", 450, 100, ump=1)
@@ -96,24 +96,24 @@ class ProjectedPurchaseTests(unittest.TestCase):
         ).iloc[0]
 
         self.assertEqual(projected["stock_estimado_llegada"], 50)
-        self.assertEqual(projected["stock_objetivo"], 540)
-        self.assertEqual(projected["sugerencia_bruta"], 490)
-        self.assertEqual(projected["sugerencia_final"], 490)
+        self.assertEqual(projected["stock_objetivo"], 420)
+        self.assertEqual(projected["sugerencia_bruta"], 370)
+        self.assertEqual(projected["sugerencia_final"], 370)
 
     def test_even_one_unit_gap_at_arrival_generates_purchase(self):
-        item = row("SAFE-ONE", "Producto individual", 939, 100, ump=1)
+        item = row("SAFE-ONE", "Producto individual", 819, 100, ump=1)
         item["demanda_mensual_compra"] = 100
 
         projected = calcular_compra_proyectada(
             pd.DataFrame([item]), {}
         ).iloc[0]
 
-        self.assertEqual(projected["stock_estimado_llegada"], 539)
-        self.assertEqual(projected["stock_objetivo"], 540)
+        self.assertEqual(projected["stock_estimado_llegada"], 419)
+        self.assertEqual(projected["stock_objetivo"], 420)
         self.assertEqual(projected["sugerencia_final"], 1)
 
-    def test_low_stock_growth_case_buys_six_point_four_month_target(self):
-        item = row("7065531", "CINTA TELA EXTREM 48MM X 32M", 1800, 507, coverage=6.4, ump=12)
+    def test_low_stock_growth_case_buys_five_point_two_month_target(self):
+        item = row("7065531", "CINTA TELA EXTREM 48MM X 32M", 1800, 507, coverage=5.2, ump=12)
         item["demanda_mensual_compra"] = 507 * 30 / 28
 
         projected = calcular_compra_proyectada(
@@ -121,11 +121,11 @@ class ProjectedPurchaseTests(unittest.TestCase):
         ).iloc[0]
 
         self.assertEqual(projected["stock_estimado_llegada"], 0)
-        self.assertEqual(projected["stock_objetivo"], 3477)
-        self.assertEqual(projected["sugerencia_final"], 3480)
+        self.assertEqual(projected["stock_objetivo"], 2825)
+        self.assertEqual(projected["sugerencia_final"], 2832)
 
     def test_four_month_average_can_trigger_purchase_despite_low_recent_weeks(self):
-        item = row("7781954", "CINTA TELA MULTIUSO 48MMX27M", 10800, 384, coverage=5.4, ump=24)
+        item = row("7781954", "CINTA TELA MULTIUSO 48MMX27M", 10800, 384, coverage=4.2, ump=24)
         item["demanda_mensual_compra"] = (2549 + 1666 + 667 + 464) / 4
 
         projected = calcular_compra_proyectada(
@@ -133,8 +133,8 @@ class ProjectedPurchaseTests(unittest.TestCase):
         ).iloc[0]
 
         self.assertEqual(projected["stock_estimado_llegada"], 5454)
-        self.assertEqual(projected["stock_objetivo"], 7217)
-        self.assertEqual(projected["sugerencia_final"], 1776)
+        self.assertEqual(projected["stock_objetivo"], 5613)
+        self.assertEqual(projected["sugerencia_final"], 168)
 
     def test_transit_without_confirmed_eta_is_not_used(self):
         item = row("NO-ETA", "Producto individual", 0, 5)
@@ -173,9 +173,9 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(lineal["deficit_espera_4_meses"], 0)
         self.assertEqual(cr["maquila_destinada_4_meses"], 80)
         self.assertEqual(cr["stock_estimado_llegada"], 0)
-        self.assertEqual(lineal["sugerencia_final"], 60)
+        self.assertEqual(lineal["sugerencia_final"], 50)
         self.assertEqual(cr["sugerencia_final"], 30)
-        self.assertEqual(lineal["familia_compra_total"], 90)
+        self.assertEqual(lineal["familia_compra_total"], 80)
 
         # Conservacion CR: 100 inicial = 20 venta propia + 80 maquila + 0 final.
         self.assertEqual(
