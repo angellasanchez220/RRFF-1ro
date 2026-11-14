@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 
 FORMATOS_MAQUILA = ("CR", "PDQ", "MB")
+PRIORIDAD_FORMATO_DEFAULT = {"LINEAL": 1, "CR": 2, "MB": 3, "PDQ": 3}
 
 
 def _normalizar_identificador(value):
@@ -41,6 +42,11 @@ def detectar_formato_producto(codigo_femaco, descripcion):
     # Una descripcion/codigo con mas de un marcador queda trazable; el orden
     # solo entrega un valor estable para no romper la planificacion.
     return marcadores[0]
+
+
+def prioridad_formato_default(formato):
+    """Orden base editable: LINEAL, CR y al final los muebles MB/PDQ."""
+    return PRIORIDAD_FORMATO_DEFAULT.get(str(formato or "").strip().upper(), 99)
 
 
 def is_discontinued(value):
@@ -119,6 +125,7 @@ def build_maquila_families(conn, lookup_dict):
                c.id AS componente_id,
                c.sku_componente,
                COALESCE(c.cantidad_por_unidad, 1.0) AS cantidad_por_unidad,
+               c.prioridad_planificacion,
                COALESCE(c.no_transformable, FALSE) as no_transformable,
                COALESCE(c.observacion, '') AS observacion
         FROM recetas_maquila r
@@ -162,6 +169,12 @@ def build_maquila_families(conn, lookup_dict):
             componentes_por_familia.setdefault(padre, []).append({
                 "nodo": hijo,
                 "cantidad_por_unidad": float(row.get("cantidad_por_unidad") or 1.0),
+                "prioridad_planificacion": (
+                    int(row.get("prioridad_planificacion"))
+                    if pd.notna(row.get("prioridad_planificacion"))
+                    and float(row.get("prioridad_planificacion")) > 0
+                    else None
+                ),
                 "no_transformable": nt,
                 "componente_id": int(row.get("componente_id") or 0),
                 "observacion": str(row.get("observacion") or "").strip(),
@@ -237,6 +250,18 @@ def build_maquila_families(conn, lookup_dict):
                 continue
                 
             info = get_info(nodo_alcanzable)
+            configured_priorities = [
+                component.get("prioridad_planificacion")
+                for family_node in visitados
+                for component in componentes_por_familia.get(family_node, [])
+                if component.get("nodo") == nodo_alcanzable
+                and component.get("prioridad_planificacion") is not None
+            ]
+            info["prioridad_planificacion"] = (
+                min(configured_priorities)
+                if configured_priorities
+                else prioridad_formato_default(info["formato_compra"])
+            )
             familia_list.append(info)
             if not info["descontinuado"]:
                 stock_bruto += info["stock_act"]
@@ -280,7 +305,18 @@ def build_maquila_families(conn, lookup_dict):
                         "destino": str(destino_codigo).strip().upper(),
                         "cantidad_origen": max(float(origen["cantidad_por_unidad"]), 0.0001),
                         "cantidad_destino": 1.0,
-                        "prioridad": None,
+                        "prioridad_origen": (
+                            origen.get("prioridad_planificacion")
+                            or prioridad_formato_default(
+                                get_info(origen["nodo"])["formato_compra"]
+                            )
+                        ),
+                        "prioridad_destino": (
+                            destino.get("prioridad_planificacion")
+                            or prioridad_formato_default(
+                                get_info(destino["nodo"])["formato_compra"]
+                            )
+                        ),
                     })
 
         # Si dos recetas definen factores distintos para el mismo par, no se
@@ -321,4 +357,3 @@ def build_maquila_families(conn, lookup_dict):
             resultado[real_codigo] = res_data
             
     return resultado
-
