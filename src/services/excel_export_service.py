@@ -323,6 +323,12 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         ),
         "crecimiento_compra_detectado": bool(row_sop.get("crecimiento_compra_detectado")),
         "meses_extra_por_crecimiento": _safe_float(row_sop.get("meses_extra_por_crecimiento")),
+        "ajuste_ano_nuevo_chino_aplicado": bool(
+            row_sop.get("ajuste_ano_nuevo_chino_aplicado")
+        ),
+        "meses_extra_ano_nuevo_chino": _safe_float(
+            row_sop.get("meses_extra_ano_nuevo_chino")
+        ),
         "familia_compra_total": _safe_int(row_sop.get("familia_compra_total")),
         "ambiguedad_maquila": _safe_text(row_sop.get("ambiguedad_maquila")),
         "detalle_maquila_proyectada": _safe_text(row_sop.get("detalle_maquila_proyectada")),
@@ -384,6 +390,8 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         f"Crecimiento 4 semanas vs promedio 5 meses: {data.get('crecimiento_compra_pct', 0):.1f}%\n"
         f"Umbral para sumar mes extra: {data.get('umbral_crecimiento_compra_pct', 10):.1f}%\n"
         f"Mes extra por crecimiento: {data.get('meses_extra_por_crecimiento', 0):.1f}\n"
+        f"Mes extra por Año Nuevo Chino (compras Nov-Dic): "
+        f"{data.get('meses_extra_ano_nuevo_chino', 0):.1f}\n"
         f"Demanda en espera (4 meses): {data.get('demanda_espera_4_meses', 0)} uds\n"
         f"Tr\u00e1nsito confirmado dentro de 4 meses: {data.get('transito_confirmado_4_meses', 0)} uds\n"
         f"Maquila recibida / destinada: {data.get('maquila_recibida_4_meses', 0)} / "
