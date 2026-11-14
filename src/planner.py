@@ -71,10 +71,11 @@ COLS_SEM_EXCLUIR    = {                  # columnas que NO son semanas individua
 N_SEMANAS_BASE = 4
 
 # Reglas operativas vigentes de compra.
-# Si el último mes cerrado creció al menos 5%, se agrega un mes completo
+# Si las cuatro semanas mensualizadas superan en al menos 10% el promedio
+# de los ultimos cinco meses, se agrega un mes completo
 # de demanda a la cobertura base de 4,2 meses.
 COBERTURA_MINIMA_MESES = 4.2
-UMBRAL_CRECIMIENTO_COMPRA_PCT = 5.0
+UMBRAL_CRECIMIENTO_COMPRA_PCT = 10.0
 MESES_EXTRA_POR_CRECIMIENTO = 1.0
 DIAS_BASE_CUATRO_SEMANAS = 28.0
 DIAS_MES_PLANIFICACION = 30.0
@@ -985,6 +986,7 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     df["meses_cobertura_base"] = cobertura_base
     df["origen_cobertura_objetivo"] = res[1]
     df["crecimiento_compra_detectado"] = crecimiento_detectado
+    df["umbral_crecimiento_compra_pct"] = UMBRAL_CRECIMIENTO_COMPRA_PCT
     df["meses_extra_por_crecimiento"] = meses_extra
     df["meses_cobertura_objetivo"] = cobertura_objetivo
 
