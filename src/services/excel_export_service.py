@@ -317,7 +317,7 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
         "deficit_espera_4_meses": _safe_int(row_sop.get("deficit_espera_4_meses")),
         "target_meses": _safe_float(row_sop.get("sug_target_meses"), 5.4),
-        "crecimiento_ultimo_mes_pct": _safe_float(row_sop.get("mom_sellout_pct")),
+        "crecimiento_compra_pct": _safe_float(row_sop.get("crecimiento_compra_pct")),
         "crecimiento_compra_detectado": bool(row_sop.get("crecimiento_compra_detectado")),
         "meses_extra_por_crecimiento": _safe_float(row_sop.get("meses_extra_por_crecimiento")),
         "familia_compra_total": _safe_int(row_sop.get("familia_compra_total")),
@@ -378,7 +378,7 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         f"Demanda elegida para compra: {data.get('demanda_mensual_compra', 0):.1f} uds/mes\n"
         f"Promedio 5 meses cerrados: {data.get('ritmo_mensual_5_meses', 0):.1f} uds/mes\n"
         f"Ritmo elegido para duración: {data.get('ritmo_duracion_mensual', 0):.1f} uds/mes\n"
-        f"Crecimiento último mes: {data.get('crecimiento_ultimo_mes_pct', 0):.1f}%\n"
+        f"Crecimiento 4 semanas vs promedio 5 meses: {data.get('crecimiento_compra_pct', 0):.1f}%\n"
         f"Mes extra por crecimiento: {data.get('meses_extra_por_crecimiento', 0):.1f}\n"
         f"Demanda en espera (4 meses): {data.get('demanda_espera_4_meses', 0)} uds\n"
         f"Tr\u00e1nsito confirmado dentro de 4 meses: {data.get('transito_confirmado_4_meses', 0)} uds\n"
