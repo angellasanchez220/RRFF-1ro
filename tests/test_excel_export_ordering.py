@@ -4,6 +4,8 @@ from unittest.mock import patch
 from api.routes.sop import _get_mes_map
 from src.services.excel_export_service import (
     _product_family_sort_key,
+    _assign_family_colors,
+    _deduplicate_export_data,
     _safe_sheet_name,
     _poblar_caja_calculo_cr,
     copiar_bloque,
@@ -54,6 +56,26 @@ def test_sheet_names_are_valid_limited_and_unique():
     assert "/" not in first and ":" not in first
     assert first != second
     assert len(second) <= 31
+
+
+def test_exact_duplicate_export_blocks_are_removed_only_once():
+    first = {"sku": "100", "nombre": "Producto", "stock": 10}
+    duplicate = dict(first)
+    changed = {**first, "stock": 11}
+
+    assert _deduplicate_export_data([first, duplicate, changed]) == [first, changed]
+
+
+def test_each_family_has_one_unique_color_per_sheet():
+    items = [
+        {"sku": "L1", "tiene_familia": True, "clave_familia": "FAM:A"},
+        {"sku": "CR1", "tiene_familia": True, "clave_familia": "FAM:A"},
+        {"sku": "L2", "tiene_familia": True, "clave_familia": "FAM:B"},
+    ]
+    _assign_family_colors(items)
+
+    assert items[0]["familia_color"] == items[1]["familia_color"]
+    assert items[0]["familia_color"] != items[2]["familia_color"]
 
 
 def test_current_month_uses_previous_year_in_label():
@@ -121,7 +143,7 @@ def test_cr_family_block_contains_full_calculation_box():
     assert "Demanda en espera (4 meses): 80 uds" in worksheet["N12"].value
     assert "Compra final: 108 uds" in worksheet["N12"].value
     assert "N11:R11" in {str(item) for item in worksheet.merged_cells.ranges}
-    assert "N12:R15" in {str(item) for item in worksheet.merged_cells.ranges}
+    assert "N12:R16" in {str(item) for item in worksheet.merged_cells.ranges}
 
 
 def test_non_cr_block_removes_copied_cr_box():
@@ -143,4 +165,4 @@ def test_non_cr_block_removes_copied_cr_box():
 
     assert worksheet["N27"].value is None
     assert "N27:R27" not in {str(item) for item in worksheet.merged_cells.ranges}
-    assert "N28:R31" not in {str(item) for item in worksheet.merged_cells.ranges}
+    assert "N28:R32" not in {str(item) for item in worksheet.merged_cells.ranges}
