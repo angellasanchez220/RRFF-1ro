@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pandas as pd
 
@@ -7,6 +9,7 @@ from src.planner import (
     MESES_EXTRA_POR_CRECIMIENTO,
     UMBRAL_CRECIMIENTO_COMPRA_PCT,
     _aplicar_regla_cobertura_compra,
+    _cargar_historial_sellout_mensual,
     _estado_excluye_compra,
     _mensualizar_ventas_cuatro_semanas,
 )
@@ -40,6 +43,36 @@ class PurchaseBusinessRulesTests(unittest.TestCase):
         self.assertFalse(_estado_excluye_compra("BLOQUEADOS"))
         self.assertTrue(_estado_excluye_compra("DESCONTINUADO"))
         self.assertTrue(_estado_excluye_compra("INACTIVO"))
+
+    def test_clean_sellout_overrides_stale_validated_history_for_growth(self):
+        with TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            pd.DataFrame(
+                [
+                    {"sku": "7065531", "anio": 2026, "mes": 9, "sellout": 304},
+                    {"sku": "7065531", "anio": 2026, "mes": 10, "sellout": 0},
+                ]
+            ).to_csv(base / "historial_mensual_sku_validado.csv", index=False)
+            pd.DataFrame(
+                [
+                    {"sku": "7065531", "a\u00f1o": 2026, "mes": "septiembre", "unidades_sellout": 304},
+                    {"sku": "7065531", "a\u00f1o": 2026, "mes": "octubre", "unidades_sellout": 486},
+                ]
+            ).to_csv(
+                base / "sellout_historico_clean.csv",
+                index=False,
+                sep=";",
+                encoding="utf-8-sig",
+            )
+
+            history = _cargar_historial_sellout_mensual(base)
+            october = history[
+                (history["sku"] == "7065531")
+                & (history["anio"] == 2026)
+                & (history["mes"] == 10)
+            ]
+
+            self.assertEqual(october.iloc[0]["sellout"], 486)
 
 
 if __name__ == "__main__":
