@@ -141,8 +141,8 @@ def test_cr_family_block_contains_full_calculation_box():
         "maquila_destinada_4_meses": 25,
         "deficit_espera_4_meses": 0,
         "stock_estimado_llegada": 5,
-        "target_meses": 5.4,
-        "crecimiento_ultimo_mes_pct": 12.5,
+        "target_meses": 4.2,
+        "crecimiento_compra_pct": 12.5,
         "crecimiento_compra_detectado": True,
         "meses_extra_por_crecimiento": 1.0,
         "obj": 108,
@@ -157,7 +157,7 @@ def test_cr_family_block_contains_full_calculation_box():
     assert worksheet["N1"].value == "C\u00c1LCULO COMPRA FAMILIA - CR"
     assert "Demanda en espera (4 meses): 80 uds" in worksheet["N2"].value
     assert "Compra final: 108 uds" in worksheet["N2"].value
-    assert "Crecimiento último mes: 12.5%" in worksheet["N2"].value
+    assert "Crecimiento 4 semanas vs promedio 5 meses: 12.5%" in worksheet["N2"].value
     assert "Mes extra por crecimiento: 1.0" in worksheet["N2"].value
     assert "N1:R1" in {str(item) for item in worksheet.merged_cells.ranges}
     assert "N2:R16" in {str(item) for item in worksheet.merged_cells.ranges}
