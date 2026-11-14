@@ -124,16 +124,17 @@ class ProjectedPurchaseTests(unittest.TestCase):
         self.assertEqual(projected["stock_objetivo"], 3477)
         self.assertEqual(projected["sugerencia_final"], 3480)
 
-    def test_high_stock_needs_no_purchase_even_with_growth_target(self):
-        item = row("7781954", "CINTA TELA MULTIUSO 48MMX27M", 10800, 384, coverage=6.4, ump=24)
-        item["demanda_mensual_compra"] = 384 * 30 / 28
+    def test_four_month_average_can_trigger_purchase_despite_low_recent_weeks(self):
+        item = row("7781954", "CINTA TELA MULTIUSO 48MMX27M", 10800, 384, coverage=5.4, ump=24)
+        item["demanda_mensual_compra"] = (2549 + 1666 + 667 + 464) / 4
 
         projected = calcular_compra_proyectada(
             pd.DataFrame([item]), {}
         ).iloc[0]
 
-        self.assertGreater(projected["stock_estimado_llegada"], projected["stock_objetivo"])
-        self.assertEqual(projected["sugerencia_final"], 0)
+        self.assertEqual(projected["stock_estimado_llegada"], 5454)
+        self.assertEqual(projected["stock_objetivo"], 7217)
+        self.assertEqual(projected["sugerencia_final"], 1776)
 
     def test_transit_without_confirmed_eta_is_not_used(self):
         item = row("NO-ETA", "Producto individual", 0, 5)
