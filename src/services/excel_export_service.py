@@ -1,6 +1,8 @@
 import io
 import math
 import copy
+import colorsys
+import json
 import re
 import unicodedata
 from pathlib import Path
@@ -78,6 +80,54 @@ def _product_family_sort_key(data: dict):
         _normalize_sort_text(data.get("nombre")),
         _normalize_sort_text(data.get("sku")),
     )
+
+
+def _export_data_fingerprint(data: dict) -> str:
+    """Huella estable para eliminar solo bloques realmente identicos."""
+    return json.dumps(data, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _deduplicate_export_data(items: list[dict]) -> list[dict]:
+    """Conserva el primer bloque cuando SKU y todos sus datos son iguales."""
+    unique_items = []
+    seen = set()
+    for item in items:
+        fingerprint = _export_data_fingerprint(item)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        unique_items.append(item)
+    return unique_items
+
+
+def _family_color(index: int) -> str:
+    """Genera colores pastel distintos sin limitarse a una paleta repetible."""
+    hue = (0.77 + index * 0.618033988749895) % 1.0
+    red, green, blue = colorsys.hsv_to_rgb(hue, 0.24, 0.96)
+    return f"{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}"
+
+
+def _assign_family_colors(items: list[dict]) -> None:
+    """Asigna un color por familia, unico dentro de la hoja."""
+    colors_by_family = {}
+    used_colors = set()
+    for item in items:
+        if not item.get("tiene_familia"):
+            continue
+        family_key = _normalize_sort_text(
+            item.get("clave_familia")
+            or item.get("nombre_familia")
+            or item.get("sku")
+        )
+        if family_key not in colors_by_family:
+            color_index = len(colors_by_family)
+            color = _family_color(color_index)
+            while color in used_colors:
+                color_index += 1
+                color = _family_color(color_index)
+            colors_by_family[family_key] = color
+            used_colors.add(color)
+        item["familia_color"] = colors_by_family[family_key]
 
 
 def _safe_sheet_name(value, used_names: set[str]) -> str:
@@ -250,10 +300,15 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "obj": _safe_int(row_sop.get("stock_objetivo")),
         "sug_bruta": _safe_int(row_sop.get("sugerencia_bruta")),
         "compra": _safe_int(row_sop.get("sugerencia_final")),
-        "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("sug_ritmo_mensual")), 1) if _safe_float(row_sop.get("sug_ritmo_mensual")) > 0 else 999.0,
+        "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("ritmo_duracion_mensual")), 1) if _safe_float(row_sop.get("ritmo_duracion_mensual")) > 0 else 999.0,
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
         "motivo": f"{purchase_trace}. {purchase_reason}".strip(),
         "formato_compra": _safe_text(row_sop.get("formato_compra"), "LINEAL"),
+        "ritmo_4_semanas_30d": _safe_float(row_sop.get("ritmo_4_semanas_30d")),
+        "ritmo_mensual_4_meses": _safe_float(row_sop.get("ritmo_mensual_4_meses")),
+        "ritmo_mensual_5_meses": _safe_float(row_sop.get("ritmo_mensual_5_meses")),
+        "demanda_mensual_compra": _safe_float(row_sop.get("demanda_mensual_compra")),
+        "ritmo_duracion_mensual": _safe_float(row_sop.get("ritmo_duracion_mensual")),
         "prioridad_planificacion": _safe_int(row_sop.get("prioridad_planificacion"), 0),
         "demanda_espera_4_meses": _safe_int(row_sop.get("demanda_espera_4_meses")),
         "transito_confirmado_4_meses": _safe_int(row_sop.get("sug_transito_actual")),
@@ -268,7 +323,8 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "obs": observacion,
         "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
         "stock_familia": int(familias_map[real_codigo].get("stock_bruto_familia", inv_u)) if (familias_map and real_codigo in familias_map) else inv_u,
-        "nombre_familia": familias_map[real_codigo].get("nombre_familia", "") if (familias_map and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1) else ""
+        "nombre_familia": familias_map[real_codigo].get("nombre_familia", "") if (familias_map and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1) else "",
+        "clave_familia": _safe_text(row_sop.get("clave_familia_compra"))
     }
     return data
 
@@ -314,6 +370,11 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         "Orden: cubrir LINEAL, luego CR y al final MB/PDQ; los muebles se desarman s\u00f3lo si hace falta.\n"
         f"Stock actual CR: {data.get('inv_u', 0)} uds\n"
         f"Ventas 4 semanas CR: {data.get('tot4s', 0)} uds\n"
+        f"4 semanas mensualizadas (30 días): {data.get('ritmo_4_semanas_30d', 0):.1f} uds/mes\n"
+        f"Promedio 4 meses cerrados: {data.get('ritmo_mensual_4_meses', 0):.1f} uds/mes\n"
+        f"Demanda elegida para compra: {data.get('demanda_mensual_compra', 0):.1f} uds/mes\n"
+        f"Promedio 5 meses cerrados: {data.get('ritmo_mensual_5_meses', 0):.1f} uds/mes\n"
+        f"Ritmo elegido para duración: {data.get('ritmo_duracion_mensual', 0):.1f} uds/mes\n"
         f"Demanda en espera (4 meses): {data.get('demanda_espera_4_meses', 0)} uds\n"
         f"Tr\u00e1nsito confirmado dentro de 4 meses: {data.get('transito_confirmado_4_meses', 0)} uds\n"
         f"Maquila recibida / destinada: {data.get('maquila_recibida_4_meses', 0)} / "
@@ -324,7 +385,7 @@ def _texto_calculo_familia_cr(data: dict) -> str:
         f"Objetivo: {str(data.get('target_meses', 5.4)).replace('.', ',')} meses = "
         f"{data.get('obj', 0)} uds\n"
         f"Compra bruta = max(objetivo - stock llegada, 0): {data.get('sug_bruta', 0)} uds\n"
-        f"Compra final = bruta redondeada a UMP {data.get('ue', 1)}: {data.get('compra', 0)} uds\n"
+        f"Compra final: {data.get('compra', 0)} uds (bruta redondeada a UMP {data.get('ue', 1)})\n"
         f"Compra total familia: {data.get('familia_compra_total', 0)} uds\n"
         f"Validaci\u00f3n: {ambiguity}"
     )
@@ -335,7 +396,7 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
     from openpyxl.utils import get_column_letter
 
     start_col, end_col = 14, 18  # N:R, al costado de Observaciones (L:M)
-    start_row, end_row = fila_inicio + 10, fila_inicio + 14
+    start_row, end_row = fila_inicio + 10, fila_inicio + 15
 
     for merged in list(ws.merged_cells.ranges):
         if (
@@ -454,7 +515,8 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     # Pintar cabecera (primera fila del bloque) si tiene familia
     if data.get("tiene_familia"):
         from openpyxl.styles import PatternFill
-        familia_fill = PatternFill(start_color="D2B4DE", end_color="D2B4DE", fill_type="solid")
+        family_color = data.get("familia_color") or "D2B4DE"
+        familia_fill = PatternFill(start_color=family_color, end_color=family_color, fill_type="solid")
         # Columnas A a M (1 a 13)
         for col in range(1, 14):
             celda = ws.cell(row=fila_inicio, column=col)
@@ -529,6 +591,8 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     if faltantes:
         raise ValueError(f"Los siguientes SKUs no se encontraron o no tienen datos: {', '.join(faltantes)}")
 
+    datos_skus = _deduplicate_export_data(datos_skus)
+
     # Agrupar por subcategoria. Se conserva una etiqueta legible y se usa una
     # clave normalizada para evitar hojas duplicadas por diferencias de tildes,
     # mayusculas o espacios.
@@ -547,6 +611,7 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     # presentar primero Lineal, despues CR y finalmente PDQ/MB/resto.
     for group in agrupados.values():
         group["items"].sort(key=_product_family_sort_key)
+        _assign_family_colors(group["items"])
         
     base_dir = Path(__file__).resolve().parent.parent
     template_path = base_dir / "templates" / "RRFF_AS_PLANTILLA_APP.xlsx"
@@ -596,7 +661,7 @@ def generar_excel_todos_skus() -> bytes:
     """Genera un archivo Excel único conteniendo todos los SKUs de planificacion_sop en orden alfanumérico."""
     with engine.connect() as conn:
         df = pd.read_sql(text("""
-            SELECT sku
+            SELECT DISTINCT sku
             FROM planificacion_sop
             WHERE UPPER(TRIM(COALESCE(estado, '')))
                   NOT IN ('DESCONTINUADO', 'DESCONTINUADOS', 'INACTIVO')
