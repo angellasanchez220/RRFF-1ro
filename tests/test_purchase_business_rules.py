@@ -9,6 +9,7 @@ from src.planner import (
     MESES_EXTRA_POR_CRECIMIENTO,
     UMBRAL_CRECIMIENTO_COMPRA_PCT,
     _aplicar_regla_cobertura_compra,
+    _calcular_crecimiento_compra,
     _cargar_historial_sellout_mensual,
     _estado_excluye_compra,
     _mensualizar_ventas_cuatro_semanas,
@@ -37,6 +38,17 @@ class PurchaseBusinessRulesTests(unittest.TestCase):
         result = _mensualizar_ventas_cuatro_semanas(pd.Series([159, 280]))
         self.assertAlmostEqual(result.iloc[0], 170.357142857, places=6)
         self.assertEqual(result.iloc[1], 300)
+
+    def test_purchase_growth_compares_four_weeks_against_five_month_average(self):
+        growth = _calcular_crecimiento_compra(
+            pd.Series([105, 104.9, 120, 25]),
+            pd.Series([100, 100, 100, 0]),
+        )
+
+        self.assertAlmostEqual(growth.iloc[0], 5.0)
+        self.assertAlmostEqual(growth.iloc[1], 4.9)
+        self.assertAlmostEqual(growth.iloc[2], 20.0)
+        self.assertEqual(growth.iloc[3], 100.0)
 
     def test_blocked_is_purchased_and_only_discontinued_is_excluded(self):
         self.assertFalse(_estado_excluye_compra("BLOQUEADO"))
