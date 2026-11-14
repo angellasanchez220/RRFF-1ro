@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from src.services.maquila_service import (
+    ajustar_formatos_contexto_familia,
     build_maquila_families,
     build_product_lookup_by_internal_code,
     is_discontinued,
@@ -11,6 +12,37 @@ from src.services.maquila_service import (
 
 
 class BuildMaquilaFamiliesTests(unittest.TestCase):
+    def test_only_pack_and_mb_pack_are_reclassified_as_lineal_and_cr(self):
+        members = [
+            {
+                "codigo_femaco": "PACK-BASE",
+                "nombre_producto": "PACK CINTA DEMARCA",
+                "formato_compra": "CR",
+            },
+            {
+                "codigo_femaco": "PACK-MB",
+                "nombre_producto": "MB PACK CINTA DEMARCA",
+                "formato_compra": "MB",
+            },
+        ]
+
+        adjusted = ajustar_formatos_contexto_familia(members)
+
+        self.assertEqual(adjusted[0]["formato_compra"], "LINEAL")
+        self.assertEqual(adjusted[1]["formato_compra"], "CR")
+        self.assertEqual(members[0]["formato_compra"], "CR")  # no muta origen
+
+    def test_pack_exception_requires_exactly_two_family_members(self):
+        members = [
+            {"nombre_producto": "PACK CINTA", "formato_compra": "CR"},
+            {"nombre_producto": "MB PACK CINTA", "formato_compra": "MB"},
+            {"nombre_producto": "CINTA SUELTA", "formato_compra": "LINEAL"},
+        ]
+
+        adjusted = ajustar_formatos_contexto_familia(members)
+
+        self.assertEqual([m["formato_compra"] for m in adjusted], ["CR", "MB", "LINEAL"])
+
     def test_discontinued_status_normalization(self):
         self.assertTrue(is_discontinued("descontinuado"))
         self.assertTrue(is_discontinued(" INACTIVO "))
