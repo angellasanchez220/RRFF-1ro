@@ -133,6 +133,7 @@ def run_migrations():
             receta_id           INTEGER NOT NULL REFERENCES recetas_maquila(id) ON DELETE CASCADE,
             sku_componente      TEXT NOT NULL,
             cantidad_por_unidad NUMERIC(12,4) NOT NULL,
+              prioridad_planificacion INTEGER,
             no_transformable    BOOLEAN NOT NULL DEFAULT FALSE,
             observacion         TEXT,
             fecha_creacion      TIMESTAMP DEFAULT NOW(),
@@ -145,6 +146,7 @@ def run_migrations():
 
         # ── Maquila: Forzar tipo NUMERIC y nuevas columnas de recetas y componentes ──
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS no_transformable BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS prioridad_planificacion INTEGER",
         "ALTER TABLE receta_maquila_componentes ALTER COLUMN cantidad_por_unidad TYPE NUMERIC(12,4)",
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS tipo_componente TEXT DEFAULT 'PRODUCTO'",
         "ALTER TABLE receta_maquila_componentes ADD COLUMN IF NOT EXISTS nombre_componente TEXT",
