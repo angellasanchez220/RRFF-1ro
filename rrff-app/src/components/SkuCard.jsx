@@ -319,7 +319,7 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
             </>
           ) : (
             <>
-              <div className="mb-val">{durStr} <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 semanas</small></div>
+              <div className="mb-val">{durStr} <small style={{fontSize: '0.7rem', fontWeight: 400}}>mayor entre prom. 5 meses y 4 sem. mensualizadas</small></div>
               {product.duracion_4_meses != null && (
                 <div style={{ fontSize: '0.85rem', marginTop: 2, color: '#333' }}>
                   {Number(product.duracion_4_meses).toFixed(1)} meses <small style={{fontSize: '0.7rem', fontWeight: 400}}>ritmo 4 meses</small>
@@ -1040,8 +1040,8 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
           <div className="exp-block">
             <div className="exp-title">🛒 Por qué esta Sugerencia de Compra</div>
             <div className="sug-desglose">
-              <div className="sd-row" style={{ color: '#666' }}><span>1. Ritmo Venta Pasado (últimas 4 sem)</span><span>{fmt(product.sug_ritmo_pasado ?? 0)} uds/mes</span></div>
-              <div className="sd-row" style={{ color: '#666' }}><span>2. Ritmo Venta Futuro (próx 4 meses)</span><span>{fmt(product.sug_ritmo_futuro ?? 0)} uds/mes</span></div>
+              <div className="sd-row" style={{ color: '#666' }}><span>1. Últimas 4 semanas mensualizadas a 30 días</span><span>{fmt(product.sug_ritmo_pasado ?? 0)} uds/mes</span></div>
+              <div className="sd-row" style={{ color: '#666' }}><span>2. Promedio últimos 4 meses cerrados</span><span>{fmt(product.sug_ritmo_futuro ?? 0)} uds/mes</span></div>
               <div className="sd-row" style={{ color: '#000' }}><span><b>3. Ritmo Consolidado (Máximo)</b></span><span><b>{fmt(product.sug_ritmo_mensual ?? 0)} uds/mes</b></span></div>
               
               <div className="sd-row" style={{ color: '#3A86C8', borderTop: '1px solid #eee', paddingTop: 6, marginTop: 6 }}>
@@ -1107,4 +1107,3 @@ export default function SkuCard({ product, showDiscontinued = false, allProducts
     </div>
   );
 }
-
