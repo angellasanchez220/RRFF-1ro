@@ -18,21 +18,21 @@ from src.planner import (
 
 class PurchaseBusinessRulesTests(unittest.TestCase):
     def test_current_business_rule_constants(self):
-        self.assertEqual(COBERTURA_MINIMA_MESES, 5.4)
+        self.assertEqual(COBERTURA_MINIMA_MESES, 4.2)
         self.assertEqual(UMBRAL_CRECIMIENTO_COMPRA_PCT, 5.0)
         self.assertEqual(MESES_EXTRA_POR_CRECIMIENTO, 1.0)
 
     def test_growth_threshold_adds_exactly_one_month(self):
-        configured = pd.Series([5.0, 5.4, 5.4, 7.0])
+        configured = pd.Series([4.0, 4.2, 4.2, 7.0])
         growth = pd.Series([4.9, 5.0, 12.5, float("nan")])
         base, detected, extra, target = _aplicar_regla_cobertura_compra(
             configured, growth
         )
 
-        self.assertEqual(base.tolist(), [5.4, 5.4, 5.4, 7.0])
+        self.assertEqual(base.tolist(), [4.2, 4.2, 4.2, 7.0])
         self.assertEqual(detected.tolist(), [False, True, True, False])
         self.assertEqual(extra.tolist(), [0.0, 1.0, 1.0, 0.0])
-        self.assertEqual(target.tolist(), [5.4, 6.4, 6.4, 7.0])
+        self.assertEqual(target.tolist(), [4.2, 5.2, 5.2, 7.0])
 
     def test_four_weeks_are_monthlyized_to_thirty_days(self):
         result = _mensualizar_ventas_cuatro_semanas(pd.Series([159, 280]))
