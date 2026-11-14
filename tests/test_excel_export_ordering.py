@@ -5,6 +5,8 @@ from api.routes.sop import _get_mes_map
 from src.services.excel_export_service import (
     _product_family_sort_key,
     _safe_sheet_name,
+    _poblar_caja_calculo_cr,
+    copiar_bloque,
 )
 from src.transformer import _read_inventario_excel
 
@@ -86,3 +88,59 @@ def test_inventory_finds_stock_un_when_column_moves(tmp_path):
         {"sku": "10001", "stock_act": 37}
     ]
 
+
+def test_cr_family_block_contains_full_calculation_box():
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    data = {
+        "tiene_familia": True,
+        "formato_compra": "CR",
+        "nombre_familia": "Familia Sellos",
+        "prioridad_planificacion": 2,
+        "inv_u": 100,
+        "tot4s": 20,
+        "demanda_espera_4_meses": 80,
+        "transito_confirmado_4_meses": 10,
+        "maquila_recibida_4_meses": 0,
+        "maquila_destinada_4_meses": 25,
+        "deficit_espera_4_meses": 0,
+        "stock_estimado_llegada": 5,
+        "target_meses": 5.4,
+        "obj": 108,
+        "sug_bruta": 103,
+        "ue": 12,
+        "compra": 108,
+        "familia_compra_total": 240,
+    }
+
+    _poblar_caja_calculo_cr(worksheet, 1, data)
+
+    assert worksheet["N11"].value == "C\u00c1LCULO COMPRA FAMILIA - CR"
+    assert "Demanda en espera (4 meses): 80 uds" in worksheet["N12"].value
+    assert "Compra final: 108 uds" in worksheet["N12"].value
+    assert "N11:R11" in {str(item) for item in worksheet.merged_cells.ranges}
+    assert "N12:R15" in {str(item) for item in worksheet.merged_cells.ranges}
+
+
+def test_non_cr_block_removes_copied_cr_box():
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    _poblar_caja_calculo_cr(
+        worksheet,
+        1,
+        {"tiene_familia": True, "formato_compra": "CR"},
+    )
+    copiar_bloque(worksheet, 1, 16, 17)
+    _poblar_caja_calculo_cr(
+        worksheet,
+        17,
+        {"tiene_familia": True, "formato_compra": "LINEAL"},
+    )
+
+    assert worksheet["N27"].value is None
+    assert "N27:R27" not in {str(item) for item in worksheet.merged_cells.ranges}
+    assert "N28:R31" not in {str(item) for item in worksheet.merged_cells.ranges}
