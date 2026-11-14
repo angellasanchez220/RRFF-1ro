@@ -9,6 +9,7 @@ from sqlalchemy import text
 import pandas as pd
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from api.db import engine
 from api.routes.sop import _get_mes_map, _get_semanas_fact_ventas
@@ -253,11 +254,17 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "quiebre": str(row_sop.get("fecha_estimada_quiebre") or ""),
         "motivo": f"{purchase_trace}. {purchase_reason}".strip(),
         "formato_compra": _safe_text(row_sop.get("formato_compra"), "LINEAL"),
+        "prioridad_planificacion": _safe_int(row_sop.get("prioridad_planificacion"), 0),
         "demanda_espera_4_meses": _safe_int(row_sop.get("demanda_espera_4_meses")),
+        "transito_confirmado_4_meses": _safe_int(row_sop.get("sug_transito_actual")),
         "maquila_recibida_4_meses": _safe_int(row_sop.get("maquila_recibida_4_meses")),
         "maquila_destinada_4_meses": _safe_int(row_sop.get("maquila_destinada_4_meses")),
         "stock_estimado_llegada": _safe_int(row_sop.get("stock_estimado_llegada")),
+        "deficit_espera_4_meses": _safe_int(row_sop.get("deficit_espera_4_meses")),
+        "target_meses": _safe_float(row_sop.get("sug_target_meses"), 5.4),
         "familia_compra_total": _safe_int(row_sop.get("familia_compra_total")),
+        "ambiguedad_maquila": _safe_text(row_sop.get("ambiguedad_maquila")),
+        "detalle_maquila_proyectada": _safe_text(row_sop.get("detalle_maquila_proyectada")),
         "obs": observacion,
         "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
         "stock_familia": int(familias_map[real_codigo].get("stock_bruto_familia", inv_u)) if (familias_map and real_codigo in familias_map) else inv_u,
@@ -295,6 +302,93 @@ def copiar_bloque(ws: Worksheet, fila_origen_inicio: int, fila_origen_fin: int, 
             
     for nm in merges_to_add:
         ws.merge_cells(nm)
+
+
+def _texto_calculo_familia_cr(data: dict) -> str:
+    """Arma la trazabilidad completa que se muestra junto al CR."""
+    priority = data.get("prioridad_planificacion") or 2
+    ambiguity = data.get("ambiguedad_maquila") or "Sin ambig\u00fcedades"
+    return (
+        f"Familia: {data.get('nombre_familia') or '-'}\n"
+        f"Prioridad aplicada: {priority} (base: LINEAL 1, CR 2, MB/PDQ 3)\n"
+        "Orden: cubrir LINEAL, luego CR y al final MB/PDQ; los muebles se desarman s\u00f3lo si hace falta.\n"
+        f"Stock actual CR: {data.get('inv_u', 0)} uds\n"
+        f"Ventas 4 semanas CR: {data.get('tot4s', 0)} uds\n"
+        f"Demanda en espera (4 meses): {data.get('demanda_espera_4_meses', 0)} uds\n"
+        f"Tr\u00e1nsito confirmado dentro de 4 meses: {data.get('transito_confirmado_4_meses', 0)} uds\n"
+        f"Maquila recibida / destinada: {data.get('maquila_recibida_4_meses', 0)} / "
+        f"{data.get('maquila_destinada_4_meses', 0)} uds\n"
+        f"D\u00e9ficit no cubierto durante espera: {data.get('deficit_espera_4_meses', 0)} uds\n"
+        f"Stock estimado al arribo: {data.get('stock_estimado_llegada', 0)} uds\n"
+        "Stock llegada = stock + tr\u00e1nsito + maquila recibida - maquila destinada - ventas atendidas.\n"
+        f"Objetivo: {str(data.get('target_meses', 5.4)).replace('.', ',')} meses = "
+        f"{data.get('obj', 0)} uds\n"
+        f"Compra bruta = max(objetivo - stock llegada, 0): {data.get('sug_bruta', 0)} uds\n"
+        f"Compra final = bruta redondeada a UMP {data.get('ue', 1)}: {data.get('compra', 0)} uds\n"
+        f"Compra total familia: {data.get('familia_compra_total', 0)} uds\n"
+        f"Validaci\u00f3n: {ambiguity}"
+    )
+
+
+def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
+    """Dibuja la caja de calculo solo en el bloque CR de una familia."""
+    from openpyxl.utils import get_column_letter
+
+    start_col, end_col = 14, 18  # N:R, al costado de Observaciones (L:M)
+    start_row, end_row = fila_inicio + 10, fila_inicio + 14
+
+    for merged in list(ws.merged_cells.ranges):
+        if (
+            merged.min_col <= end_col
+            and merged.max_col >= start_col
+            and merged.min_row <= end_row
+            and merged.max_row >= start_row
+        ):
+            ws.unmerge_cells(str(merged))
+
+    for row in range(start_row, end_row + 1):
+        for col in range(start_col, end_col + 1):
+            cell = ws.cell(row=row, column=col)
+            cell.value = None
+            cell.fill = PatternFill(fill_type=None)
+            cell.border = Border()
+            cell.font = Font(name="Arial", size=10)
+            cell.alignment = Alignment()
+
+    if not data.get("tiene_familia") or str(data.get("formato_compra")).upper() != "CR":
+        return
+
+    header_range = (
+        f"{get_column_letter(start_col)}{start_row}:"
+        f"{get_column_letter(end_col)}{start_row}"
+    )
+    body_range = (
+        f"{get_column_letter(start_col)}{start_row + 1}:"
+        f"{get_column_letter(end_col)}{end_row}"
+    )
+    ws.merge_cells(header_range)
+    ws.merge_cells(body_range)
+
+    thin = Side(style="thin", color="8B5CF6")
+    header = ws.cell(row=start_row, column=start_col)
+    header.value = "C\u00c1LCULO COMPRA FAMILIA - CR"
+    header.fill = PatternFill("solid", fgColor="DDD6FE")
+    header.font = Font(name="Arial", size=10, bold=True, color="4C1D95")
+    header.alignment = Alignment(horizontal="center", vertical="center")
+    header.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    body = ws.cell(row=start_row + 1, column=start_col)
+    body.value = _texto_calculo_familia_cr(data)
+    body.fill = PatternFill("solid", fgColor="F5F3FF")
+    body.font = Font(name="Arial", size=9, color="312E81")
+    body.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    body.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col in range(start_col, end_col + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 11
+    for row in range(start_row + 1, end_row + 1):
+        ws.row_dimensions[row].height = max(ws.row_dimensions[row].height or 15, 55)
+
 
 def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     def set_val(col, row_offset, val):
@@ -402,6 +496,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     # Observación
     set_val(12, 11, "Observación")
     set_val(13, 11, data["obs"] if data["obs"] else "-")
+    _poblar_caja_calculo_cr(ws, fila_inicio, data)
 
 
 def generar_excel_skus(skus: list[str]) -> bytes:
@@ -513,4 +608,3 @@ def generar_excel_todos_skus() -> bytes:
         raise ValueError("No se encontraron SKUs en planificacion_sop")
         
     return generar_excel_skus(skus_totales)
-
