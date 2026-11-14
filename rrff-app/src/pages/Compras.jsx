@@ -49,6 +49,7 @@ export default function Compras() {
   const [filterTransit, setFilterTransit] = useState('ALL');
   const [filterComparacion, setFilterComparacion] = useState('ALL');
   const [filterCrecimiento, setFilterCrecimiento] = useState('ALL');
+  const [filterSearch, setFilterSearch] = useState('');
   const [filterCNY, setFilterCNY] = useState(false);
   const [filterExcluirMaquila, setFilterExcluirMaquila] = useState(true);
   const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
@@ -110,6 +111,14 @@ export default function Compras() {
 
   // ── APLICAR FILTROS GLOBALES ──
   let filteredData = Array.isArray(data) ? data : [];
+  const normalizedSearch = filterSearch.trim().toLocaleLowerCase('es-CL');
+  if (normalizedSearch) {
+    filteredData = filteredData.filter(s => (
+      `${s.sku || ''} ${s.codigo_femaco || ''} ${s.nombre_producto || ''}`
+        .toLocaleLowerCase('es-CL')
+        .includes(normalizedSearch)
+    ));
+  }
   if (filterAlert !== 'ALL') {
     filteredData = filteredData.filter(s => s.nivel_alerta === filterAlert);
   }
@@ -662,7 +671,18 @@ export default function Compras() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
             
             {/* ── FILTROS ── */}
-            <div style={{ display: 'flex', gap: 15, background: '#fff', padding: 15, borderRadius: 8, border: '1px solid #ddd' }}>
+            <div style={{ display: 'flex', gap: 15, flexWrap: 'wrap', alignItems: 'flex-end', background: '#fff', padding: 15, borderRadius: 8, border: '1px solid #ddd' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 280, flex: '1 1 320px' }}>
+                <label htmlFor="purchase-search" style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Buscar producto</label>
+                <input
+                  id="purchase-search"
+                  type="search"
+                  value={filterSearch}
+                  onChange={e => setFilterSearch(e.target.value)}
+                  placeholder="SKU, código Femaco o descripción…"
+                  style={{ padding: '7px 11px', borderRadius: 4, border: '1px solid #aaa', width: '100%' }}
+                />
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <label style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#555' }}>Nivel Alerta</label>
                 <select value={filterAlert} onChange={e => setFilterAlert(e.target.value)} style={{ padding: '6px 10px', borderRadius: 4, border: '1px solid #ccc' }}>
@@ -1403,4 +1423,3 @@ export default function Compras() {
     </div>
   );
 }
-
