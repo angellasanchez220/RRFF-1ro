@@ -38,6 +38,12 @@ def detectar_formato_producto(codigo_femaco, descripcion):
         or _contiene_marcador(descripcion, marcador)
     ]
     if not marcadores:
+        # En la nomenclatura comercial, PACK corresponde al formato CR.
+        # Se exige la palabra completa para no confundir, por ejemplo,
+        # PACKAGING con un producto CR. Los marcadores explícitos PDQ/MB/CR
+        # mantienen prioridad cuando también aparecen en la descripción.
+        if _contiene_marcador(descripcion, "PACK"):
+            return "CR"
         return "LINEAL"
     # Una descripcion/codigo con mas de un marcador queda trazable; el orden
     # solo entrega un valor estable para no romper la planificacion.
