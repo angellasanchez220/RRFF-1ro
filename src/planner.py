@@ -77,6 +77,8 @@ N_SEMANAS_BASE = 4
 COBERTURA_MINIMA_MESES = 4.2
 UMBRAL_CRECIMIENTO_COMPRA_PCT = 10.0
 MESES_EXTRA_POR_CRECIMIENTO = 1.0
+MESES_COMPRA_CON_AJUSTE_CNY = {11, 12}
+MESES_EXTRA_POR_CNY = 1.0
 DIAS_BASE_CUATRO_SEMANAS = 28.0
 DIAS_MES_PLANIFICACION = 30.0
 ESTADOS_DESCONTINUADOS = {"DESCONTINUADO", "DESCONTINUADOS", "INACTIVO"}
@@ -191,6 +193,19 @@ def _aplicar_regla_cobertura_compra(cobertura_configurada, crecimiento_mom):
     )
     target = (base + extra).round(1)
     return base, detectado, extra, target
+
+
+def _aplicar_ajuste_ano_nuevo_chino(cobertura_con_crecimiento, fecha_compra=None):
+    """Suma un mes a compras sugeridas en noviembre o diciembre."""
+    fecha = fecha_compra or date.today()
+    cobertura = pd.to_numeric(cobertura_con_crecimiento, errors="coerce")
+    aplica = fecha.month in MESES_COMPRA_CON_AJUSTE_CNY
+    extra = pd.Series(
+        MESES_EXTRA_POR_CNY if aplica else 0.0,
+        index=cobertura.index,
+        dtype=float,
+    )
+    return aplica, extra, (cobertura + extra).round(1)
 
 # Semanas por mes calendario (aproximación estándar para proyección)
 SEMANAS_POR_MES = {
@@ -977,17 +992,22 @@ def _ajustar_por_ump(df: pd.DataFrame, meses: list, engine) -> pd.DataFrame:
     res = df.apply(_resolver_cobertura, axis=1, result_type="expand")
     # 4,2 meses es el mínimo operativo. Las configuraciones mayores se
     # conservan; las antiguas menores ya no pueden reducir este piso.
-    cobertura_base, crecimiento_detectado, meses_extra, cobertura_objetivo = (
+    cobertura_base, crecimiento_detectado, meses_extra, cobertura_con_crecimiento = (
         _aplicar_regla_cobertura_compra(
             res[0],
             df.get("crecimiento_compra_pct", pd.Series(float("nan"), index=df.index)),
         )
+    )
+    ajuste_cny_aplica, meses_extra_cny, cobertura_objetivo = (
+        _aplicar_ajuste_ano_nuevo_chino(cobertura_con_crecimiento)
     )
     df["meses_cobertura_base"] = cobertura_base
     df["origen_cobertura_objetivo"] = res[1]
     df["crecimiento_compra_detectado"] = crecimiento_detectado
     df["umbral_crecimiento_compra_pct"] = UMBRAL_CRECIMIENTO_COMPRA_PCT
     df["meses_extra_por_crecimiento"] = meses_extra
+    df["ajuste_ano_nuevo_chino_aplicado"] = ajuste_cny_aplica
+    df["meses_extra_ano_nuevo_chino"] = meses_extra_cny
     df["meses_cobertura_objetivo"] = cobertura_objetivo
 
     try:
