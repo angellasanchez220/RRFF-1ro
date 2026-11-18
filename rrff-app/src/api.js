@@ -729,17 +729,23 @@ export async function fetchResumenEjecutivo() {
   return res.json();
 }
 
-// ── Generador Directo de Órdenes a Proveedor (PO) ─────────────────────────────
+// ── Generador Directo de Proforma Invoice (PI) ────────────────────────────────
 
-export async function generarPoProveedor(body) {
-  const res = await fetch(`${BASE}/sop/generar-po`, {
+export async function fetchSiguientePi() {
+  const res = await fetch(`${BASE}/sop/siguiente-pi`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Error al obtener el siguiente número de PI');
+  return res.json();
+}
+
+export async function generarPiProveedor(body) {
+  const res = await fetch(`${BASE}/sop/generar-pi`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(body)
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Error al generar Orden de Compra a Proveedor');
+    throw new Error(err.detail || 'Error al generar la PI de compra');
   }
   return res.json();
 }
