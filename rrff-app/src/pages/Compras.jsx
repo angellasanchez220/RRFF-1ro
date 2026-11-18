@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchSOP, fetchMrpMateriales, generarPoProveedor } from '../api';
+import { fetchSOP, fetchMrpMateriales, fetchSiguientePi, generarPiProveedor } from '../api';
 import * as XLSX from 'xlsx';
 import SkuDetailModal from '../components/SkuDetailModal';
 
@@ -54,11 +54,11 @@ export default function Compras() {
   const [groupBy, setGroupBy] = useState('MONTH'); // 'MONTH' | 'WEEK'
   const [selectedSku, setSelectedSku] = useState(null);
 
-  // Estados para Emisión Directa de Orden de Compra (PO)
-  const [selectedSkusForPo, setSelectedSkusForPo] = useState(new Set());
-  const [showPoModal, setShowPoModal] = useState(false);
-  const [poForm, setPoForm] = useState({
-    numero_oc: '',
+  // Estados para Emisión Directa de Proforma Invoice (PI)
+  const [selectedSkusForPi, setSelectedSkusForPi] = useState(new Set());
+  const [showPiModal, setShowPiModal] = useState(false);
+  const [piForm, setPiForm] = useState({
+    numero_pi: '',
     proveedor: 'PROVEEDOR PRINCIPAL',
     fecha_pedido: new Date().toISOString().split('T')[0],
     fecha_eta: '',
@@ -66,7 +66,7 @@ export default function Compras() {
     observacion: '',
     items: []
   });
-  const [submittingPo, setSubmittingPo] = useState(false);
+  const [submittingPi, setSubmittingPi] = useState(false);
 
   // Estados para MRP de Insumos de Maquila
   const [mrpData, setMrpData] = useState([]);
@@ -385,16 +385,16 @@ export default function Compras() {
     XLSX.writeFile(wb, 'Plan_de_Compras.xlsx');
   };
 
-  const handleOpenPoModal = (customItems = null) => {
+  const handleOpenPiModal = async (customItems = null) => {
     let itemsToInclude = [];
     if (customItems && customItems.length > 0) {
       itemsToInclude = customItems;
-    } else if (selectedSkusForPo.size > 0) {
-      itemsToInclude = filteredData.filter(s => selectedSkusForPo.has(s.sku));
+    } else if (selectedSkusForPi.size > 0) {
+      itemsToInclude = filteredData.filter(s => selectedSkusForPi.has(s.sku));
     } else {
       const urgentes = groupedSug['0000-URGENTE'] ? groupedSug['0000-URGENTE'].items : [];
       if (urgentes.length === 0 && sugList.length === 0) {
-        alert("Selecciona al menos un SKU marcando su casilla para emitir una Orden de Compra.");
+        alert("Selecciona al menos un SKU marcando su casilla para emitir una PI.");
         return;
       }
       itemsToInclude = urgentes.length > 0 ? urgentes : sugList.slice(0, 10);
@@ -403,38 +403,45 @@ export default function Compras() {
     const defaultEta = new Date();
     defaultEta.setDate(defaultEta.getDate() + LEAD_TIME_DAYS);
     const etaStr = defaultEta.toISOString().split('T')[0];
-    const poNum = `PO-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${Math.floor(100 + Math.random() * 900)}`;
+    let piNum = '19CL09066';
+    try {
+      const nextPi = await fetchSiguientePi();
+      piNum = nextPi?.numero_pi || piNum;
+    } catch (err) {
+      alert(`No se pudo consultar el correlativo de PI: ${err.message}`);
+      return;
+    }
 
     const itemsFormatted = itemsToInclude.map(s => {
       const sug = Number(s.sugerencia_compra_inmediata_uds || s.compra_masiva_cny_uds || 100);
-      const moq = Number(s.moq || 1);
-      const roundedQty = moq > 1 ? Math.ceil(sug / moq) * moq : sug;
+      const qtty = Number(s.ump || 1);
+      const roundedQty = qtty > 1 ? Math.ceil(sug / qtty) * qtty : sug;
       return {
         sku: s.sku,
         codigo_femaco: s.codigo_femaco || s.sku,
         nombre_producto: s.nombre_producto || '',
         cantidad: roundedQty > 0 ? roundedQty : 100,
-        moq: moq,
+        qtty: qtty,
         costo_unitario: Number(s.costo_compra || 0),
         subtotal: (roundedQty > 0 ? roundedQty : 100) * Number(s.costo_compra || 0)
       };
     });
 
-    setPoForm({
-      numero_oc: poNum,
+    setPiForm({
+      numero_pi: piNum,
       proveedor: 'PROVEEDOR PRINCIPAL',
       fecha_pedido: new Date().toISOString().split('T')[0],
       fecha_eta: etaStr,
       lead_time_dias: LEAD_TIME_DAYS,
-      observacion: 'Emisión automática generada desde Plan de Compras S&OP',
+      observacion: 'Emisión automática de PI generada desde Plan de Compras S&OP',
       items: itemsFormatted
     });
-    setShowPoModal(true);
+    setShowPiModal(true);
   };
 
-  const handleUpdatePoItemQty = (index, newQty) => {
+  const handleUpdatePiItemQty = (index, newQty) => {
     const val = Math.max(0, parseInt(newQty) || 0);
-    setPoForm(prev => {
+    setPiForm(prev => {
       const newItems = [...prev.items];
       newItems[index] = {
         ...newItems[index],
@@ -445,9 +452,9 @@ export default function Compras() {
     });
   };
 
-  const handleUpdatePoItemCosto = (index, newCosto) => {
+  const handleUpdatePiItemCosto = (index, newCosto) => {
     const val = Math.max(0, parseFloat(newCosto) || 0);
-    setPoForm(prev => {
+    setPiForm(prev => {
       const newItems = [...prev.items];
       newItems[index] = {
         ...newItems[index],
@@ -458,39 +465,63 @@ export default function Compras() {
     });
   };
 
-  const handleRemovePoItem = (index) => {
-    setPoForm(prev => ({
+  const handleRemovePiItem = (index) => {
+    setPiForm(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index)
     }));
   };
 
-  const handleConfirmSubmitPo = async (e) => {
+  const handleDownloadPiExcel = () => {
+    if (!piForm.items || piForm.items.length === 0) {
+      alert('No hay ítems para descargar.');
+      return;
+    }
+
+    const rows = piForm.items.map(it => ({
+      'COD INTERNO': it.codigo_femaco || '',
+      'SKU': it.sku || '',
+      'DESCRIPCION': it.nombre_producto || '',
+      'CANTIDAD': Number(it.cantidad) || 0,
+      'QTTY (UNIDAD EMPAQUE)': Number(it.qtty) || 1
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: ['COD INTERNO', 'SKU', 'DESCRIPCION', 'CANTIDAD', 'QTTY (UNIDAD EMPAQUE)']
+    });
+    worksheet['!cols'] = [
+      { wch: 18 }, { wch: 18 }, { wch: 55 }, { wch: 14 }, { wch: 24 }
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'PI');
+    XLSX.writeFile(workbook, `${piForm.numero_pi || 'PI'}.xlsx`);
+  };
+
+  const handleConfirmSubmitPi = async (e) => {
     e.preventDefault();
-    if (!poForm.numero_oc.trim()) {
-      alert("Por favor ingresa un código / número de Orden de Compra (PO).");
+    if (!piForm.numero_pi.trim()) {
+      alert("Por favor ingresa un número de PI.");
       return;
     }
-    if (!poForm.items || poForm.items.length === 0) {
-      alert("No hay ítems en la orden de compra.");
+    if (!piForm.items || piForm.items.length === 0) {
+      alert("No hay ítems en la PI.");
       return;
     }
-    setSubmittingPo(true);
+    setSubmittingPi(true);
     try {
-      const res = await generarPoProveedor(poForm);
-      alert(`✅ ${res.mensaje || 'Orden de Compra emitida con éxito e inyectada a Tránsito.'}`);
-      setShowPoModal(false);
-      setSelectedSkusForPo(new Set());
+      const res = await generarPiProveedor(piForm);
+      alert(`✅ ${res.mensaje || 'PI emitida con éxito e inyectada a Tránsito.'}`);
+      setShowPiModal(false);
+      setSelectedSkusForPi(new Set());
       loadSopData();
     } catch (err) {
-      alert("Error al emitir orden de compra: " + err.message);
+      alert("Error al emitir la PI: " + err.message);
     } finally {
-      setSubmittingPo(false);
+      setSubmittingPi(false);
     }
   };
 
   const toggleSkuSelection = (sku) => {
-    setSelectedSkusForPo(prev => {
+    setSelectedSkusForPi(prev => {
       const next = new Set(prev);
       if (next.has(sku)) next.delete(sku);
       else next.add(sku);
@@ -499,7 +530,7 @@ export default function Compras() {
   };
 
   const toggleGroupSelection = (groupItems) => {
-    setSelectedSkusForPo(prev => {
+    setSelectedSkusForPi(prev => {
       const next = new Set(prev);
       const allSelected = groupItems.every(it => next.has(it.sku));
       if (allSelected) {
@@ -523,17 +554,17 @@ export default function Compras() {
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <button
-                onClick={() => handleOpenPoModal()}
+                onClick={() => handleOpenPiModal()}
                 style={{
                   padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none',
                   borderRadius: 8, cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 8,
                   boxShadow: '0 2px 4px rgba(37,99,235,0.25)'
                 }}
-                title="Generar Orden de Compra formal para inyectar a Tránsito">
-                <span>📝 Emitir PO</span>
-                {selectedSkusForPo.size > 0 && (
+                title="Generar PI formal para inyectar a Tránsito">
+                <span>📝 Emitir PI</span>
+                {selectedSkusForPi.size > 0 && (
                   <span style={{ background: '#fff', color: '#2563eb', padding: '1px 7px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>
-                    {selectedSkusForPo.size}
+                    {selectedSkusForPi.size}
                   </span>
                 )}
               </button>
@@ -783,7 +814,7 @@ export default function Compras() {
                                 <input
                                   type="checkbox"
                                   title="Seleccionar todo el grupo"
-                                  checked={group.items.length > 0 && group.items.every(it => selectedSkusForPo.has(it.sku))}
+                                  checked={group.items.length > 0 && group.items.every(it => selectedSkusForPi.has(it.sku))}
                                   onChange={() => toggleGroupSelection(group.items)}
                                 />
                               </th>
@@ -812,7 +843,7 @@ export default function Compras() {
                                   <td style={{ textAlign: 'center' }}>
                                     <input
                                       type="checkbox"
-                                      checked={selectedSkusForPo.has(s.sku)}
+                                      checked={selectedSkusForPi.has(s.sku)}
                                       onChange={() => toggleSkuSelection(s.sku)}
                                     />
                                   </td>
@@ -1231,33 +1262,33 @@ export default function Compras() {
         </div>
       )}
 
-      {/* ── MODAL: GENERADOR DIRECTO DE ORDEN DE COMPRA (PO) ── */}
-      {showPoModal && (
+      {/* ── MODAL: GENERADOR DIRECTO DE PROFORMA INVOICE (PI) ── */}
+      {showPiModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 12, maxWidth: 960, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: '1.3rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  📝 Emisión Directa de Orden de Compra (PO)
+                  📝 Emisión Directa de Proforma Invoice (PI)
                 </h2>
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
                   Inyecta automáticamente los ítems a Control de Embarques (Tránsito) y al Kardex
                 </span>
               </div>
-              <button onClick={() => setShowPoModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
+              <button onClick={() => setShowPiModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
             </div>
 
-            <form onSubmit={handleConfirmSubmitPo}>
+            <form onSubmit={handleConfirmSubmitPi}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
                 <div>
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
-                    Código / N° de PO *
+                    Número de PI *
                   </label>
                   <input
                     type="text"
                     required
-                    value={poForm.numero_oc}
-                    onChange={e => setPoForm({ ...poForm, numero_oc: e.target.value.toUpperCase() })}
+                    value={piForm.numero_pi}
+                    onChange={e => setPiForm({ ...piForm, numero_pi: e.target.value.toUpperCase() })}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
                   />
                 </div>
@@ -1268,8 +1299,8 @@ export default function Compras() {
                   </label>
                   <input
                     type="text"
-                    value={poForm.proveedor}
-                    onChange={e => setPoForm({ ...poForm, proveedor: e.target.value })}
+                    value={piForm.proveedor}
+                    onChange={e => setPiForm({ ...piForm, proveedor: e.target.value })}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -1280,8 +1311,8 @@ export default function Compras() {
                   </label>
                   <input
                     type="date"
-                    value={poForm.fecha_eta}
-                    onChange={e => setPoForm({ ...poForm, fecha_eta: e.target.value })}
+                    value={piForm.fecha_eta}
+                    onChange={e => setPiForm({ ...piForm, fecha_eta: e.target.value })}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                   />
                 </div>
@@ -1293,8 +1324,8 @@ export default function Compras() {
                 </label>
                 <input
                   type="text"
-                  value={poForm.observacion}
-                  onChange={e => setPoForm({ ...poForm, observacion: e.target.value })}
+                  value={piForm.observacion}
+                  onChange={e => setPiForm({ ...piForm, observacion: e.target.value })}
                   placeholder="Ej: Despacho marítimo, contenedor 40ft..."
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
                 />
@@ -1308,14 +1339,14 @@ export default function Compras() {
                       <th>SKU</th>
                       <th>Producto</th>
                       <th style={{ width: 140 }}>Cantidad a Pedir</th>
-                      <th>MOQ / Caja</th>
+                      <th>QTTY (Unidad Empaque)</th>
                       <th style={{ width: 120 }}>Costo Unit. ($)</th>
                       <th>Subtotal</th>
                       <th style={{ width: 40 }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {poForm.items.map((it, idx) => (
+                    {piForm.items.map((it, idx) => (
                       <tr key={it.sku}>
                         <td><b>{it.sku}</b></td>
                         <td style={{ fontSize: '0.8rem', maxWidth: 220 }}>{it.nombre_producto}</td>
@@ -1324,12 +1355,12 @@ export default function Compras() {
                             type="number"
                             min="1"
                             value={it.cantidad}
-                            onChange={e => handleUpdatePoItemQty(idx, e.target.value)}
+                            onChange={e => handleUpdatePiItemQty(idx, e.target.value)}
                             style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', fontWeight: 700, boxSizing: 'border-box' }}
                           />
                         </td>
                         <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {it.moq > 1 ? `${it.moq} uds/caja` : '—'}
+                          {it.qtty > 1 ? `${it.qtty} uds` : '1 ud'}
                         </td>
                         <td>
                           <input
@@ -1337,7 +1368,7 @@ export default function Compras() {
                             step="0.01"
                             min="0"
                             value={it.costo_unitario}
-                            onChange={e => handleUpdatePoItemCosto(idx, e.target.value)}
+                            onChange={e => handleUpdatePiItemCosto(idx, e.target.value)}
                             style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', boxSizing: 'border-box' }}
                           />
                         </td>
@@ -1347,7 +1378,7 @@ export default function Compras() {
                         <td>
                           <button
                             type="button"
-                            onClick={() => handleRemovePoItem(idx)}
+                            onClick={() => handleRemovePiItem(idx)}
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold' }}>
                             ✕
                           </button>
@@ -1361,26 +1392,32 @@ export default function Compras() {
               {/* TOTALES */}
               <div style={{ background: '#f1f5f9', padding: '12px 16px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <span style={{ fontSize: '0.9rem', color: '#475569' }}>
-                  Total Ítems: <b>{poForm.items.length} SKUs</b> | Unidades Totales:{' '}
-                  <b>{poForm.items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0).toLocaleString('es-CL')} uds</b>
+                  Total Ítems: <b>{piForm.items.length} SKUs</b> | Unidades Totales:{' '}
+                  <b>{piForm.items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0).toLocaleString('es-CL')} uds</b>
                 </span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
-                  Monto Total: ${poForm.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0).toLocaleString('es-CL')}
+                  Monto Total: ${piForm.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0).toLocaleString('es-CL')}
                 </span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
                 <button
                   type="button"
-                  onClick={() => setShowPoModal(false)}
+                  onClick={handleDownloadPiExcel}
+                  style={{ padding: '9px 18px', background: '#1d6b3e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
+                  Descargar PI Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPiModal(false)}
                   style={{ padding: '9px 18px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}>
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingPo}
+                  disabled={submittingPi}
                   style={{ padding: '9px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
-                  {submittingPo ? 'Inyectando a Tránsito...' : '🚀 Confirmar y Emitir a Tránsito'}
+                  {submittingPi ? 'Inyectando a Tránsito...' : 'Confirmar PI y emitir a Tránsito'}
                 </button>
               </div>
             </form>
