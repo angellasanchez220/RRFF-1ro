@@ -403,7 +403,7 @@ export default function Compras() {
     const defaultEta = new Date();
     defaultEta.setDate(defaultEta.getDate() + LEAD_TIME_DAYS);
     const etaStr = defaultEta.toISOString().split('T')[0];
-    let piNum = '19CL09066';
+    let piNum = '19CL09067';
     try {
       const nextPi = await fetchSiguientePi();
       piNum = nextPi?.numero_pi || piNum;
