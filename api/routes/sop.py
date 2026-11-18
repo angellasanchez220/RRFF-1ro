@@ -15,6 +15,9 @@ LÓGICA CORRECTA:
 """
 import math
 import re
+import json
+from functools import lru_cache
+from pathlib import Path
 from datetime import date, timedelta
 from fastapi import APIRouter, Header, HTTPException, Body
 from sqlalchemy import text
@@ -33,6 +36,9 @@ router = APIRouter()
 
 PI_PREFIX = "19CL"
 PI_START_SEQUENCE = 9067
+ENGLISH_DESCRIPTIONS_PATH = (
+    Path(__file__).resolve().parents[2] / "src" / "product_descriptions_en.json"
+)
 
 
 def _format_pi_number(sequence: int) -> str:
@@ -49,6 +55,26 @@ def _next_pi_number(existing_codes) -> str:
         if match:
             highest = max(highest, int(match.group(1)))
     return _format_pi_number(highest + 1)
+
+
+def _normalize_internal_code(value) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip().upper()
+
+
+@lru_cache(maxsize=1)
+def _load_english_descriptions() -> dict:
+    """Carga el catálogo inglés entregado por FEMACO, indexado por código interno."""
+    try:
+        data = json.loads(ENGLISH_DESCRIPTIONS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {
+        _normalize_internal_code(code): str(description).strip()
+        for code, description in data.items()
+        if _normalize_internal_code(code) and str(description).strip()
+    }
 
 def _is_blocked(value):
     if not value or pd.isna(value):
@@ -444,6 +470,14 @@ def get_sop(include_discontinued: bool = False):
     df = df.merge(df_obs, on="sku", how="left")
     df = df.merge(df_maq, on="sku", how="left")
     df["es_maquilable"] = df["es_maquilable"].fillna(False)
+
+    english_descriptions = _load_english_descriptions()
+    if "codigo_femaco" in df.columns:
+        df["descripcion_ingles"] = df["codigo_femaco"].map(
+            lambda code: english_descriptions.get(_normalize_internal_code(code), "")
+        )
+    else:
+        df["descripcion_ingles"] = ""
 
     # Aplicar semanas correctas desde fact_ventas
     for col in ("sem1_uds", "sem2_uds", "sem3_uds", "sem4_uds",
