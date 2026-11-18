@@ -32,7 +32,7 @@ from src.services.maquila_service import (
 router = APIRouter()
 
 PI_PREFIX = "19CL"
-PI_START_SEQUENCE = 9066
+PI_START_SEQUENCE = 9067
 
 
 def _format_pi_number(sequence: int) -> str:
@@ -41,7 +41,7 @@ def _format_pi_number(sequence: int) -> str:
 
 
 def _next_pi_number(existing_codes) -> str:
-    """Calcula el siguiente PI sin bajar nunca del correlativo inicial 09066."""
+    """Calcula el siguiente PI sin bajar nunca del correlativo inicial 09067."""
     highest = PI_START_SEQUENCE - 1
     pattern = re.compile(rf"^{re.escape(PI_PREFIX)}(\d{{5}})$", re.IGNORECASE)
     for code in existing_codes or []:
@@ -879,7 +879,7 @@ def get_resumen_ejecutivo():
 # ── GENERADOR DIRECTO DE ÓRDENES DE COMPRA A PROVEEDOR ───────────────────────
 @router.get("/siguiente-pi")
 def obtener_siguiente_numero_pi(authorization: str = Header(None)):
-    """Retorna el siguiente correlativo PI disponible (19CL09066, 19CL09067...)."""
+    """Retorna el siguiente correlativo PI disponible (19CL09067, 19CL09068...)."""
     token = _get_auth_header(authorization)
     decode_token(token)
     with engine.connect() as conn:
