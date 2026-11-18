@@ -31,6 +31,25 @@ from src.services.maquila_service import (
 
 router = APIRouter()
 
+PI_PREFIX = "19CL"
+PI_START_SEQUENCE = 9066
+
+
+def _format_pi_number(sequence: int) -> str:
+    """Formatea el correlativo operativo de PI (ej. 19CL09066)."""
+    return f"{PI_PREFIX}{int(sequence):05d}"
+
+
+def _next_pi_number(existing_codes) -> str:
+    """Calcula el siguiente PI sin bajar nunca del correlativo inicial 09066."""
+    highest = PI_START_SEQUENCE - 1
+    pattern = re.compile(rf"^{re.escape(PI_PREFIX)}(\d{{5}})$", re.IGNORECASE)
+    for code in existing_codes or []:
+        match = pattern.match(str(code or "").strip())
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return _format_pi_number(highest + 1)
+
 def _is_blocked(value):
     if not value or pd.isna(value):
         return False
@@ -858,13 +877,28 @@ def get_resumen_ejecutivo():
 
 
 # ── GENERADOR DIRECTO DE ÓRDENES DE COMPRA A PROVEEDOR ───────────────────────
-@router.post("/generar-po")
-def generar_orden_compra_proveedor(
+@router.get("/siguiente-pi")
+def obtener_siguiente_numero_pi(authorization: str = Header(None)):
+    """Retorna el siguiente correlativo PI disponible (19CL09066, 19CL09067...)."""
+    token = _get_auth_header(authorization)
+    decode_token(token)
+    with engine.connect() as conn:
+        codes = conn.execute(text("""
+            SELECT DISTINCT codigo_envio
+            FROM control_embarques
+            WHERE UPPER(TRIM(COALESCE(codigo_envio, ''))) ~ '^19CL[0-9]{5}$'
+        """)).scalars().all()
+    return {"ok": True, "numero_pi": _next_pi_number(codes)}
+
+
+@router.post("/generar-pi")
+@router.post("/generar-po", include_in_schema=False)
+def generar_pi_proveedor(
     body: dict = Body(...),
     authorization: str = Header(None)
 ):
     """
-    Genera una Orden de Compra formal al Proveedor desde la pantalla de Compras:
+    Genera una PI formal al proveedor desde la pantalla de Compras:
     - Inserta los ítems seleccionados directamente en 'control_embarques'.
     - Quedan en estado 'EN_TRANSITO' y con origen 'SISTEMA_COMPRAS'.
     - Registra el movimiento proyectado en Kardex.
@@ -875,15 +909,15 @@ def generar_orden_compra_proveedor(
     user = payload.get("sub", "compras")
 
     proveedor = str(body.get("proveedor") or "").strip()
-    numero_oc = str(body.get("numero_oc") or "").strip().upper()
+    numero_pi = str(body.get("numero_pi") or body.get("numero_oc") or "").strip().upper()
     fecha_pedido = str(body.get("fecha_pedido") or date.today().isoformat()).strip()
     fecha_eta = str(body.get("fecha_eta") or "").strip()
     lead_time_dias = int(body.get("lead_time_dias") or 120)
     observacion = str(body.get("observacion") or "").strip()
     items = body.get("items") or []
 
-    if not numero_oc:
-        raise HTTPException(400, "El número de Orden de Compra (PO) es obligatorio")
+    if not numero_pi:
+        raise HTTPException(400, "El número de PI es obligatorio")
     if not items:
         raise HTTPException(400, "Debes seleccionar al menos un SKU para generar la orden")
     if not fecha_eta:
@@ -897,14 +931,14 @@ def generar_orden_compra_proveedor(
     with engine.begin() as conn:
         exists = conn.execute(
             text("SELECT 1 FROM control_embarques WHERE codigo_envio = :c LIMIT 1"),
-            {"c": numero_oc}
+            {"c": numero_pi}
         ).fetchone()
         if exists:
-            raise HTTPException(400, f"Ya existe una Orden de Compra o Envío registrado con el código '{numero_oc}'")
+            raise HTTPException(400, f"Ya existe una PI o envío registrado con el código '{numero_pi}'")
 
         total_unidades = 0
         total_monto = Decimal('0.0')
-        nombre_ped = f"{proveedor} - {numero_oc}" if proveedor else numero_oc
+        nombre_ped = f"{proveedor} - {numero_pi}" if proveedor else numero_pi
 
         for it in items:
             sku = str(it.get("sku") or "").strip()
@@ -935,7 +969,7 @@ def generar_orden_compra_proveedor(
                     :pu, :tot, 'SISTEMA_COMPRAS', :user
                 )
             """), {
-                "oc": numero_oc, "nped": nombre_ped, "sku": sku, "fem": cod_fem, "nom": nom_prod,
+                "oc": numero_pi, "nped": nombre_ped, "sku": sku, "fem": cod_fem, "nom": nom_prod,
                 "cant": cant, "eta": fecha_eta[:10], "obs": observacion, "prov": proveedor,
                 "pu": float(costo_u), "tot": float(subtotal), "user": user
             })
@@ -946,22 +980,22 @@ def generar_orden_compra_proveedor(
                 sku=sku,
                 nombre=nom_prod,
                 tipo_movimiento="ENTRADA_COMPRA",
-                referencia_doc=f"PO-{numero_oc}",
+                referencia_doc=f"PI-{numero_pi}",
                 cantidad=cant,
                 saldo_anterior=0,
                 saldo_nuevo=cant,
                 costo_unitario=float(costo_u),
-                motivo=f"Orden de compra a proveedor {proveedor} (ETA: {fecha_eta[:10]})",
+                motivo=f"PI de compra a proveedor {proveedor} (ETA: {fecha_eta[:10]})",
                 usuario=user
             )
 
     return {
         "ok": True,
-        "numero_oc": numero_oc,
+        "numero_pi": numero_pi,
         "proveedor": proveedor,
         "fecha_eta": fecha_eta[:10],
         "items_count": len(items),
         "total_unidades": total_unidades,
         "total_monto": float(total_monto),
-        "mensaje": f"Orden de Compra {numero_oc} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
+        "mensaje": f"PI {numero_pi} generada con éxito e inyectada a Tránsito ({total_unidades} uds)."
     }
