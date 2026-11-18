@@ -420,6 +420,7 @@ export default function Compras() {
         sku: s.sku,
         codigo_femaco: s.codigo_femaco || s.sku,
         nombre_producto: s.nombre_producto || '',
+        descripcion_ingles: s.descripcion_ingles || '',
         cantidad: roundedQty > 0 ? roundedQty : 100,
         qtty: qtty,
         costo_unitario: Number(s.costo_compra || 0),
@@ -481,15 +482,16 @@ export default function Compras() {
     const rows = piForm.items.map(it => ({
       'COD INTERNO': it.codigo_femaco || '',
       'SKU': it.sku || '',
-      'DESCRIPCION': it.nombre_producto || '',
+      'DESCRIPTION (ENGLISH)': it.descripcion_ingles || '',
+      'DESCRIPCIÓN (ESPAÑOL)': it.nombre_producto || '',
       'CANTIDAD': Number(it.cantidad) || 0,
       'QTTY (UNIDAD EMPAQUE)': Number(it.qtty) || 1
     }));
     const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: ['COD INTERNO', 'SKU', 'DESCRIPCION', 'CANTIDAD', 'QTTY (UNIDAD EMPAQUE)']
+      header: ['COD INTERNO', 'SKU', 'DESCRIPTION (ENGLISH)', 'DESCRIPCIÓN (ESPAÑOL)', 'CANTIDAD', 'QTTY (UNIDAD EMPAQUE)']
     });
     worksheet['!cols'] = [
-      { wch: 18 }, { wch: 18 }, { wch: 55 }, { wch: 14 }, { wch: 24 }
+      { wch: 18 }, { wch: 18 }, { wch: 55 }, { wch: 55 }, { wch: 14 }, { wch: 24 }
     ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'PI');
