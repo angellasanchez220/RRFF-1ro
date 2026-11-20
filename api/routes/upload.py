@@ -842,24 +842,58 @@ def confirmar_llegada_oc(nombre_pedido: str, body: dict = Body(default={}), auth
 
 @router.delete("/embarques/oc/{nombre_pedido:path}")
 def delete_embarque_oc(nombre_pedido: str, authorization: str = Header(None)):
-    """Borra todos los embarques asociados a una OC / nombre_pedido."""
+    """Borra una OC por nombre de pedido o por su código de envío.
+
+    Los usuarios con permiso de gestión pueden borrar cualquier OC. Quien haya
+    emitido una compra desde el sistema también puede deshacer su propio
+    tránsito, aunque no tenga el permiso global ``can_manage_oc``.
+    """
     token = _get_auth_header(authorization)
     payload = decode_token(token)
     permisos = payload.get("permisos", {})
-    if payload.get("role") != "admin" and not permisos.get("can_manage_oc"):
-        raise HTTPException(403, "Sin permiso para gestionar OCs")
+    can_manage_all = payload.get("role") == "admin" or permisos.get("can_manage_oc")
+    current_user = str(payload.get("sub") or "").strip()
+    oc_reference = str(nombre_pedido or "").strip()
+
+    if not oc_reference:
+        raise HTTPException(400, "Se requiere el nombre o código de la OC")
 
     from api.db import engine
     with engine.begin() as conn:
-        res = conn.execute(
-            text("DELETE FROM control_embarques WHERE nombre_pedido = :np RETURNING id"),
-            {"np": nombre_pedido}
-        ).fetchall()
-        
-    if not res:
-        raise HTTPException(404, "OC no encontrada o ya fue borrada")
+        items = conn.execute(text("""
+            SELECT id, origen_creacion, usuario_creacion
+            FROM control_embarques
+            WHERE UPPER(TRIM(COALESCE(nombre_pedido, ''))) = UPPER(:ref)
+               OR UPPER(TRIM(COALESCE(codigo_envio, ''))) = UPPER(:ref)
+            FOR UPDATE
+        """), {"ref": oc_reference}).fetchall()
 
-    return {"ok": True, "msg": f"OC {nombre_pedido} borrada ({len(res)} SKUs eliminados)."}
+        if not items:
+            raise HTTPException(404, "OC no encontrada o ya fue borrada")
+
+        if not can_manage_all:
+            owns_system_purchase = current_user and all(
+                str(row.origen_creacion or "").strip().upper() == "SISTEMA_COMPRAS"
+                and str(row.usuario_creacion or "").strip() == current_user
+                for row in items
+            )
+            if not owns_system_purchase:
+                raise HTTPException(
+                    403,
+                    "Solo puedes borrar tránsitos que hayas generado desde Compras",
+                )
+
+        res = conn.execute(
+            text("""
+                DELETE FROM control_embarques
+                WHERE UPPER(TRIM(COALESCE(nombre_pedido, ''))) = UPPER(:ref)
+                   OR UPPER(TRIM(COALESCE(codigo_envio, ''))) = UPPER(:ref)
+                RETURNING id
+            """),
+            {"ref": oc_reference}
+        ).fetchall()
+
+    return {"ok": True, "msg": f"OC {oc_reference} borrada ({len(res)} SKUs eliminados)."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
