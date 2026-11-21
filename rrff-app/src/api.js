@@ -200,6 +200,24 @@ export async function uploadFile(endpoint, file) {
   return res.json();
 }
 
+export async function downloadInventarioBackup() {
+  const res = await fetch(`${BASE}/upload/inventario/respaldo`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    let detail = 'Error descargando el respaldo de inventario';
+    try { detail = (await res.json()).detail || detail; } catch { /* respuesta no JSON */ }
+    throw new Error(detail);
+  }
+
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename: match?.[1] || `Respaldo_Inventario_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  };
+}
+
 export async function uploadTransito(file, nombrePedido, etaFecha) {
   const form = new FormData();
   form.append('file', file);

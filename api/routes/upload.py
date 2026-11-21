@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, UploadFile, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
 ROOT      = Path(__file__).resolve().parent.parent.parent
@@ -54,6 +55,42 @@ def _buscar_fila_cabecera_inventario(df_raw: pd.DataFrame) -> int:
         "No se encontró la cabecera exacta 'STOCK UN' en las primeras 25 filas "
         "de la hoja 'INVENTARIO ACTUAL'."
     )
+
+
+def _crear_respaldo_inventario_excel(rows) -> io.BytesIO:
+    """Genera un Excel que puede volver a cargarse como inventario."""
+    columns = ["SKU", "COD INTERNO", "PRODUCTO", "STOCK UN"]
+    df = pd.DataFrame(list(rows), columns=columns)
+    if not df.empty:
+        df["SKU"] = df["SKU"].fillna("").astype(str)
+        df["COD INTERNO"] = df["COD INTERNO"].fillna("").astype(str)
+        df["PRODUCTO"] = df["PRODUCTO"].fillna("").astype(str)
+        df["STOCK UN"] = pd.to_numeric(df["STOCK UN"], errors="coerce").fillna(0)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="INVENTARIO ACTUAL", index=False)
+        ws = writer.book["INVENTARIO ACTUAL"]
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        header_fill = PatternFill("solid", fgColor="1F4E78")
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = Font(color="FFFFFF", bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        ws.column_dimensions["A"].width = 18
+        ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["C"].width = 55
+        ws.column_dimensions["D"].width = 16
+        for cell in ws["D"][1:]:
+            cell.number_format = "#,##0.###"
+
+    output.seek(0)
+    return output
 
 # ── Auth helpers (importados de auth.py) ──────────────────────────────────────
 from api.routes.auth import decode_token, _get_auth_header, require_admin, require_permission
@@ -243,6 +280,41 @@ async def upload_maestro(
 # ─────────────────────────────────────────────────────────────────────────────
 # UPLOAD INVENTARIO — reemplazo total de stock
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/inventario/respaldo")
+async def download_inventario_backup(authorization: str = Header(None)):
+    """Descarga el inventario vigente en un Excel reutilizable por el cargador."""
+    token = _get_auth_header(authorization)
+    payload = decode_token(token)
+    permisos = payload.get("permisos", {})
+    if payload.get("role") != "admin" and not permisos.get("can_upload_inventario"):
+        raise HTTPException(403, "Sin permiso para respaldar Inventario")
+
+    from api.db import engine
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT
+                    sku AS "SKU",
+                    COALESCE(codigo_femaco, '') AS "COD INTERNO",
+                    COALESCE(nombre_producto, '') AS "PRODUCTO",
+                    COALESCE(stock_act, 0) AS "STOCK UN"
+                FROM dim_productos
+                WHERE sku IS NOT NULL AND TRIM(sku) <> ''
+                ORDER BY sku
+            """)).mappings().all()
+        output = _crear_respaldo_inventario_excel(rows)
+    except Exception as exc:
+        raise HTTPException(500, f"Error generando el respaldo de inventario: {exc}")
+
+    filename = f"Respaldo_Inventario_{date.today().isoformat()}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/inventario")

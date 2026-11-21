@@ -4,7 +4,8 @@ import {
   fetchEmbarques, marcarAforo, cambiarEta, confirmarLlegada, deleteOc,
   marcarAforoOc, cambiarEtaOc, confirmarLlegadaOc,
   fetchUsuarios, createUsuario, updateUsuario, deleteUsuario,
-  getPermisos, extractShinyapps, uploadFile, uploadTransito, reprocess
+  getPermisos, extractShinyapps, uploadFile, uploadTransito, reprocess,
+  downloadInventarioBackup
 } from '../api';
 
 const PERMS_LIST = [
@@ -29,12 +30,15 @@ function UploadTab({ tab }) {
   const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [drag, setDrag]       = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupResult, setBackupResult] = useState(null);
   // Campos extra para tránsito
   const [nombrePedido, setNombrePedido] = useState('');
   const [etaFecha, setEtaFecha]         = useState('');
   const inputRef = useRef();
 
   const isTransito = tab.id === 'transito';
+  const isInventario = tab.id === 'inventario';
 
   const handleFile = f => {
     if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.xls'))) {
@@ -61,8 +65,45 @@ function UploadTab({ tab }) {
     finally { setLoading(false); }
   };
 
+  const handleInventoryBackup = async () => {
+    setBackupLoading(true);
+    setBackupResult(null);
+    try {
+      const { blob, filename } = await downloadInventarioBackup();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setBackupResult({ ok: true, msg: `Respaldo descargado: ${filename}` });
+    } catch (e) {
+      setBackupResult({ ok: false, msg: e.message });
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   return (
     <div>
+      {isInventario && (
+        <div style={{ marginBottom: 18, padding: 16, border: '1px solid #b8d4ea', borderRadius: 10, background: '#f2f8fc' }}>
+          <div style={{ fontWeight: 700, color: '#1f4e78', marginBottom: 6 }}>Respalda antes de reemplazar</div>
+          <div style={{ fontSize: '0.86rem', color: '#41566a', marginBottom: 12 }}>
+            Descarga una copia del inventario vigente. El archivo puede volver a subirse en esta misma pestaña si necesitas recuperar el stock.
+          </div>
+          <button type="button" className="btn-secondary" onClick={handleInventoryBackup} disabled={backupLoading}>
+            {backupLoading ? 'Preparando respaldo…' : '⬇ Descargar respaldo actual'}
+          </button>
+          {backupResult && (
+            <div style={{ marginTop: 10, fontSize: '0.82rem', color: backupResult.ok ? '#1d6b3e' : '#a12424' }}>
+              {backupResult.ok ? '✅ ' : '❌ '}{backupResult.msg}
+            </div>
+          )}
+        </div>
+      )}
       {/* Campos extra para OC / Tránsito */}
       {isTransito && (
         <div className="transito-meta">
