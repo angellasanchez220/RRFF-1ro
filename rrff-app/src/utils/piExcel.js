@@ -198,6 +198,15 @@ function formatImportedItem(imported, catalogItem = {}) {
     codigo_femaco: imported.codigo_femaco || catalogItem.codigo_femaco || imported.sku || '',
     nombre_producto: imported.nombre_producto || catalogItem.nombre_producto || '',
     descripcion_ingles: imported.descripcion_ingles || catalogItem.descripcion_ingles || '',
+    categoria: catalogItem.categoria || '',
+    subcategoria: catalogItem.subcategoria || '',
+    formato_compra: catalogItem.formato_compra || 'LINEAL',
+    clave_familia_compra: catalogItem.clave_familia_compra || '',
+    nombre_familia_maquila: catalogItem.nombre_familia_maquila || '',
+    familia_skus: catalogItem.familia_skus || [],
+    unidades_sugeridas: Math.round(parsePositiveNumber(
+      catalogItem.sugerencia_compra_inmediata_uds || catalogItem.compra_masiva_cny_uds
+    )),
     cantidad: quantity,
     qtty,
     cajas: calculateBoxes(quantity, qtty),

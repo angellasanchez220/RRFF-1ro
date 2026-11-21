@@ -6,7 +6,7 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy import text
 import pandas as pd
 import openpyxl
@@ -62,7 +62,7 @@ def _presentation_markers(data: dict) -> set[str]:
 
 
 def _product_family_sort_key(data: dict):
-    """Agrupa por familia y ordena Lineal, CR y luego el resto."""
+    """Mantiene familias juntas y ordena por código, Lineal, CR y resto."""
     from src.services.maquila_service import detectar_formato_producto
 
     format_name = data.get("formato_compra") or detectar_formato_producto(
@@ -72,12 +72,17 @@ def _product_family_sort_key(data: dict):
     presentation_rank = {"LINEAL": 0, "CR": 1}.get(format_name, 2)
 
     family_key = _normalize_sort_text(
-        data.get("nombre_familia") or data.get("sku") or data.get("codigo")
+        data.get("clave_familia") or data.get("nombre_familia")
+        or data.get("sku") or data.get("codigo")
+    )
+    family_order_code = _normalize_sort_text(
+        data.get("codigo_orden_familia") or family_key
     )
     return (
+        family_order_code,
         family_key,
         presentation_rank,
-        _normalize_sort_text(data.get("nombre")),
+        _normalize_sort_text(data.get("codigo")),
         _normalize_sort_text(data.get("sku")),
     )
 
@@ -166,6 +171,71 @@ def _safe_text(value, default="") -> str:
 
 def _safe_int(v, default=0):
     return int(round(_safe_float(v, default)))
+
+
+def _ultimos_tres_sell_in_desde_fila(row: dict) -> list[float]:
+    """Obtiene los tres cierres más recientes del calendario Sell In."""
+    periodos = []
+    for mes_num, _nombre, abrev, yr_db, yr_label in _get_mes_map():
+        periodos.append((yr_label, mes_num, _safe_float(row.get(f"sellin_{abrev}_{yr_db}"))))
+    periodos.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in periodos[-3:]]
+
+
+def _enriquecer_metricas_familia(familias_map: dict, df_productos: pd.DataFrame) -> None:
+    """Agrega métricas familiares para el cuadro resumen del producto Lineal."""
+    rows_by_code = {}
+    rows_by_sku = {}
+    for _, row in df_productos.iterrows():
+        row_dict = row.to_dict()
+        code = _normalize_sort_text(row_dict.get("codigo_femaco"))
+        sku = _normalize_sort_text(row_dict.get("sku"))
+        if code and code not in rows_by_code:
+            rows_by_code[code] = row_dict
+        if sku and sku not in rows_by_sku:
+            rows_by_sku[sku] = row_dict
+
+    processed = set()
+    for family in familias_map.values():
+        family_id = id(family)
+        if family_id in processed:
+            continue
+        processed.add(family_id)
+
+        total_4_weeks = 0.0
+        expected_monthly_boxes = 0.0
+        family_codes = []
+        for member in family.get("familia_skus", []):
+            if member.get("descontinuado"):
+                continue
+            total_4_weeks += max(_safe_float(member.get("ritmo_mensual")), 0.0)
+            code = _normalize_sort_text(member.get("codigo_femaco"))
+            sku = _normalize_sort_text(member.get("sku"))
+            if code:
+                family_codes.append(code)
+            row = rows_by_code.get(code) or rows_by_sku.get(sku) or {}
+            units_per_box = max(_safe_float(row.get("ump"), 1.0), 1.0)
+            last_three_sell_in = _ultimos_tres_sell_in_desde_fila(row)
+            expected_monthly_boxes += max(last_three_sell_in, default=0.0) / units_per_box
+
+        family_stock = max(_safe_float(family.get("stock_bruto_familia")), 0.0)
+        family["ventas_4_semanas_familia"] = round(total_4_weeks, 2)
+        family["ventas_semanales_familia"] = round(total_4_weeks / 4.0, 2)
+        family["duracion_stock_familia_meses"] = (
+            round(family_stock / total_4_weeks, 2) if total_4_weeks > 0 else 999.0
+        )
+        family["cajas_esperadas_mes_familia"] = round(expected_monthly_boxes, 2)
+        family["codigo_orden_familia"] = min(family_codes, default="")
+
+
+def _calcular_fecha_compra(quiebre, lead_time_days=120):
+    """Calcula cuándo emitir la compra para que llegue antes del quiebre."""
+    if quiebre is None or pd.isna(quiebre) or str(quiebre).strip() in {"", "NaT", "None"}:
+        return None
+    parsed = pd.to_datetime(quiebre, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.date() - timedelta(days=lead_time_days)
 
 
 def _calcular_coberturas_compra_export(total_4_semanas, compra_sugerida, stock_llegada):
@@ -285,6 +355,13 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         stock_estimado_llegada,
     )
 
+    family = familias_map.get(real_codigo) if familias_map else None
+    fecha_compra = _calcular_fecha_compra(row_sop.get("fecha_estimada_quiebre"))
+    if compra_final > 0 and fecha_compra is None:
+        fecha_compra = date.today()
+    compra_actual = compra_final if fecha_compra and fecha_compra <= date.today() else 0
+    compra_proxima = compra_final if fecha_compra and fecha_compra > date.today() else 0
+
     data = {
         "sku": real_sku,
         "categoria": _safe_text(row_sop.get("categoria"), "SIN CATEGORIA").upper(),
@@ -321,6 +398,9 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "obj": _safe_int(row_sop.get("stock_objetivo")),
         "sug_bruta": _safe_int(row_sop.get("sugerencia_bruta")),
         "compra": compra_final,
+        "compra_actual": compra_actual,
+        "compra_proxima": compra_proxima,
+        "fecha_compra": fecha_compra,
         "cob": round(float(row_sop.get("stock_act") or 0) / _safe_float(row_sop.get("ritmo_duracion_mensual")), 1) if _safe_float(row_sop.get("ritmo_duracion_mensual")) > 0 else 999.0,
         "cobertura_compra_4_semanas": cobertura_compra,
         "duracion_al_arribo_4_semanas": duracion_al_arribo,
@@ -359,7 +439,21 @@ def get_sku_export_data(sku: str, familias_map: dict = None) -> dict:
         "tiene_familia": (familias_map is not None and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1),
         "stock_familia": int(familias_map[real_codigo].get("stock_bruto_familia", inv_u)) if (familias_map and real_codigo in familias_map) else inv_u,
         "nombre_familia": familias_map[real_codigo].get("nombre_familia", "") if (familias_map and real_codigo in familias_map and len(familias_map[real_codigo].get("familia_skus", [])) > 1) else "",
-        "clave_familia": _safe_text(row_sop.get("clave_familia_compra"))
+        "clave_familia": _safe_text(row_sop.get("clave_familia_compra")),
+        "codigo_orden_familia": family.get("codigo_orden_familia", "") if family else real_codigo,
+        "ventas_4_semanas_familia": (
+            family.get("ventas_4_semanas_familia", total_4_semanas) if family else total_4_semanas
+        ),
+        "ventas_semanales_familia": (
+            family.get("ventas_semanales_familia", total_4_semanas / 4.0)
+            if family else total_4_semanas / 4.0
+        ),
+        "duracion_stock_familia_meses": (
+            family.get("duracion_stock_familia_meses", 999.0) if family else 999.0
+        ),
+        "cajas_esperadas_mes_familia": (
+            family.get("cajas_esperadas_mes_familia", 0.0) if family else 0.0
+        ),
     }
     return data
 
@@ -431,13 +525,11 @@ def _texto_calculo_familia_cr(data: dict) -> str:
     )
 
 
-def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
-    """Dibuja la caja de calculo solo en el bloque CR de una familia."""
+def _limpiar_caja_familia(ws: Worksheet, fila_inicio: int):
+    """Limpia la caja lateral copiada desde el primer bloque."""
     from openpyxl.utils import get_column_letter
 
     start_col, end_col = 14, 18  # N:R, al costado de Observaciones (L:M)
-    # La caja ocupa exactamente el mismo bloque de 16 filas que el producto:
-    # comienza en su encabezado y termina antes del siguiente SKU.
     start_row, end_row = fila_inicio, fila_inicio + 15
 
     for merged in list(ws.merged_cells.ranges):
@@ -457,6 +549,15 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
             cell.border = Border()
             cell.font = Font(name="Arial", size=10)
             cell.alignment = Alignment()
+
+    return start_col, end_col, start_row, end_row, get_column_letter
+
+
+def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
+    """Dibuja la caja de cálculo detallada en el bloque CR de una familia."""
+    start_col, end_col, start_row, end_row, get_column_letter = _limpiar_caja_familia(
+        ws, fila_inicio
+    )
 
     if not data.get("tiene_familia") or str(data.get("formato_compra")).upper() != "CR":
         return
@@ -483,7 +584,50 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
     body = ws.cell(row=start_row + 1, column=start_col)
     body.value = _texto_calculo_familia_cr(data)
     body.fill = PatternFill("solid", fgColor="F5F3FF")
-    body.font = Font(name="Arial", size=9, color="312E81")
+    body.font = Font(name="Arial", size=7.5, color="312E81")
+    body.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    body.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col in range(start_col, end_col + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 11
+
+
+def _poblar_caja_resumen_lineal(ws: Worksheet, fila_inicio: int, data: dict):
+    """Muestra el resumen agregado de la familia junto al producto Lineal."""
+    start_col, end_col, start_row, end_row, get_column_letter = _limpiar_caja_familia(
+        ws, fila_inicio
+    )
+    if not data.get("tiene_familia") or str(data.get("formato_compra")).upper() != "LINEAL":
+        return
+
+    header_range = f"{get_column_letter(start_col)}{start_row}:{get_column_letter(end_col)}{start_row}"
+    body_range = f"{get_column_letter(start_col)}{start_row + 1}:{get_column_letter(end_col)}{end_row}"
+    ws.merge_cells(header_range)
+    ws.merge_cells(body_range)
+
+    duration = data.get("duracion_stock_familia_meses", 999.0)
+    duration_text = "+10 meses" if duration >= 999 else f"{duration:.2f} meses"
+    body_text = (
+        f"Familia: {data.get('nombre_familia') or '-'}\n"
+        f"Ventas semanales familia: {data.get('ventas_semanales_familia', 0):.2f} uds\n"
+        f"Ventas 4 semanas familia: {data.get('ventas_4_semanas_familia', 0):.2f} uds\n"
+        f"Stock total familia: {data.get('stock_familia', 0)} uds\n"
+        f"Duración stock familiar: {duration_text}\n"
+        f"Cajas esperadas por mes: {data.get('cajas_esperadas_mes_familia', 0):.2f} cajas"
+    )
+
+    thin = Side(style="thin", color="2F855A")
+    header = ws.cell(row=start_row, column=start_col)
+    header.value = "RESUMEN FAMILIA - LINEAL"
+    header.fill = PatternFill("solid", fgColor="C6E0B4")
+    header.font = Font(name="Arial", size=10, bold=True, color="1B4332")
+    header.alignment = Alignment(horizontal="center", vertical="center")
+    header.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    body = ws.cell(row=start_row + 1, column=start_col)
+    body.value = body_text
+    body.fill = PatternFill("solid", fgColor="E2F0D9")
+    body.font = Font(name="Arial", size=10, color="1B4332")
     body.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
     body.border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
@@ -493,7 +637,7 @@ def _poblar_caja_calculo_cr(ws: Worksheet, fila_inicio: int, data: dict):
 
 def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     def set_val(col, row_offset, val):
-        ws.cell(row=fila_inicio + row_offset, column=col, value=val)
+        ws.cell(row=fila_inicio + row_offset, column=col).value = val
 
     set_val(2, 0, data["sku"])
     set_val(3, 0, data["codigo"])
@@ -514,6 +658,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     
     set_val(10, 6, data["max_so"])
     set_val(10, 7, data["max_si"])
+    set_val(10, 9, "Duración proyectada")
     set_val(10, 10, data.get("duracion_al_arribo_4_semanas", data["cob"]))
     
     set_val(2, 11, data["s1"])
@@ -521,7 +666,7 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     set_val(4, 11, data["s3"])
     set_val(5, 11, data["s4"])
     set_val(6, 11, data["tot4s"])
-    set_val(7, 10, "Duración")
+    set_val(7, 10, "Duración actual")
     set_val(7, 11, data["cob"])
     set_val(8, 10, "Objetivo")
     set_val(8, 11, data["obj"])
@@ -537,24 +682,61 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
         for row_offset in [5, 6, 7, 8]:
             set_val(col_idx, row_offset, "")
 
-    pedidos = data["pedidos"]
-    for i in range(min(3, len(pedidos))):
-        col_idx = 6 + i  # F, G, H
-        set_val(col_idx, 5, pedidos[i]["codigo_envio"])
-        set_val(col_idx, 6, pedidos[i]["cantidad"])
-        eta = pedidos[i]["eta"]
-        if pd.notna(eta) and eta and str(eta) != "NaT":
-            try:
-                set_val(col_idx, 7, pd.to_datetime(eta).strftime("%d-%m-%Y"))
-            except Exception:
-                set_val(col_idx, 7, str(eta)[:10])
-        else:
-            set_val(col_idx, 7, "-")
-        set_val(col_idx, 8, "-")  # Duración no disponible
+    # F: compra de Soraya ahora. G: próxima compra. H: extra manual.
+    set_val(6, 5, "Compra Soraya")
+    set_val(7, 5, "Próxima compra")
+    set_val(8, 5, "Extra manual")
+    set_val(5, 7, "ETA compra")
+    set_val(5, 8, "Duración")
+    duration_purchase = data.get("cobertura_compra_4_semanas", data.get("cob"))
+    purchase_date = data.get("fecha_compra")
+    purchase_date_text = purchase_date.strftime("%d-%m-%Y") if purchase_date else "-"
+
+    if data.get("compra_actual", 0) > 0:
+        set_val(6, 6, data["compra_actual"])
+        set_val(6, 7, purchase_date_text)
+        set_val(6, 8, duration_purchase if duration_purchase < 999 else "+10")
+    else:
+        set_val(6, 6, "-")
+        set_val(6, 7, "-")
+        set_val(6, 8, "-")
+
+    if data.get("compra_proxima", 0) > 0:
+        set_val(7, 6, data["compra_proxima"])
+        set_val(7, 7, purchase_date_text)
+        set_val(7, 8, duration_purchase if duration_purchase < 999 else "+10")
+    else:
+        set_val(7, 6, "-")
+        set_val(7, 7, "-")
+        set_val(7, 8, "-")
+
+    set_val(8, 6, None)
+    set_val(8, 7, None)
+    set_val(8, 8, None)
+
+    shipping_fills = {6: "F4B183", 7: "DDEBF7", 8: "FFF2CC"}
+    for col_idx, color in shipping_fills.items():
+        for row_offset in [5, 6, 7, 8]:
+            cell = ws.cell(row=fila_inicio + row_offset, column=col_idx)
+            cell.fill = PatternFill("solid", fgColor=color)
+            if row_offset == 5:
+                cell.font = Font(
+                    name="Arial", size=8, bold=True,
+                    color="7F6000" if col_idx != 7 else "1F4E78",
+                )
+                cell.alignment = Alignment(
+                    horizontal="center", vertical="center", wrap_text=True
+                )
+
+    # Destacar ambas duraciones con títulos inequívocos.
+    for col_idx, row_offset, color in [
+        (7, 10, "FFD966"), (7, 11, "FFF2CC"),
+        (10, 9, "A9D18E"), (10, 10, "C6E0B4"),
+    ]:
+        ws.cell(row=fila_inicio + row_offset, column=col_idx).fill = PatternFill("solid", fgColor=color)
 
     # Pintar cabecera (primera fila del bloque) si tiene familia
     if data.get("tiene_familia"):
-        from openpyxl.styles import PatternFill
         family_color = data.get("familia_color") or "D2B4DE"
         familia_fill = PatternFill(start_color=family_color, end_color=family_color, fill_type="solid")
         # Columnas A a M (1 a 13)
@@ -572,8 +754,8 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     sug_final = data.get("compra", 0)
     set_val(13, 7, f"{sug_final} unidades" if sug_final > 0 else "-")
     
-    # Cobertura
-    set_val(12, 8, "Cobertura")
+    # Duración de la compra expresada en meses de las últimas cuatro semanas.
+    set_val(12, 8, "Duración")
     cob = data.get("cobertura_compra_4_semanas", data.get("cob"))
     if pd.notna(cob) and cob < 999.0:
         set_val(13, 8, f"{cob:.2f}".replace(".", ",") + " meses")
@@ -598,7 +780,10 @@ def poblar_bloque(ws: Worksheet, fila_inicio: int, data: dict):
     # Observación
     set_val(12, 11, "Observación")
     set_val(13, 11, data["obs"] if data["obs"] else "-")
-    _poblar_caja_calculo_cr(ws, fila_inicio, data)
+    if str(data.get("formato_compra")).upper() == "LINEAL":
+        _poblar_caja_resumen_lineal(ws, fila_inicio, data)
+    else:
+        _poblar_caja_calculo_cr(ws, fila_inicio, data)
 
 
 def generar_excel_skus(skus: list[str]) -> bytes:
@@ -610,7 +795,7 @@ def generar_excel_skus(skus: list[str]) -> bytes:
         build_product_lookup_by_internal_code,
     )
     with engine.connect() as conn:
-        df_lookup = pd.read_sql(text("SELECT codigo_femaco, sku, nombre_producto, stock_act, total_4_sem_verificado FROM planificacion_sop"), conn)
+        df_lookup = pd.read_sql(text("SELECT * FROM planificacion_sop"), conn)
     lookup_dict = build_product_lookup_by_internal_code(
         df_lookup,
         ritmo_col="total_4_sem_verificado",
@@ -618,6 +803,7 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     
     with engine.connect() as conn:
         familias_map = build_maquila_families(conn, lookup_dict)
+    _enriquecer_metricas_familia(familias_map, df_lookup)
 
     datos_skus = []
     faltantes = []
@@ -633,19 +819,21 @@ def generar_excel_skus(skus: list[str]) -> bytes:
 
     datos_skus = _deduplicate_export_data(datos_skus)
 
-    # Agrupar por subcategoria. Se conserva una etiqueta legible y se usa una
-    # clave normalizada para evitar hojas duplicadas por diferencias de tildes,
-    # mayusculas o espacios.
+    # Agrupar y ordenar por categoría y luego subcategoría.
     agrupados = {}
     for d in datos_skus:
+        categoria = d.get("categoria") or "SIN CATEGORIA"
         subcategoria = d.get("subcategoria") or "SIN SUBCATEGORIA"
+        categoria_key = _normalize_sort_text(categoria) or "SIN CATEGORIA"
         subcategoria_key = _normalize_sort_text(subcategoria) or "SIN SUBCATEGORIA"
-        if subcategoria_key not in agrupados:
-            agrupados[subcategoria_key] = {
+        group_key = (categoria_key, subcategoria_key)
+        if group_key not in agrupados:
+            agrupados[group_key] = {
+                "category_label": str(categoria).strip() or "SIN CATEGORIA",
                 "label": str(subcategoria).strip() or "SIN SUBCATEGORIA",
                 "items": [],
             }
-        agrupados[subcategoria_key]["items"].append(d)
+        agrupados[group_key]["items"].append(d)
         
     # Mantener juntas las familias de maquila y, dentro de cada familia,
     # presentar primero Lineal, despues CR y finalmente PDQ/MB/resto.
@@ -662,13 +850,15 @@ def generar_excel_skus(skus: list[str]) -> bytes:
     ws_plantilla = wb["PLANTILLA"]
     TAMANO_BLOQUE = 16
 
-    # Ordenar subcategorias alfabeticamente para las hojas.
-    subcategorias_ordenadas = sorted(agrupados.keys())
+    # Las hojas siguen el orden Categoría -> Subcategoría.
+    grupos_ordenados = sorted(agrupados.keys())
     used_sheet_names = set()
     
-    for subcategoria_key in subcategorias_ordenadas:
-        group = agrupados[subcategoria_key]
-        sheet_name = _safe_sheet_name(group["label"], used_sheet_names)
+    for group_key in grupos_ordenados:
+        group = agrupados[group_key]
+        sheet_name = _safe_sheet_name(
+            f"{group['category_label']} - {group['label']}", used_sheet_names
+        )
         ws_subcategoria = wb.copy_worksheet(ws_plantilla)
         ws_subcategoria.title = sheet_name
         

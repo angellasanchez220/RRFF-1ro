@@ -44,6 +44,60 @@ function getMonthLabel(d) {
   return `📅 ${MESES_ES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+const normalizePiSortText = value => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toUpperCase();
+
+function getPiFamilyOrderCode(item) {
+  const family = Array.isArray(item.familia_skus) ? item.familia_skus : [];
+  const familyCodes = family
+    .map(member => normalizePiSortText(member.codigo_femaco || member.sku))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  return familyCodes[0] || normalizePiSortText(item.codigo_femaco || item.sku);
+}
+
+function sortPiItems(items = []) {
+  const formatRank = { LINEAL: 0, CR: 1 };
+  return [...items].sort((a, b) => {
+    const fieldsA = [normalizePiSortText(a.categoria), normalizePiSortText(a.subcategoria)];
+    const fieldsB = [normalizePiSortText(b.categoria), normalizePiSortText(b.subcategoria)];
+    for (let index = 0; index < fieldsA.length; index += 1) {
+      const comparison = fieldsA[index].localeCompare(fieldsB[index], 'es', { numeric: true });
+      if (comparison !== 0) return comparison;
+    }
+
+    const familyOrder = getPiFamilyOrderCode(a).localeCompare(
+      getPiFamilyOrderCode(b), 'es', { numeric: true }
+    );
+    if (familyOrder !== 0) return familyOrder;
+
+    const familyA = normalizePiSortText(a.clave_familia_compra || a.nombre_familia_maquila || a.codigo_femaco || a.sku);
+    const familyB = normalizePiSortText(b.clave_familia_compra || b.nombre_familia_maquila || b.codigo_femaco || b.sku);
+    const familyComparison = familyA.localeCompare(familyB, 'es', { numeric: true });
+    if (familyComparison !== 0) return familyComparison;
+
+    const rankA = formatRank[normalizePiSortText(a.formato_compra)] ?? 2;
+    const rankB = formatRank[normalizePiSortText(b.formato_compra)] ?? 2;
+    if (rankA !== rankB) return rankA - rankB;
+
+    return normalizePiSortText(a.codigo_femaco || a.sku).localeCompare(
+      normalizePiSortText(b.codigo_femaco || b.sku), 'es', { numeric: true }
+    );
+  });
+}
+
+function findPiItemIndex(items, target) {
+  const sku = normalizePiSortText(target?.sku);
+  const code = normalizePiSortText(target?.codigo_femaco);
+  return items.findIndex(item => (
+    (sku && normalizePiSortText(item.sku) === sku)
+    || (code && normalizePiSortText(item.codigo_femaco) === code)
+  ));
+}
+
 export default function Compras() {
   const [activeTab, setActiveTab] = useState('SOP'); // 'SOP' | 'MRP'
   const [data, setData] = useState([]);
@@ -421,8 +475,8 @@ export default function Compras() {
       return;
     }
 
-    const itemsFormatted = itemsToInclude.map(s => {
-      const sug = Number(s.sugerencia_compra_inmediata_uds || s.compra_masiva_cny_uds || 100);
+    const itemsFormatted = sortPiItems(itemsToInclude.map(s => {
+      const sug = Number(s.sugerencia_compra_inmediata_uds || s.compra_masiva_cny_uds || 0);
       const qtty = Number(s.ump || 1);
       const roundedQty = qtty > 1 ? Math.ceil(sug / qtty) * qtty : sug;
       return {
@@ -430,11 +484,18 @@ export default function Compras() {
         codigo_femaco: s.codigo_femaco || s.sku,
         nombre_producto: s.nombre_producto || '',
         descripcion_ingles: s.descripcion_ingles || '',
-        cantidad: roundedQty > 0 ? roundedQty : 100,
+        categoria: s.categoria || '',
+        subcategoria: s.subcategoria || '',
+        formato_compra: s.formato_compra || 'LINEAL',
+        clave_familia_compra: s.clave_familia_compra || '',
+        nombre_familia_maquila: s.nombre_familia_maquila || '',
+        familia_skus: s.familia_skus || [],
+        unidades_sugeridas: roundedQty,
+        cantidad: roundedQty,
         qtty: qtty,
-        cajas: calculateBoxes(roundedQty > 0 ? roundedQty : 100, qtty)
+        cajas: calculateBoxes(roundedQty, qtty)
       };
-    });
+    }));
 
     setPiForm({
       numero_pi: piNum,
@@ -486,7 +547,7 @@ export default function Compras() {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       const parsed = parsePiWorkbook(workbook, XLSX, piForm.numero_pi);
       const reconciliation = reconcilePiItems(piForm.items, parsed.items, data);
-      setPiForm(prev => ({ ...prev, items: reconciliation.items }));
+      setPiForm(prev => ({ ...prev, items: sortPiItems(reconciliation.items) }));
       setPiImportResult({
         ...reconciliation,
         format: parsed.format,
@@ -508,14 +569,16 @@ export default function Compras() {
     const selectedItem = choice === 'EXCEL' ? conflict.imported : conflict.current;
     setPiForm(form => {
       const newItems = [...form.items];
-      newItems[conflict.itemIndex] = {
+      const itemIndex = findPiItemIndex(newItems, conflict.current);
+      if (itemIndex < 0) return form;
+      newItems[itemIndex] = {
         ...selectedItem,
         cajas: calculateBoxes(selectedItem.cantidad, selectedItem.qtty),
         importedFromExcel: choice === 'EXCEL',
         qttyChanged: choice === 'EXCEL' && conflict.qttyChanged,
         qttyOriginal: conflict.current.qtty,
       };
-      return { ...form, items: newItems };
+      return { ...form, items: sortPiItems(newItems) };
     });
     setPiImportResult(prev => ({
       ...prev,
@@ -567,6 +630,10 @@ export default function Compras() {
     }
     if (!piForm.items || piForm.items.length === 0) {
       alert("No hay ítems en la PI.");
+      return;
+    }
+    if (piForm.items.some(item => Number(item.cantidad) <= 0)) {
+      alert("Todos los productos deben tener una cantidad de unidades mayor que cero.");
       return;
     }
     const unresolved = piImportResult?.conflicts?.filter(item => !item.choice) || [];
@@ -1488,8 +1555,9 @@ export default function Compras() {
                 <table className="preview-table" style={{ margin: 0, width: '100%' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
-                      <th>SKU</th>
+                      <th>Código</th>
                       <th>Producto</th>
+                      <th style={{ width: 125 }}>Unidades sugeridas</th>
                       <th style={{ width: 130 }}>Unidades</th>
                       <th style={{ width: 110 }}>Cajas</th>
                       <th style={{ width: 130 }}>U/E</th>
@@ -1499,12 +1567,15 @@ export default function Compras() {
                   <tbody>
                     {piForm.items.map((it, idx) => (
                       <tr key={it.sku} style={it.qttyChanged ? { background: '#fff7ed' } : {}}>
-                        <td><b>{it.sku}</b></td>
+                        <td><b>{it.codigo_femaco || it.sku}</b></td>
                         <td style={{ fontSize: '0.8rem', maxWidth: 220 }}>{it.nombre_producto}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#475569', background: '#f8fafc' }}>
+                          {Number(it.unidades_sugeridas || 0).toLocaleString('es-CL')}
+                        </td>
                         <td>
                           <input
                             type="number"
-                            min="1"
+                            min="0"
                             value={it.cantidad}
                             onChange={e => handleUpdatePiItemQty(idx, e.target.value)}
                             style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', fontWeight: 700, boxSizing: 'border-box' }}

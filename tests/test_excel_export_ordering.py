@@ -9,7 +9,11 @@ from src.services.excel_export_service import (
     _safe_sheet_name,
     _poblar_caja_calculo_cr,
     _calcular_coberturas_compra_export,
+    _calcular_fecha_compra,
+    _enriquecer_metricas_familia,
+    _poblar_caja_resumen_lineal,
     copiar_bloque,
+    poblar_bloque,
 )
 from src.transformer import _read_inventario_excel
 
@@ -200,3 +204,100 @@ def test_non_cr_block_removes_copied_cr_box():
     assert worksheet["N17"].value is None
     assert "N17:R17" not in {str(item) for item in worksheet.merged_cells.ranges}
     assert "N18:R32" not in {str(item) for item in worksheet.merged_cells.ranges}
+
+
+def test_lineal_family_block_contains_aggregated_summary():
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    _poblar_caja_resumen_lineal(
+        worksheet,
+        1,
+        {
+            "tiene_familia": True,
+            "formato_compra": "LINEAL",
+            "nombre_familia": "Familia Burletes",
+            "ventas_semanales_familia": 15,
+            "ventas_4_semanas_familia": 60,
+            "stock_familia": 150,
+            "duracion_stock_familia_meses": 2.5,
+            "cajas_esperadas_mes_familia": 20,
+        },
+    )
+
+    assert worksheet["N1"].value == "RESUMEN FAMILIA - LINEAL"
+    assert "Ventas semanales familia: 15.00 uds" in worksheet["N2"].value
+    assert "Stock total familia: 150 uds" in worksheet["N2"].value
+    assert "Duración stock familiar: 2.50 meses" in worksheet["N2"].value
+    assert "Cajas esperadas por mes: 20.00 cajas" in worksheet["N2"].value
+
+
+def test_family_metrics_sum_members_and_convert_sell_in_to_boxes():
+    import pandas as pd
+
+    month_map = _get_mes_map()
+    rows = []
+    for sku, code, ump, sell_in in [
+        ("L1", "100", 10, 100),
+        ("CR1", "101", 5, 50),
+    ]:
+        row = {"sku": sku, "codigo_femaco": code, "ump": ump}
+        for _month, _name, abbreviation, db_year, _label_year in month_map:
+            row[f"sellin_{abbreviation}_{db_year}"] = sell_in
+        rows.append(row)
+
+    family = {
+        "familia_skus": [
+            {"sku": "L1", "codigo_femaco": "100", "ritmo_mensual": 40, "descontinuado": False},
+            {"sku": "CR1", "codigo_femaco": "101", "ritmo_mensual": 20, "descontinuado": False},
+        ],
+        "stock_bruto_familia": 150,
+    }
+    families = {"100": family, "101": family}
+
+    _enriquecer_metricas_familia(families, pd.DataFrame(rows))
+
+    assert family["ventas_semanales_familia"] == 15
+    assert family["ventas_4_semanas_familia"] == 60
+    assert family["duracion_stock_familia_meses"] == 2.5
+    assert family["cajas_esperadas_mes_familia"] == 20
+    assert family["codigo_orden_familia"] == "100"
+
+
+def test_purchase_date_is_lead_time_before_stockout():
+    assert _calcular_fecha_compra("2027-05-21") == date(2027, 1, 21)
+
+
+def test_export_block_uses_f_g_h_purchase_roles_and_duration_labels():
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    data = {
+        "sku": "SKU-1", "codigo": "100", "nombre": "Producto", "estado": "ACTIVO", "ue": 10,
+        "inv_u": 100, "inv_c": 10, "tra_u": 0, "tra_c": 0, "hc_u": 50, "hc_c": 5,
+        "max_so": 100, "max_si": 120, "duracion_al_arribo_4_semanas": 3.2,
+        "s1": 10, "s2": 10, "s3": 10, "s4": 10, "tot4s": 40, "cob": 2.5, "obj": 200,
+        "anio_labels": [f"Mes {index}" for index in range(12)],
+        "sell_out": [0] * 12, "sell_in": [0] * 12,
+        "tiene_familia": False, "stock_familia": 100, "sug_bruta": 100, "compra": 100,
+        "compra_actual": 100, "compra_proxima": 0, "fecha_compra": date(2026, 11, 21),
+        "cobertura_compra_4_semanas": 2.5, "quiebre": "2027-03-21", "motivo": "Prueba",
+        "obs": "", "formato_compra": "LINEAL",
+    }
+
+    poblar_bloque(worksheet, 1, data)
+
+    assert worksheet["F6"].value == "Compra Soraya"
+    assert worksheet["F7"].value == 100
+    assert worksheet["F8"].value == "21-11-2026"
+    assert worksheet["E8"].value == "ETA compra"
+    assert worksheet["G6"].value == "Próxima compra"
+    assert worksheet["G7"].value == "-"
+    assert worksheet["H6"].value == "Extra manual"
+    assert worksheet["H7"].value is None
+    assert worksheet["G11"].value == "Duración actual"
+    assert worksheet["J10"].value == "Duración proyectada"
+    assert worksheet["L9"].value == "Duración"
+    assert worksheet["F6"].fill.fgColor.rgb.endswith("F4B183")
