@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fetchSOP, fetchMrpMateriales, fetchSiguientePi, generarPiProveedor } from '../api';
 import * as XLSX from 'xlsx';
 import SkuDetailModal from '../components/SkuDetailModal';
+import {
+  calculateBoxes,
+  parsePiWorkbook,
+  reconcilePiItems,
+} from '../utils/piExcel';
 
 // Helper: Obtener número de semana (ISO)
 function getWeekNumber(d) {
@@ -67,6 +72,10 @@ export default function Compras() {
     items: []
   });
   const [submittingPi, setSubmittingPi] = useState(false);
+  const [piImportResult, setPiImportResult] = useState(null);
+  const [piImportError, setPiImportError] = useState('');
+  const [piImportLoading, setPiImportLoading] = useState(false);
+  const piFileInputRef = useRef(null);
 
   // Estados para MRP de Insumos de Maquila
   const [mrpData, setMrpData] = useState([]);
@@ -423,8 +432,7 @@ export default function Compras() {
         descripcion_ingles: s.descripcion_ingles || '',
         cantidad: roundedQty > 0 ? roundedQty : 100,
         qtty: qtty,
-        costo_unitario: Number(s.costo_compra || 0),
-        subtotal: (roundedQty > 0 ? roundedQty : 100) * Number(s.costo_compra || 0)
+        cajas: calculateBoxes(roundedQty > 0 ? roundedQty : 100, qtty)
       };
     });
 
@@ -437,6 +445,8 @@ export default function Compras() {
       observacion: 'Emisión automática de PI generada desde Plan de Compras S&OP',
       items: itemsFormatted
     });
+    setPiImportResult(null);
+    setPiImportError('');
     setShowPiModal(true);
   };
 
@@ -447,23 +457,72 @@ export default function Compras() {
       newItems[index] = {
         ...newItems[index],
         cantidad: val,
-        subtotal: val * (newItems[index].costo_unitario || 0)
+        cajas: calculateBoxes(val, newItems[index].qtty)
       };
       return { ...prev, items: newItems };
     });
   };
 
-  const handleUpdatePiItemCosto = (index, newCosto) => {
-    const val = Math.max(0, parseFloat(newCosto) || 0);
+  const handleUpdatePiItemBoxes = (index, newBoxes) => {
+    const boxes = Math.max(0, Number(newBoxes) || 0);
     setPiForm(prev => {
       const newItems = [...prev.items];
+      const qtty = Number(newItems[index].qtty) || 1;
       newItems[index] = {
         ...newItems[index],
-        costo_unitario: val,
-        subtotal: (newItems[index].cantidad || 0) * val
+        cajas: boxes,
+        cantidad: Math.round(boxes * qtty)
       };
       return { ...prev, items: newItems };
     });
+  };
+
+  const handlePiExcelUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPiImportLoading(true);
+    setPiImportError('');
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      const parsed = parsePiWorkbook(workbook, XLSX, piForm.numero_pi);
+      const reconciliation = reconcilePiItems(piForm.items, parsed.items, data);
+      setPiForm(prev => ({ ...prev, items: reconciliation.items }));
+      setPiImportResult({
+        ...reconciliation,
+        format: parsed.format,
+        fileName: file.name,
+        conflicts: reconciliation.conflicts,
+      });
+    } catch (err) {
+      setPiImportResult(null);
+      setPiImportError(err.message || 'No se pudo leer el Excel de la PI.');
+    } finally {
+      setPiImportLoading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleResolvePiConflict = (conflictKey, choice) => {
+    const conflict = piImportResult?.conflicts?.find(item => item.key === conflictKey);
+    if (!conflict) return;
+    const selectedItem = choice === 'EXCEL' ? conflict.imported : conflict.current;
+    setPiForm(form => {
+      const newItems = [...form.items];
+      newItems[conflict.itemIndex] = {
+        ...selectedItem,
+        cajas: calculateBoxes(selectedItem.cantidad, selectedItem.qtty),
+        importedFromExcel: choice === 'EXCEL',
+        qttyChanged: choice === 'EXCEL' && conflict.qttyChanged,
+        qttyOriginal: conflict.current.qtty,
+      };
+      return { ...form, items: newItems };
+    });
+    setPiImportResult(prev => ({
+      ...prev,
+      conflicts: prev.conflicts.map(item => (
+        item.key === conflictKey ? { ...item, choice } : item
+      )),
+    }));
   };
 
   const handleRemovePiItem = (index) => {
@@ -480,18 +539,20 @@ export default function Compras() {
     }
 
     const rows = piForm.items.map(it => ({
+      'NÚMERO PI': piForm.numero_pi || '',
       'COD INTERNO': it.codigo_femaco || '',
       'SKU': it.sku || '',
       'DESCRIPTION (ENGLISH)': it.descripcion_ingles || '',
       'DESCRIPCIÓN (ESPAÑOL)': it.nombre_producto || '',
       'CANTIDAD': Number(it.cantidad) || 0,
+      'CAJAS': calculateBoxes(it.cantidad, it.qtty),
       'QTTY (UNIDAD EMPAQUE)': Number(it.qtty) || 1
     }));
     const worksheet = XLSX.utils.json_to_sheet(rows, {
-      header: ['COD INTERNO', 'SKU', 'DESCRIPTION (ENGLISH)', 'DESCRIPCIÓN (ESPAÑOL)', 'CANTIDAD', 'QTTY (UNIDAD EMPAQUE)']
+      header: ['NÚMERO PI', 'COD INTERNO', 'SKU', 'DESCRIPTION (ENGLISH)', 'DESCRIPCIÓN (ESPAÑOL)', 'CANTIDAD', 'CAJAS', 'QTTY (UNIDAD EMPAQUE)']
     });
     worksheet['!cols'] = [
-      { wch: 18 }, { wch: 18 }, { wch: 55 }, { wch: 55 }, { wch: 14 }, { wch: 24 }
+      { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 55 }, { wch: 55 }, { wch: 14 }, { wch: 12 }, { wch: 24 }
     ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'PI');
@@ -506,6 +567,11 @@ export default function Compras() {
     }
     if (!piForm.items || piForm.items.length === 0) {
       alert("No hay ítems en la PI.");
+      return;
+    }
+    const unresolved = piImportResult?.conflicts?.filter(item => !item.choice) || [];
+    if (unresolved.length > 0) {
+      alert(`Debes resolver las ${unresolved.length} diferencias del Excel antes de emitir la PI.`);
       return;
     }
     setSubmittingPi(true);
@@ -1333,6 +1399,90 @@ export default function Compras() {
                 />
               </div>
 
+              <div style={{ marginBottom: 16, padding: 14, border: '1px solid #bfdbfe', borderRadius: 8, background: '#eff6ff' }}>
+                <input
+                  ref={piFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handlePiExcelUpload}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#1e3a8a' }}>Conciliar cantidades con Excel</div>
+                    <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: 2 }}>
+                      Admite el Excel de PI descargado y el libro RRFF con bloques “Envío PI”.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={piImportLoading}
+                    onClick={() => piFileInputRef.current?.click()}
+                    style={{ padding: '8px 14px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
+                    {piImportLoading ? 'Leyendo Excel…' : 'Subir Excel'}
+                  </button>
+                </div>
+                {piImportError && (
+                  <div style={{ marginTop: 10, color: '#b91c1c', fontSize: '0.82rem', fontWeight: 700 }}>{piImportError}</div>
+                )}
+                {piImportResult && (
+                  <div style={{ marginTop: 10, color: '#1e3a8a', fontSize: '0.8rem' }}>
+                    <b>{piImportResult.fileName}</b>: {piImportResult.imported} productos leídos, {piImportResult.added} agregados,
+                    {' '}{piImportResult.unchanged} sin cambios y {piImportResult.conflicts.length} con diferencias.
+                  </div>
+                )}
+              </div>
+
+              {piImportResult?.conflicts?.length > 0 && (
+                <div style={{ marginBottom: 16, border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 14px', background: '#fffbeb', color: '#92400e', fontWeight: 800 }}>
+                    Resolver diferencias ({piImportResult.conflicts.filter(item => !item.choice).length} pendientes)
+                  </div>
+                  <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                    {piImportResult.conflicts.map(conflict => (
+                      <div key={conflict.key} style={{ border: '1px solid #fde68a', borderRadius: 7, padding: 10, background: '#fff' }}>
+                        <div style={{ fontWeight: 800, color: '#1e293b', marginBottom: 7 }}>
+                          {conflict.current.sku} · {conflict.current.nombre_producto}
+                          {conflict.qttyChanged && (
+                            <span style={{ marginLeft: 8, padding: '2px 6px', borderRadius: 4, background: '#fee2e2', color: '#b91c1c', fontSize: '0.7rem' }}>
+                              U/E CAMBIÓ
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                          <label style={{ display: 'block', padding: 8, border: conflict.choice === 'ACTUAL' ? '2px solid #2563eb' : '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`conflict-${conflict.key}`}
+                              checked={conflict.choice === 'ACTUAL'}
+                              onChange={() => handleResolvePiConflict(conflict.key, 'ACTUAL')}
+                              style={{ marginRight: 7 }}
+                            />
+                            <b>Conservar PI actual</b>
+                            <div style={{ marginTop: 4, fontSize: '0.76rem', color: '#475569' }}>
+                              {Number(conflict.current.cantidad || 0).toLocaleString('es-CL')} uds · U/E {conflict.current.qtty} · {calculateBoxes(conflict.current.cantidad, conflict.current.qtty).toLocaleString('es-CL')} cajas
+                            </div>
+                          </label>
+                          <label style={{ display: 'block', padding: 8, border: conflict.choice === 'EXCEL' ? '2px solid #16a34a' : '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name={`conflict-${conflict.key}`}
+                              checked={conflict.choice === 'EXCEL'}
+                              onChange={() => handleResolvePiConflict(conflict.key, 'EXCEL')}
+                              style={{ marginRight: 7 }}
+                            />
+                            <b>Usar Excel</b>
+                            <div style={{ marginTop: 4, fontSize: '0.76rem', color: '#475569' }}>
+                              {Number(conflict.imported.cantidad || 0).toLocaleString('es-CL')} uds · U/E {conflict.imported.qtty} · {calculateBoxes(conflict.imported.cantidad, conflict.imported.qtty).toLocaleString('es-CL')} cajas
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* TABLA ITEMS */}
               <div style={{ marginBottom: 16, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
                 <table className="preview-table" style={{ margin: 0, width: '100%' }}>
@@ -1340,16 +1490,15 @@ export default function Compras() {
                     <tr style={{ background: '#f8fafc' }}>
                       <th>SKU</th>
                       <th>Producto</th>
-                      <th style={{ width: 140 }}>Cantidad a Pedir</th>
-                      <th>QTTY (Unidad Empaque)</th>
-                      <th style={{ width: 120 }}>Costo Unit. ($)</th>
-                      <th>Subtotal</th>
+                      <th style={{ width: 130 }}>Unidades</th>
+                      <th style={{ width: 110 }}>Cajas</th>
+                      <th style={{ width: 130 }}>U/E</th>
                       <th style={{ width: 40 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {piForm.items.map((it, idx) => (
-                      <tr key={it.sku}>
+                      <tr key={it.sku} style={it.qttyChanged ? { background: '#fff7ed' } : {}}>
                         <td><b>{it.sku}</b></td>
                         <td style={{ fontSize: '0.8rem', maxWidth: 220 }}>{it.nombre_producto}</td>
                         <td>
@@ -1361,21 +1510,19 @@ export default function Compras() {
                             style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', fontWeight: 700, boxSizing: 'border-box' }}
                           />
                         </td>
-                        <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {it.qtty > 1 ? `${it.qtty} uds` : '1 ud'}
-                        </td>
                         <td>
                           <input
                             type="number"
-                            step="0.01"
+                            step="0.001"
                             min="0"
-                            value={it.costo_unitario}
-                            onChange={e => handleUpdatePiItemCosto(idx, e.target.value)}
+                            value={it.cajas ?? calculateBoxes(it.cantidad, it.qtty)}
+                            onChange={e => handleUpdatePiItemBoxes(idx, e.target.value)}
                             style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #94a3b8', boxSizing: 'border-box' }}
                           />
                         </td>
-                        <td style={{ fontWeight: 700 }}>
-                          ${Number(it.subtotal || 0).toLocaleString('es-CL')}
+                        <td style={{ fontSize: '0.8rem', color: it.qttyChanged ? '#b45309' : '#64748b', fontWeight: it.qttyChanged ? 800 : 500 }}>
+                          {it.qttyChanged && it.qttyOriginal ? `${it.qttyOriginal} → ` : ''}{it.qtty > 1 ? `${it.qtty} uds` : '1 ud'}
+                          {it.qttyChanged && <div style={{ fontSize: '0.65rem' }}>Actualizada por Excel</div>}
                         </td>
                         <td>
                           <button
@@ -1394,11 +1541,11 @@ export default function Compras() {
               {/* TOTALES */}
               <div style={{ background: '#f1f5f9', padding: '12px 16px', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <span style={{ fontSize: '0.9rem', color: '#475569' }}>
-                  Total Ítems: <b>{piForm.items.length} SKUs</b> | Unidades Totales:{' '}
+                  Total Ítems: <b>{piForm.items.length} SKUs</b> · Unidades totales:{' '}
                   <b>{piForm.items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0).toLocaleString('es-CL')} uds</b>
                 </span>
                 <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
-                  Monto Total: ${piForm.items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0).toLocaleString('es-CL')}
+                  {piForm.items.reduce((acc, it) => acc + calculateBoxes(it.cantidad, it.qtty), 0).toLocaleString('es-CL', { maximumFractionDigits: 3 })} cajas
                 </span>
               </div>
 
@@ -1417,7 +1564,7 @@ export default function Compras() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingPi}
+                  disabled={submittingPi || Boolean(piImportResult?.conflicts?.some(item => !item.choice))}
                   style={{ padding: '9px 22px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>
                   {submittingPi ? 'Inyectando a Tránsito...' : 'Confirmar PI y emitir a Tránsito'}
                 </button>
